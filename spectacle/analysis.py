@@ -6,15 +6,17 @@ from .optimizer import optimize
 
 
 class Modeler:
-    def __init__(self, fit_method='LevMarLSQFitter', detrend=False,
-                 noise=3.5, min_dist=100):
+    def __init__(self, fit_method='LevMarLSQFitter', noise=3.5, min_dist=100):
         self.fit_method = fit_method
-        self.detrend = detrend
+        self.detrend = False
         self.noise = 3.5
         self.min_dist = 100
 
-    def __call__(self, spectrum):
+    def __call__(self, spectrum, detrend=None):
         self.spectrum = spectrum.copy()
+
+        if detrend is not None:
+            self.detrend = detrend
 
         if self.detrend:
             self.detrend_spectrum()
@@ -85,4 +87,3 @@ def centroid(spectrum):
     wcen = np.trapz(disp * flux, disp) / np.trapz(flux, disp)
 
     return wcen
-

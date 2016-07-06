@@ -1,5 +1,6 @@
 from .lsf import LSF
 from .utils import find_index
+from .models import Voigt1D
 
 import numpy as np
 import numpy.ma as ma
@@ -9,7 +10,6 @@ import astropy.modeling.models as models
 
 import logging
 
-
 class Spectrum1D:
     def __init__(self, dispersion=None, flux=None):
         self._flux = flux
@@ -17,7 +17,7 @@ class Spectrum1D:
         self._mask = None
         self._lsfs = []
         self._line_models = []
-        self._continuum_model = None
+        self._continuum_model = models.Linear1D(slope=0.0, intercept=1.0)
         self._remat = None
         self._model = None
 
@@ -43,7 +43,7 @@ class Spectrum1D:
     @property
     def flux(self):
         if self._flux is None:
-            flux = self.model(self._dispersion)
+            flux = self.model(self.dispersion)
         else:
             flux = self._flux
 
@@ -94,9 +94,8 @@ class Spectrum1D:
         lsf = LSF(function, *args, **kwargs)
         self._lsfs.append(lsf)
 
-    def add_line(self, amp, mu, gamma, sigma=None, normalize=False, name=""):
-        model = models.Voigt1D(x_0=mu, amplitude_L=amp, fwhm_L=gamma,
-                               fwhm_G=sigma or gamma)
+    def add_line(self, x_0, b, gamma, f):
+        model = Voigt1D(x_0=x_0, b=b, gamma=gamma, f=f)
         self._line_models.append(model)
 
         # Force the compound model to be recreated
@@ -107,6 +106,21 @@ class Spectrum1D:
     def set_continuum(self, function, *args, **kwargs):
         model = getattr(models, function)
         self._continuum_model = model(*args, **kwargs)
+
+    def get_profile(self, x_0):
+        # Find the nearest voigt profile to the given central wavelength
+        v_arr = sorted(self._line_models, key=lambda x: x.x_0)
+        v_x_0_arr = [x.x_0 for x in v_arr]
+
+        if len(v_x_0_arr) > 1:
+            ind = find_index(v_x_0_arr, x_0)
+
+            # Retrive the voigt profile at that wavelength
+            v_prof = v_arr[ind]
+        else:
+            v_prof = v_arr[0]
+
+        return v_prof
 
     def fwhm(self, x_0):
         """
@@ -120,13 +134,7 @@ class Spectrum1D:
           FWHM : float
               The estimate of the FWHM
         """
-        # Find the nearest voigt profile to the given central wavelength
-        v_arr = sorted(self._line_models, key=lambda x: x.x_0)
-        v_x_0_arr = [x.x_0 for x in v_arr]
-        ind = find_index(v_x_0_arr, x_0)
-
-        # Retrive the voigt profile at that wavelength
-        v_prof = v_arr[ind]
+        v_prof = self.get_profile(x_0)
 
         # The width of the Lorentz profile
         fl = 2.0 * v_prof.gamma

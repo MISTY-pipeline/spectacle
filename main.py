@@ -3,24 +3,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
 from spectacle.analysis import Modeler
-from astropy.modeling.models import Linear1D, Voigt1D
+from astropy.modeling.models import Linear1D
+from spectacle.models import Voigt1D
 
 
 def compare():
-    disp1 = np.arange(0, 10, 0.1)
-    mod1 = Linear1D(intercept=1.0, slope=0.0) + Voigt1D(5, -10, 0.5, 0.25)
-    flux1 = mod1(disp1)
+    spectrum1 = Spectrum1D()
+    spectrum1.add_line(x_0=1200, b=10, gamma=2e-7, f=0.5)
+    spectrum2 = Spectrum1D()
+    spectrum2.add_line(x_0=1600, b=8, gamma=1.5e-7, f=0.2)
 
-    spectrum1 = Spectrum1D(disp1, flux1)
+    # print(spectrum1.get_profile(1100), spectrum2.get_profile(1700))
 
-    disp2 = np.arange(0, 10, 0.1)
-    mod2 = Linear1D(intercept=1.0, slope=0.0) + Voigt1D(2, -7.5, 0.25, 0.45)
-    flux2 = mod2(disp2)
-
-    spectrum2 = Spectrum1D(disp2, flux2)
-
-    plt.step(spectrum1.dispersion, spectrum1.flux)
-    plt.step(spectrum2.dispersion, spectrum2.flux)
+    plt.plot(spectrum1.dispersion, spectrum1.flux)
+    plt.plot(spectrum2.dispersion, spectrum2.flux)
     plt.show()
 
 

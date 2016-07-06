@@ -18,7 +18,7 @@ class Voigt1D(Fittable1DModel):
 
       *Fit parameters*:
         - `amp` - Amplitude
-        - `gamma` - Scale parameter of the Cauchy-Lorentz distribution
+        - `al` - Scale parameter of the Cauchy-Lorentz distribution
         - `sigma` - The width of the Gaussian (usually called sigma)
         - `mu` - Center
         - `off` - Constant offset
@@ -54,19 +54,17 @@ class Voigt1D(Fittable1DModel):
       and http://en.wikipedia.org/wiki/Error_function.
     """
     x_0 = Parameter()
+    # amp = Parameter()
     b = Parameter()
     gamma = Parameter()
+    # sigma = Parameter(default=1.0 / np.sqrt(2.0))
     f = Parameter()
 
-    # Fixed parameters
-    sigma = Parameter(default=1.0 / np.sqrt(2.0), fixed=True)
-
     @staticmethod
-    def evaluate(x, x_0, b, gamma, f, sigma):
+    def evaluate(x, x_0, b, gamma, f):
+        sigma = 1.0 / np.sqrt(2.0)
         # Set to zero, because evaluation is done in velocity space
         mu = 0.0
-        lin = 0.0
-        off = 0.0
 
         b = b * u.Unit('km/s')
         gamma = gamma * u.Unit('cm')
@@ -76,7 +74,8 @@ class Voigt1D(Fittable1DModel):
         # Doppler width
         bl = x_0 * b / const.c
         # The constant equals (pi e^2)/(m_e c^2)
-        amp = np.pi * const.m_e * f * x_0 ** 2 / bl
+        # I have no idea what units the amplitude is expected to be in
+        amp = -8.85282064473e-13 * u.Unit('1/J') * f * x_0 ** 2 / bl
         # A factor of 2.0 because `al` defines the half FWHM in Voigt profile
         al = gamma / bl / 2.0
 
@@ -84,11 +83,8 @@ class Voigt1D(Fittable1DModel):
         z = (x - mu) + ((1.j) * abs(al)) / (np.sqrt(2.0) * abs(sigma))
         y = amp * np.real(spc.wofz(z.value))
         y /= (abs(sigma) * np.sqrt(2.0 * np.pi))
-        # y += x * lin + off * x.unit
 
-        # y[np.isnan(y)] = 0.0
-
-        return y
+        return y.value
 
     @staticmethod
     def fit_deriv(x, x_0, b, gamma, f):
@@ -96,10 +92,13 @@ class Voigt1D(Fittable1DModel):
 
 
 if __name__ == '__main__':
-    x = np.arange(0.0, 100, 0.1)
-    v = Voigt1D(x_0=50, b=10, gamma=2e-9, f=10, sigma=0)
-    vo = Voigt1DOrig(x_0=50, amplitude_L=10, fwhm_L=0.5, fwhm_G=0.25)
+    x = np.arange(1000., 1500., 1)
+    # v = Voigt1D(x_0=1215.6, b=87.7, gamma=2e-9, f=0.4164)
+    for f in np.arange(0.1, 0.8, 0.1):
+        v2 = Voigt1D(x_0=1250.0, b=7.7, gamma=2e-7, f=f)
+    # vo = Voigt1DOrig(x_0=50, amplitude_L=10, fwhm_L=0.5, fwhm_G=0.25)
 
-    plt.plot(x, v(x))
-    plt.plot(x, vo(x) * 1e-20)
+    # plt.plot(x, v(x))
+        plt.plot(x, v2(x))
+    # plt.plot(x, vo(x) * 1e-20)
     plt.show()
