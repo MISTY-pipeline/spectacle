@@ -107,7 +107,7 @@ class Spectrum1D:
         model = getattr(models, function)
         self._continuum_model = model(*args, **kwargs)
 
-    def get_profile(self, x_0):
+    def find_profile(self, x_0):
         # Find the nearest voigt profile to the given central wavelength
         v_arr = sorted(self._line_models, key=lambda x: x.x_0)
         v_x_0_arr = [x.x_0 for x in v_arr]
@@ -134,7 +134,7 @@ class Spectrum1D:
           FWHM : float
               The estimate of the FWHM
         """
-        v_prof = self.get_profile(x_0)
+        v_prof = self.find_profile(x_0)
 
         # The width of the Lorentz profile
         fl = 2.0 * v_prof.gamma
@@ -143,6 +143,46 @@ class Spectrum1D:
         fd = 2.35482 * v_prof.sigma
 
         return 0.5346 * fl + np.sqrt(0.2166 * (fl ** 2.) + fd ** 2.)
+
+    def optical_depth(self, x_0):
+        """
+        Return the optical depth at some wavelength.
+
+        Parameters
+        ----------
+        x_0 : float
+            Line center from which to calculate tau.
+
+        Returns
+        -------
+        tau : float
+            The value of the optical depth at the given wavelength.
+        """
+        idx = (np.abs(self.dispersion - x_0)).argmin()
+        return -np.log(self.flux[idx])
+
+    def centroid(self, x_0):
+        """
+        Return the centroid for Voigt profile near the given wavelength.
+
+        Parameters
+        ----------
+        x_0 : float
+            Wavelength new the given profile from which to calculate the
+            centroid.
+
+        Returns
+        -------
+        cent : float
+            The centroid of the profile.
+        """
+        profile = self.find_profile(x_0)
+        disp = self.dispersion
+        flux = profile(disp)
+
+        cent = np.trapz(disp * flux, disp) / np.trapz(flux, disp)
+
+        return cent
 
     def resample(self, dispersion):
             remat = self._resample_matrix(self.dispersion, dispersion)

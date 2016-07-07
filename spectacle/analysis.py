@@ -61,7 +61,7 @@ class Modeler:
                               self.spectrum.dispersion[cind],
                               1)
 
-            self.spectrum.add_line(-amp, mu, gamma, gamma*0.5)
+            self.spectrum.add_line(x_0=mu, b=50, gamma=gamma, f=0.5)
 
         plt.show()
 
@@ -80,10 +80,3 @@ class Modeler:
             self.spectrum.model.parameters = model_fit.parameters
         else:
             optimize(self.spectrum)
-
-
-def centroid(spectrum):
-
-    wcen = np.trapz(disp * flux, disp) / np.trapz(flux, disp)
-
-    return wcen

@@ -10,13 +10,15 @@ from spectacle.models import Voigt1D
 def compare():
     spectrum1 = Spectrum1D()
     spectrum1.add_line(x_0=1200, b=10, gamma=2e-7, f=0.5)
-    spectrum2 = Spectrum1D()
-    spectrum2.add_line(x_0=1600, b=8, gamma=1.5e-7, f=0.2)
+    # spectrum1.set_continuum("Linear1D", slope=0.0, intercept=1.0)
 
-    # print(spectrum1.get_profile(1100), spectrum2.get_profile(1700))
+    for gamma in np.logspace(-4, -6):
+        print(gamma)
+        spectrum2 = Spectrum1D()
+        spectrum2.add_line(x_0=1600, b=87, gamma=gamma, f=0.6)
+        plt.plot(spectrum2.dispersion, spectrum2.flux)
 
     plt.plot(spectrum1.dispersion, spectrum1.flux)
-    plt.plot(spectrum2.dispersion, spectrum2.flux)
     plt.show()
 
 
@@ -29,7 +31,7 @@ def fitting():
 
     spectrum = Spectrum1D(disp, flux)
 
-    modeler = Modeler(detrend=True)
+    modeler = Modeler()
     result_spectrum = modeler(spectrum)
 
     plt.plot(spectrum.dispersion, spectrum.flux)
@@ -38,5 +40,5 @@ def fitting():
 
 
 if __name__ == '__main__':
-    # fitting()
-    compare()
+    fitting()
+    # compare()
