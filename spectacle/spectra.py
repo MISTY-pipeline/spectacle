@@ -1,14 +1,17 @@
 from .lsf import LSF
 from .utils import find_index
 from .models import Voigt1D
+from .profiles import TauProfile
 
 import numpy as np
+import scipy as sp
 import numpy.ma as ma
 import astropy.units as u
 from astropy.convolution import convolve
 import astropy.modeling.models as models
 
 import logging
+
 
 class Spectrum1D:
     def __init__(self, dispersion=None, flux=None):
@@ -17,7 +20,7 @@ class Spectrum1D:
         self._mask = None
         self._lsfs = []
         self._line_models = []
-        self._continuum_model = models.Linear1D(slope=0.0, intercept=1.0)
+        self._continuum_model = models.Linear1D(slope=0.0, intercept=0.0)
         self._remat = None
         self._model = None
 
@@ -33,7 +36,8 @@ class Spectrum1D:
         dispersion = self._dispersion
 
         if dispersion is None:
-            dispersion = np.arange(0, 5000)
+            profile = TauProfile(*self.model[1].parameters)
+            dispersion = profile.lambda_bins
 
         if self._remat is not None:
             dispersion = np.dot(self._remat, self._dispersion)
@@ -94,8 +98,8 @@ class Spectrum1D:
         lsf = LSF(function, *args, **kwargs)
         self._lsfs.append(lsf)
 
-    def add_line(self, x_0, b, gamma, f):
-        model = Voigt1D(x_0=x_0, b=b, gamma=gamma, f=f)
+    def add_line(self, lambda_0, f_value, gamma, v_doppler, column_density,):
+        model = Voigt1D(lambda_0, f_value, gamma, v_doppler, column_density)
         self._line_models.append(model)
 
         # Force the compound model to be recreated
@@ -109,8 +113,8 @@ class Spectrum1D:
 
     def find_profile(self, x_0):
         # Find the nearest voigt profile to the given central wavelength
-        v_arr = sorted(self._line_models, key=lambda x: x.x_0)
-        v_x_0_arr = [x.x_0 for x in v_arr]
+        v_arr = sorted(self._line_models, key=lambda x: x.lambda_0)
+        v_x_0_arr = [x.lambda_0 for x in v_arr]
 
         if len(v_x_0_arr) > 1:
             ind = find_index(v_x_0_arr, x_0)
@@ -140,7 +144,7 @@ class Spectrum1D:
         fl = 2.0 * v_prof.gamma
 
         # Width of the Gaussian [2.35 = 2*sigma*sqrt(2*ln(2))]
-        fd = 2.35482 * v_prof.sigma
+        fd = 2.35482 * 1/np.sqrt(2.)
 
         return 0.5346 * fl + np.sqrt(0.2166 * (fl ** 2.) + fd ** 2.)
 
@@ -184,9 +188,24 @@ class Spectrum1D:
 
         return cent
 
+    def equivalent_width(self, x_0):
+        profile = self.find_profile(x_0)
+        disp = self.dispersion
+        flux = profile(disp)
+
+        # average of 2 continuum regions.
+        avg_cont = np.mean(self.continuum)
+
+        # average dispersion in the line region.
+        avg_dx = np.mean(disp[1:] - disp[:-1])
+        ew = np.sum((avg_cont - flux) / avg_cont * avg_dx)
+        # ew = np.trapz(avg_cont - flux, disp)
+
+        return ew
+
     def resample(self, dispersion):
-            remat = self._resample_matrix(self.dispersion, dispersion)
-            self._remat = remat
+        remat = self._resample_matrix(self.dispersion, dispersion)
+        self._remat = remat
 
     def _resample_matrix(self, orig_lamb, fin_lamb):
         """

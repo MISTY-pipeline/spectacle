@@ -61,7 +61,9 @@ class Modeler:
                               self.spectrum.dispersion[cind],
                               1)
 
-            self.spectrum.add_line(x_0=mu, b=50, gamma=gamma, f=0.5)
+            self.spectrum.add_line(lambda_0=mu, f_value=0.5, gamma=1e12,
+                                   v_doppler=1e7, column_density=1e14)
+        plt.plot(self.spectrum.ideal_flux)
 
         plt.show()
 

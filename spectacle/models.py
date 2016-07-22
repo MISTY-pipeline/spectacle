@@ -7,6 +7,8 @@ import numpy as np
 from scipy import special as spc
 import matplotlib.pyplot as plt
 
+from .profiles import TauProfile
+
 
 class Voigt1D(Fittable1DModel):
     """
@@ -47,44 +49,28 @@ class Voigt1D(Fittable1DModel):
       and a Cauchy-Lorentz distribution
 
       .. math::
-        L=al/(\pi ((x-mu)^2+gamma^2)) + lin \ x + off
+        L=al/(\pi ((x-mu)^2+gamma^2))
 
       The Voigt profile is calculated via the real part of the Faddeeva
       function. For details, see http://en.wikipedia.org/wiki/Voigt_profile
       and http://en.wikipedia.org/wiki/Error_function.
     """
-    x_0 = Parameter()
-    # amp = Parameter()
-    b = Parameter()
+    lambda_0 = Parameter()
+    f_value = Parameter()
     gamma = Parameter()
-    # sigma = Parameter(default=1.0 / np.sqrt(2.0))
-    f = Parameter()
+    v_doppler = Parameter()
+    column_density = Parameter()
 
     @staticmethod
-    def evaluate(x, x_0, b, gamma, f):
-        sigma = 1.0 / np.sqrt(2.0)
-        # Set to zero, because evaluation is done in velocity space
-        mu = 0.0
+    def evaluate(x, lambda_0, f_value, gamma, v_doppler, column_density):
+        profile = TauProfile(lambda_0=lambda_0, f_value=f_value,
+                             gamma=gamma, v_doppler=v_doppler,
+                             column_density=column_density,
+                             n_lambda=x.size)
 
-        b = b * u.Unit('km/s')
-        gamma = gamma * u.Unit('cm')
-        x_0 = x_0 * u.Unit('Angstrom')
-        x = x * u.Unit('Angstrom')
+        flux = np.exp(-profile.optical_depth)
 
-        # Doppler width
-        bl = x_0 * b / const.c
-        # The constant equals (pi e^2)/(m_e c^2)
-        # I have no idea what units the amplitude is expected to be in
-        amp = -8.85282064473e-13 * u.Unit('1/J') * f * x_0 ** 2 / bl
-        # A factor of 2.0 because `al` defines the half FWHM in Voigt profile
-        al = gamma / bl / 2.0
-
-        x = (x - x_0) / bl
-        z = (x - mu) + ((1.j) * abs(al)) / (np.sqrt(2.0) * abs(sigma))
-        y = amp * np.real(spc.wofz(z.value))
-        y /= (abs(sigma) * np.sqrt(2.0 * np.pi))
-
-        return y.value
+        return flux
 
     @staticmethod
     def fit_deriv(x, x_0, b, gamma, f):

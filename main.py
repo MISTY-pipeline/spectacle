@@ -9,17 +9,54 @@ from spectacle.models import Voigt1D
 
 def compare():
     spectrum1 = Spectrum1D()
-    spectrum1.add_line(x_0=1200, b=10, gamma=2e-7, f=0.5)
+    spectrum1.add_line(lambda_0=1.03192700E+03, f_value=0.4164, gamma=1e6,
+                       v_doppler=1e7, column_density=10**14.66)
     # spectrum1.set_continuum("Linear1D", slope=0.0, intercept=1.0)
 
-    for gamma in np.logspace(-4, -6):
-        print(gamma)
-        spectrum2 = Spectrum1D()
-        spectrum2.add_line(x_0=1600, b=87, gamma=gamma, f=0.6)
-        plt.plot(spectrum2.dispersion, spectrum2.flux)
+    # for gamma in np.logspace(12, 14, 10):
+    #     spectrum2 = Spectrum1D()
+    #     spectrum2.add_line(lambda_0=1.03192700E+03, f_value=0.4164, gamma=gamma,
+    #                        v_doppler=1e7, column_density=5.25e13)
+    #     plt.plot(spectrum2.dispersion, spectrum2.flux, 'b-')
 
-    plt.plot(spectrum1.dispersion, spectrum1.flux)
+    # for n in np.logspace(12, 14, 10):
+    #     spectrum2 = Spectrum1D()
+    #     spectrum2.add_line(lambda_0=1.03192700E+03, f_value=0.4164,
+    #                        gamma=1e6,
+    #                        v_doppler=1e7, column_density=n)
+    #     plt.plot(spectrum2.dispersion, spectrum2.flux, 'b-')
+
+    #
+    # for f in np.linspace(0.1, 1.0, 10):
+    #     spectrum2 = Spectrum1D()
+    #     spectrum2.add_line(lambda_0=2.03192700E+03, f_value=f, gamma=1e6,
+    #                        v_doppler=1e7, column_density=5.25e13)
+    #     plt.plot(spectrum2.dispersion, spectrum2.flux, 'g-')
+
+    f, (ax1, ax2) = plt.subplots(2, 1)
+
+    log_n, log_w = [], []
+    for n in np.logspace(7, 25, 20):
+        spectrum2 = Spectrum1D()
+        spectrum2.add_line(lambda_0=1.03192700E+03, f_value=0.4164, gamma=1e5,
+                           v_doppler=1e6, column_density=n)
+        print(np.log10(n), np.log10(spectrum2.equivalent_width(
+            1.03192700E+03)))
+        log_n.append(np.log10(n * 0.4164 * (1.03192700E+03 / 5000.0)))
+        log_w.append(np.log10(spectrum2.equivalent_width(1.03192700E+03) /
+                              1.03192700E+03))
+        ax1.plot(spectrum2.dispersion, spectrum2.flux, 'g-')
+
+    ax2.plot(log_n, log_w)
+    ax2.set_xlabel("$\log N f \lambda$")
+    ax2.set_ylabel("$\log W / \lambda$")
+
+    # plt.plot(spectrum1.dispersion, spectrum1.flux)
     plt.show()
+
+    print("Tau", spectrum1.optical_depth(977))
+    print("FWHM", spectrum1.fwhm(977))
+    print("W", spectrum1.equivalent_width(1.03192700E+03))
 
 
 def fitting():
@@ -40,5 +77,5 @@ def fitting():
 
 
 if __name__ == '__main__':
-    fitting()
-    # compare()
+    # fitting()
+    compare()
