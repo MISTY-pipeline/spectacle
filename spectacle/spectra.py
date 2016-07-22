@@ -194,7 +194,7 @@ class Spectrum1D:
         flux = profile(disp)
 
         # average of 2 continuum regions.
-        avg_cont = np.mean(self.continuum)
+        avg_cont = 1 #np.mean(self.continuum)
 
         # average dispersion in the line region.
         avg_dx = np.mean(disp[1:] - disp[:-1])
