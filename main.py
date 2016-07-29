@@ -1,10 +1,10 @@
-from spectacle.spectra import Spectrum1D
+from spectacle.core.spectra import Spectrum1D
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
-from spectacle.analysis import Modeler
+from spectacle.fitting.fitter import Fitter
 from astropy.modeling.models import Linear1D
-from spectacle.models import Voigt1D
+from spectacle.core.models import Voigt1D
 
 
 def compare():
@@ -68,8 +68,8 @@ def fitting():
 
     spectrum = Spectrum1D(disp, flux)
 
-    modeler = Modeler()
-    result_spectrum = modeler(spectrum)
+    fitter = Fitter()
+    result_spectrum = Fitter(spectrum)
 
     plt.plot(spectrum.dispersion, spectrum.flux)
     plt.plot(result_spectrum.dispersion, result_spectrum.ideal_flux)

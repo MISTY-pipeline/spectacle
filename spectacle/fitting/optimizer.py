@@ -1,7 +1,7 @@
 import numpy as np
 import emcee
 from astropy.modeling.models import Voigt1D, Linear1D
-from spectacle.spectra import Spectrum1D
+from spectacle.core.spectra import Spectrum1D
 from astropy.io import fits
 
 import matplotlib.pyplot as plt

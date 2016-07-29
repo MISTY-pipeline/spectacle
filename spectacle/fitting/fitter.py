@@ -5,7 +5,7 @@ import numpy as np
 from .optimizer import optimize
 
 
-class Modeler:
+class Fitter:
     def __init__(self, fit_method='LevMarLSQFitter', noise=3.5, min_dist=100):
         self.fit_method = fit_method
         self.detrend = False

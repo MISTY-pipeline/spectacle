@@ -1,4 +1,3 @@
-from .lsf import LSF
 from .utils import find_index
 from .models import Voigt1D
 from .profiles import TauProfile
@@ -94,12 +93,13 @@ class Spectrum1D:
 
         self._mask = mask
 
-    def add_lsf(self, function='gaussian', *args, **kwargs):
-        lsf = LSF(function, *args, **kwargs)
+    def add_lsf(self, lsf):
         self._lsfs.append(lsf)
 
-    def add_line(self, lambda_0, f_value, gamma, v_doppler, column_density,):
-        model = Voigt1D(lambda_0, f_value, gamma, v_doppler, column_density)
+    def add_line(self, lambda_0, f_value, gamma, v_doppler, column_density,
+                 name=""):
+        model = Voigt1D(lambda_0, f_value, gamma, v_doppler, column_density,
+                        name=name)
         self._line_models.append(model)
 
         # Force the compound model to be recreated
@@ -111,7 +111,7 @@ class Spectrum1D:
         model = getattr(models, function)
         self._continuum_model = model(*args, **kwargs)
 
-    def find_profile(self, x_0):
+    def get_profile(self, x_0):
         # Find the nearest voigt profile to the given central wavelength
         v_arr = sorted(self._line_models, key=lambda x: x.lambda_0)
         v_x_0_arr = [x.lambda_0 for x in v_arr]
@@ -138,7 +138,7 @@ class Spectrum1D:
           FWHM : float
               The estimate of the FWHM
         """
-        v_prof = self.find_profile(x_0)
+        v_prof = self.get_profile(x_0)
 
         # The width of the Lorentz profile
         fl = 2.0 * v_prof.gamma
@@ -180,7 +180,7 @@ class Spectrum1D:
         cent : float
             The centroid of the profile.
         """
-        profile = self.find_profile(x_0)
+        profile = self.get_profile(x_0)
         disp = self.dispersion
         flux = profile(disp)
 
@@ -189,7 +189,7 @@ class Spectrum1D:
         return cent
 
     def equivalent_width(self, x_0):
-        profile = self.find_profile(x_0)
+        profile = self.get_profile(x_0)
         disp = self.dispersion
         flux = profile(disp)
 
