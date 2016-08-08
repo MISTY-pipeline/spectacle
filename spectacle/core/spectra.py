@@ -18,6 +18,7 @@ class Spectrum1D:
         self._dispersion = dispersion
         self._mask = None
         self._lsfs = []
+        self._noise = []
         self._line_models = []
         self._continuum_model = models.Linear1D(slope=0.0, intercept=0.0)
         self._remat = None
@@ -26,7 +27,12 @@ class Spectrum1D:
     @property
     def model(self):
         if self._model is None:
-            self._model = self._continuum_model + np.sum(self._line_models)
+            self._model = self._continuum_model
+
+            if len(self._line_models) > 0:
+                self._model -= models.Const1D(1.0 * len(self._line_models),
+                                              fixed={'amplitude': True})
+                self._model = self._model + np.sum(self._line_models)
 
         return self._model
 
@@ -35,8 +41,7 @@ class Spectrum1D:
         dispersion = self._dispersion
 
         if dispersion is None:
-            profile = TauProfile(*self.model[1].parameters)
-            dispersion = profile.lambda_bins
+            dispersion = np.arange(0, 2000, 0.1)
 
         if self._remat is not None:
             dispersion = np.dot(self._remat, self._dispersion)
@@ -49,6 +54,10 @@ class Spectrum1D:
             flux = self.model(self.dispersion)
         else:
             flux = self._flux
+
+        # Add noise before apply lsf
+        for noise in self._noise:
+            flux += noise
 
         # Apply LSFs
         for lsf in self._lsfs:
@@ -64,7 +73,7 @@ class Spectrum1D:
 
     @property
     def ideal_flux(self):
-        flux = self.model(self._dispersion)
+        flux = self.model(self.dispersion)
 
         return flux
 
@@ -96,10 +105,16 @@ class Spectrum1D:
     def add_lsf(self, lsf):
         self._lsfs.append(lsf)
 
+    def add_noise(self, percent=1.0, function='gaussian'):
+        if function == 'gaussian':
+            noise = (np.random.sample(size=self.flux.size) - 0.5) * 0.1
+        self._noise.append(noise)
+
     def add_line(self, lambda_0, f_value, gamma, v_doppler, column_density,
                  name=""):
         model = Voigt1D(lambda_0, f_value, gamma, v_doppler, column_density,
-                        name=name)
+                        name=name, meta={'lambda_bins': self.dispersion})
+
         self._line_models.append(model)
 
         # Force the compound model to be recreated
@@ -113,13 +128,13 @@ class Spectrum1D:
 
     def get_profile(self, x_0):
         # Find the nearest voigt profile to the given central wavelength
-        v_arr = sorted(self._line_models, key=lambda x: x.lambda_0)
-        v_x_0_arr = [x.lambda_0 for x in v_arr]
+        v_arr = sorted(self._line_models, key=lambda x: x.lambda_0.value)
+        v_x_0_arr = [x.lambda_0.value for x in v_arr]
 
         if len(v_x_0_arr) > 1:
             ind = find_index(v_x_0_arr, x_0)
 
-            # Retrive the voigt profile at that wavelength
+            # Retrieve the voigt profile at that wavelength
             v_prof = v_arr[ind]
         else:
             v_prof = v_arr[0]

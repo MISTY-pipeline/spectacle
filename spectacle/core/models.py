@@ -61,12 +61,12 @@ class Voigt1D(Fittable1DModel):
     v_doppler = Parameter()
     column_density = Parameter()
 
-    @staticmethod
-    def evaluate(x, lambda_0, f_value, gamma, v_doppler, column_density):
+    def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density):
+        lambda_bins = self.meta.get('lambda_bins', None)
         profile = TauProfile(lambda_0=lambda_0, f_value=f_value,
                              gamma=gamma, v_doppler=v_doppler,
                              column_density=column_density,
-                             n_lambda=x.size)
+                             n_lambda=x.size, lambda_bins=lambda_bins)
 
         flux = np.exp(-profile.optical_depth)
 

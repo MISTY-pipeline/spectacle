@@ -7,6 +7,7 @@ def find_index(array, value):
     function below returns the index of the input array corresponding to the
     closest value, which is somewhat more general.
     """
+    array = np.array(array)
     idx_sorted = np.argsort(array)
     sorted_array = np.array(array[idx_sorted])
     idx = np.searchsorted(sorted_array, value, side="left")

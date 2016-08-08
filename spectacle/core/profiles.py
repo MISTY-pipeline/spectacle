@@ -91,7 +91,7 @@ class TauProfile:
 if __name__ == '__main__':
     tau_profile = TauProfile(977.02, 0.4164, 1e6, 87.3, 5.25e13,
                              delta_lambda=10)
-    # tau_profile2 = TauProfile(977.02, 0.4164, 10, 1.27e6, 5.25e13)
+    tau_profile2 = TauProfile(877.02, 0.4164, 10, 1.27e6, 5.25e13)
     # tau_profile3 = TauProfile(977.02, 0.4164, 1e-7, 1.27e6, 5.25e13)
 
     import matplotlib.pyplot as plt
@@ -99,7 +99,7 @@ if __name__ == '__main__':
     f, (ax1, ax2) = plt.subplots(2, 1)
 
     ax1.step(tau_profile.dispersion, tau_profile.optical_depth)
-    # plt.step(tau_profile2.lambda_bins, tau_profile2.tau_phi)
+    plt.step(tau_profile2.lambda_bins, tau_profile2.tau_phi)
     # plt.step(tau_profile3.lambda_bins, tau_profile3.tau_phi)
 
     mask = (tau_profile.dispersion > 950) & (tau_profile.lambda_bins < 1000)
