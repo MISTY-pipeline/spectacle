@@ -67,6 +67,7 @@ def fitting():
     # disp, flux = hdulist[1].data['WAVE'], hdulist[1].data['FLUX']
     #
     # flux = flux[(disp > 1350) & (disp < 1400)]
+    # flux /= np.median(flux)
     # disp = disp[(disp > 1350) & (disp < 1400)]
     #
     # spectrum = Spectrum1D(disp, flux)
@@ -76,13 +77,25 @@ def fitting():
     spectrum.add_line(lambda_0=1.13192700E+03, f_value=0.6164, gamma=1e6,
                       v_doppler=1e7, column_density=10 ** 13.55)
     spectrum.add_noise()
+    spectrum.uncertainty = (np.random.sample(
+        spectrum.dispersion.size)) * 0.01
 
     fitter = Fitter()
     result_spectrum = fitter(spectrum)
 
     plt.plot(spectrum.dispersion, spectrum.flux)
-    plt.plot(result_spectrum.dispersion, result_spectrum.ideal_flux)
+    # plt.plot(spectrum.dispersion, spectrum.uncertainty, marker='o')
+    plt.plot(result_spectrum.dispersion, result_spectrum.flux)
     plt.show()
+
+    # new_spectrum = Spectrum1D()
+    # print(result_spectrum.model.parameters[3:8])
+    # new_spectrum.add_line(*result_spectrum.model.parameters[3:8])
+    #
+    # plt.plot(spectrum.dispersion, spectrum.flux)
+    # # plt.plot(spectrum.dispersion, spectrum.uncertainty, marker='o')
+    # plt.plot(new_spectrum.dispersion, new_spectrum.flux)
+    # plt.show()
 
 
 def simple():

@@ -13,7 +13,8 @@ import logging
 
 
 class Spectrum1D:
-    def __init__(self, dispersion=None, flux=None):
+    def __init__(self, dispersion=None, flux=None, uncertainty=None):
+        self._uncertainty = uncertainty
         self._flux = flux
         self._dispersion = dispersion
         self._mask = None
@@ -72,6 +73,14 @@ class Spectrum1D:
         return flux
 
     @property
+    def uncertainty(self):
+        return self._uncertainty
+
+    @uncertainty.setter
+    def uncertainty(self, value):
+        self._uncertainty = value
+
+    @property
     def ideal_flux(self):
         flux = self.model(self.dispersion)
 
@@ -107,7 +116,7 @@ class Spectrum1D:
 
     def add_noise(self, percent=1.0, function='gaussian'):
         if function == 'gaussian':
-            noise = (np.random.sample(size=self.flux.size) - 0.5) * 0.1
+            noise = (np.random.sample(size=self.flux.size) - 0.5) * 0.05
         self._noise.append(noise)
 
     def add_line(self, lambda_0, f_value, gamma, v_doppler, column_density,

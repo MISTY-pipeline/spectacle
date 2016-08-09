@@ -56,10 +56,10 @@ class Voigt1D(Fittable1DModel):
       and http://en.wikipedia.org/wiki/Error_function.
     """
     lambda_0 = Parameter()
-    f_value = Parameter()
-    gamma = Parameter()
+    f_value = Parameter(min=0.0, max=1.0)
+    gamma = Parameter(min=0.0)
     v_doppler = Parameter()
-    column_density = Parameter()
+    column_density = Parameter(min=1e10, max=1e30)
 
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density):
         lambda_bins = self.meta.get('lambda_bins', None)
