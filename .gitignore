@@ -11,6 +11,7 @@ Thumbs.db
 
 # python files #
 ################
-__pychache__
+__pycache__
 *.pyc
 .idea
+.ipynb_checkpoints
