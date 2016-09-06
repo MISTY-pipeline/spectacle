@@ -1,11 +1,5 @@
 from astropy.modeling import Fittable1DModel, Parameter
-from astropy.modeling.models import Voigt1D as Voigt1DOrig
-from astropy import constants as const
-from astropy import units as u
-
 import numpy as np
-from scipy import special as spc
-import matplotlib.pyplot as plt
 
 from .profiles import TauProfile
 
@@ -35,7 +29,6 @@ class Voigt1D(Fittable1DModel):
 
       Notes
       -----
-
       The Voigt profile V is defined as the convolution
 
       .. math::
@@ -57,7 +50,7 @@ class Voigt1D(Fittable1DModel):
     """
     lambda_0 = Parameter()
     f_value = Parameter(min=0.0, max=1.0)
-    gamma = Parameter(min=0.0)
+    gamma = Parameter()
     v_doppler = Parameter()
     column_density = Parameter(min=1e10, max=1e30)
 
@@ -68,23 +61,10 @@ class Voigt1D(Fittable1DModel):
                              column_density=column_density,
                              n_lambda=x.size, lambda_bins=lambda_bins)
 
-        flux = np.exp(-profile.optical_depth)
+        flux = np.exp(-profile.optical_depth) - 1.0
 
         return flux
 
     @staticmethod
     def fit_deriv(x, x_0, b, gamma, f):
         return [0, 0, 0, 0]
-
-
-if __name__ == '__main__':
-    x = np.arange(1000., 1500., 1)
-    # v = Voigt1D(x_0=1215.6, b=87.7, gamma=2e-9, f=0.4164)
-    for f in np.arange(0.1, 0.8, 0.1):
-        v2 = Voigt1D(x_0=1250.0, b=7.7, gamma=2e-7, f=f)
-    # vo = Voigt1DOrig(x_0=50, amplitude_L=10, fwhm_L=0.5, fwhm_G=0.25)
-
-    # plt.plot(x, v(x))
-        plt.plot(x, v2(x))
-    # plt.plot(x, vo(x) * 1e-20)
-    plt.show()

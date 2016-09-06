@@ -1,6 +1,7 @@
 import logging
 import numpy as np
-from skimage.feature import match_template
+# from skimage.feature import match_template
+import uncertainties.unumpy as unp
 
 
 def npcorrelate(a, v, mode='valid', normalize=False):
@@ -21,13 +22,14 @@ def npcorrelate(a, v, mode='valid', normalize=False):
     <returned value> : float
         The (normalized) correlation.
     """
-    al, vl = a.flux, v.flux
+    al, vl = unp.uarray(a.flux, a.uncertainty), \
+             unp.uarray(v.flux, v.uncertainty)
 
     if normalize:
-        al = (al - np.mean(al)) / (np.std(al) * len(al))
-        vl = (vl - np.mean(vl)) / np.std(vl)
+        al = (al - al.mean()) / (al.std_dev() * al.size)
+        vl = (vl - vl.mean()) / vl.std_dev()
 
-    return np.correlate(al, vl, mode)
+    return np.correlate(al.nominal_value, vl.nominal_value, mode)
 
 
 def autocorrelate(a):
@@ -44,7 +46,7 @@ def autocorrelate(a):
     ret : float
         Value representing the correlation.
     """
-    af = a.flux
+    af = unp.uarray(a.flux, a.uncertainty)
 
     fin = np.zeros(a.flux.size)
 

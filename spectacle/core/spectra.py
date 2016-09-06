@@ -2,12 +2,15 @@ from .utils import find_index
 from .models import Voigt1D
 from .profiles import TauProfile
 
+import os
 import numpy as np
 import scipy as sp
 import numpy.ma as ma
 import astropy.units as u
 from astropy.convolution import convolve
-import astropy.modeling.models as models
+from astropy.modeling import models, fitting
+from astropy.table import Table
+from uncertainties import unumpy as unp
 
 import logging
 
@@ -21,7 +24,14 @@ class Spectrum1D:
         self._lsfs = []
         self._noise = []
         self._line_models = []
-        self._continuum_model = models.Linear1D(slope=0.0, intercept=0.0)
+
+        if flux is None:
+            self._continuum_model = models.Linear1D(slope=0.0, intercept=1.0,
+                                                    fixed={'slope': True,
+                                                           'intercept': True})
+        else:
+            self._continuum_model = self._find_continuum()
+
         self._remat = None
         self._model = None
 
@@ -31,11 +41,23 @@ class Spectrum1D:
             self._model = self._continuum_model
 
             if len(self._line_models) > 0:
-                self._model -= models.Const1D(1.0 * len(self._line_models),
-                                              fixed={'amplitude': True})
                 self._model = self._model + np.sum(self._line_models)
 
+                for l in [x for x in self._model.param_names if 'lambda' in x]:
+                    gamma_val = 'gamma_' + l.split('_')[-1]
+                    getattr(self._model, gamma_val).tied = lambda x, ln=l: \
+                        _tie_gamma(x, ln)
+
         return self._model
+
+    @property
+    def tau(self):
+        if self.model is not None:
+            return -np.log(self.model(self.dispersion))
+        else:
+            logging.warning("No model exists, using flux values to generate"
+                            "tau.")
+            return -np.log(self.flux)
 
     @property
     def dispersion(self):
@@ -72,8 +94,15 @@ class Spectrum1D:
 
         return flux
 
+    @flux.setter
+    def flux(self, value):
+        self._flux = value
+
     @property
     def uncertainty(self):
+        if self._uncertainty is None:
+            self._uncertainty = np.ones(self.flux.size)
+
         return self._uncertainty
 
     @uncertainty.setter
@@ -81,14 +110,18 @@ class Spectrum1D:
         self._uncertainty = value
 
     @property
-    def ideal_flux(self):
-        flux = self.model(self.dispersion)
-
-        return flux
-
-    @property
     def continuum(self):
         return self._continuum_model(self.dispersion)
+
+    def _find_continuum(self, mode='LinearLSQFitter'):
+        cont = models.Linear1D(slope=0.0,
+                               intercept=np.median(self.flux))
+        fitter = getattr(fitting, mode)()
+        cont_fit = fitter(cont, self.dispersion, self.flux,
+                          weights=1 / (np.abs(np.median(self.flux) -
+                                              self.flux)) ** 3)
+
+        return cont_fit
 
     def copy(self):
         spectrum_copy = self.__class__()
@@ -103,6 +136,24 @@ class Spectrum1D:
 
         return spectrum_copy
 
+    @classmethod
+    def read(cls, filename, format='fits'):
+        from astropy.table import Table
+
+        t = Table.read(filename, format)
+
+        spectrum = cls(dispersion=t['dispersion'].data, flux=t['flux'].data,
+                       uncertainty=t['uncertainty'].data)
+
+        return spectrum
+
+    def write(self, filename='spectrum'):
+        from astropy.table import Table
+
+        t = Table([self.dispersion, self.flux, self.uncertainty], names=(
+            'dispersion', 'flux', 'uncertainty'))
+        t.write(filename, format='fits')
+
     def set_mask(self, mask):
         if np.array(mask).shape != self._flux.shape or \
                         np.array(mask).shape != self._dispersion.shape:
@@ -114,9 +165,8 @@ class Spectrum1D:
     def add_lsf(self, lsf):
         self._lsfs.append(lsf)
 
-    def add_noise(self, percent=1.0, function='gaussian'):
-        if function == 'gaussian':
-            noise = (np.random.sample(size=self.flux.size) - 0.5) * 0.05
+    def add_noise(self, std_dev=0.2):
+        noise = np.random.normal(0., std_dev, self.flux.size)
         self._noise.append(noise)
 
     def add_line(self, lambda_0, f_value, gamma, v_doppler, column_density,
@@ -212,20 +262,31 @@ class Spectrum1D:
 
         return cent
 
-    def equivalent_width(self, x_0):
-        profile = self.get_profile(x_0)
-        disp = self.dispersion
-        flux = profile(disp)
+    def equivalent_width(self, x1=None, x2=None):
+        if x1 is None:
+            x1 = self.dispersion[0]
 
-        # average of 2 continuum regions.
-        avg_cont = 1 #np.mean(self.continuum)
+        if x2 is None:
+            x2 = self.dispersion[-1]
 
-        # average dispersion in the line region.
+        mask = (self.dispersion >= x1) & (self.dispersion <= x2)
+        disp = self.dispersion[mask]
+        flux = self.flux[mask]
+        uncert = self.uncertainty[mask]
+
+        # Compose the uncertainty array
+        uflux = unp.uarray(flux, uncert)
+
+        # Continuum is always assumed to be 1.0
+        avg_cont = 1.0
+
+        # Average dispersion in the line region.
         avg_dx = np.mean(disp[1:] - disp[:-1])
-        ew = np.sum((avg_cont - flux) / avg_cont * avg_dx)
-        # ew = np.trapz(avg_cont - flux, disp)
 
-        return ew
+        # Calculate equivalent width
+        ew = ((avg_cont - uflux) * (avg_dx / avg_cont)).sum()
+
+        return ew.nominal_value, ew.std_dev
 
     def resample(self, dispersion):
         remat = self._resample_matrix(self.dispersion, dispersion)
@@ -289,3 +350,13 @@ class Spectrum1D:
 
         return resamp_mat
 
+
+ION_TABLE = Table.read(
+    os.path.abspath(
+        os.path.join(__file__, '..', '..', 'data', 'line_list', 'atom.dat')),
+    format='ascii', names=('name', 'wave', 'osc_str', 'gamma'))
+
+
+def _tie_gamma(model, lambda_name):
+    ind = find_index(ION_TABLE['wave'], getattr(model, lambda_name))
+    return ION_TABLE['gamma'][ind]

@@ -63,22 +63,23 @@ def compare():
 
 
 def fitting():
-    # hdulist = fits.open("/Users/nearl/projects/hst_proposal/QSOALS/3C066A/3C066A_coadd_FUVM_final_all.fits")
-    # disp, flux = hdulist[1].data['WAVE'], hdulist[1].data['FLUX']
-    #
-    # flux = flux[(disp > 1350) & (disp < 1400)]
-    # flux /= np.median(flux)
-    # disp = disp[(disp > 1350) & (disp < 1400)]
-    #
-    # spectrum = Spectrum1D(disp, flux)
-    spectrum = Spectrum1D()
-    spectrum.add_line(lambda_0=1.03192700E+03, f_value=0.4164, gamma=1e6,
-                      v_doppler=1e7, column_density=10 ** 14.66)
-    spectrum.add_line(lambda_0=1.13192700E+03, f_value=0.6164, gamma=1e6,
-                      v_doppler=1e7, column_density=10 ** 13.55)
-    spectrum.add_noise()
-    spectrum.uncertainty = (np.random.sample(
-        spectrum.dispersion.size)) * 0.01
+    hdulist = fits.open("/Users/nearl/projects/hst_proposal/QSOALS/3C066A/3C066A_coadd_FUVM_final_all.fits")
+    disp, flux, uncert = hdulist[1].data['WAVE'], hdulist[1].data['FLUX'], \
+                         hdulist[1].data['ERROR']
+
+    flux = flux[(disp > 1350) & (disp < 1360)]
+    disp = disp[(disp > 1350) & (disp < 1360)]
+    uncert = uncert[(disp > 1350) & (disp < 1360)]
+
+    spectrum = Spectrum1D(disp, flux)#, uncertainty=uncert)
+
+    plt.plot(spectrum.dispersion, spectrum.flux)
+
+    spectrum.remove_continuum()
+
+    plt.plot(spectrum.dispersion, spectrum.flux)
+    plt.show()
+    # spectrum = Spectrum1D.read('test_spectrum.fits')
 
     fitter = Fitter()
     result_spectrum = fitter(spectrum)
@@ -99,14 +100,41 @@ def fitting():
 
 
 def simple():
-    spectrum = Spectrum1D()
-    spectrum.add_line(lambda_0=1.03192700E+03, f_value=0.4164, gamma=1e6,
-                      v_doppler=1e7, column_density=10 ** 14.66)
-    spectrum.add_line(lambda_0=1.13192700E+03, f_value=0.4164, gamma=1e6,
-                      v_doppler=1e7, column_density=10 ** 14.66)
+    # spectrum = Spectrum1D()
+    # spectrum.add_line(lambda_0=1215.6701, f_value=0.4164, gamma=6.265E8,
+    #                   v_doppler=1e7, column_density=10 ** 13.66)
+    # spectrum.add_line(lambda_0=1.0257223e+03, f_value=7.9120000e-02, gamma=1.8970000e+08,
+    #                   v_doppler=1e7, column_density=10 ** 14.55)
+    #
+    # spectrum.add_noise(std_dev=0.002)
+    # spectrum.uncertainty = (np.random.sample(spectrum.flux.size) + 0.5) * 0.02
+    # print(np.mean(spectrum.uncertainty))
 
-    plt.plot(spectrum.dispersion, spectrum.flux)
-    plt.show()
+
+    # spectrum.write('test_spectrum.fits')
+    spectrum = Spectrum1D.read('test_spectrum.fits')
+
+    print(spectrum.equivalent_width(1200, 1230))
+
+    mask = [(spectrum.dispersion >= 1200) & (spectrum.dispersion <= 1230)]
+    disp = spectrum.dispersion[mask]
+    # avg_dx = np.mean(disp[1:] - disp[:-1])
+    # d_ew = lambda cont, cerr, flux, ferr: \
+    #     (
+    #     ((-1.0/cont) * ferr) ** 2)
+    #
+    # sum_d_ew = avg_dx ** 2 * np.sum(d_ew(1.0, 0.0, spectrum.flux[mask],
+    #                         spectrum.uncertainty[mask]))
+    #
+    # print(sum_d_ew ** 0.5)
+
+    # spectrum.add_noise(std_dev=0.02)
+    # print(spectrum.equivalent_width(1200, 1230))
+    # spectrum.add_noise(std_dev=0.01)
+    # print(spectrum.equivalent_width(1200, 1230))
+
+    # plt.plot(spectrum.dispersion, spectrum.flux)
+    # plt.show()
 
 
 if __name__ == '__main__':

@@ -12,8 +12,8 @@ class Fitter:
     def __init__(self, fit_method='LevMarLSQFitter', noise=3.5, min_dist=100):
         self.fit_method = fit_method
         self.detrend = False
-        self.noise = 3.5
-        self.min_dist = 100
+        self.noise = noise
+        self.min_dist = min_dist
 
     def __call__(self, spectrum, detrend=None):
         self.raw_spectrum = spectrum
@@ -25,22 +25,10 @@ class Fitter:
         if self.detrend:
             self.detrend_spectrum()
 
-        self.find_continuum()
         self.find_lines()
         self.fit_models()
 
         return self.spectrum
-
-    def find_continuum(self, mode='LinearLSQFitter'):
-        cont = models.Linear1D(slope=0.0,
-                               intercept=np.median(self.raw_spectrum.flux))
-        fitter = getattr(fitting, mode)()
-        cont_fit = fitter(cont, self.raw_spectrum.dispersion,
-                          self.raw_spectrum.flux,
-                          weights=1/(np.abs(np.median(self.raw_spectrum.flux) -
-                                            self.raw_spectrum.flux)) ** 3)
-
-        self.spectrum._continuum_model = cont_fit
 
     def find_lines(self):
         continuum = self.spectrum.continuum if self.spectrum.continuum is not None \
@@ -64,12 +52,11 @@ class Fitter:
                      self.raw_spectrum.flux[cind], marker='o')
             amp, mu, gamma = (inv_flux[cind],
                               self.raw_spectrum.dispersion[cind],
-                              1)
+                              1e8)
 
-            self.spectrum.add_line(lambda_0=mu, f_value=0.5, gamma=1e12,
-                                   v_doppler=1e7, column_density=1e14)
-            # break
-        plt.plot(self.spectrum.dispersion, self.spectrum.ideal_flux)
+            self.spectrum.add_line(lambda_0=mu, f_value=0.5, gamma=gamma,
+                                   v_doppler=1e7, column_density=1e14 * amp)
+
         plt.show()
 
         print("Finished applying lines")
@@ -82,29 +69,30 @@ class Fitter:
             # fitter = getattr(fitting, self.fit_method)()
             fitter = LevMarCurveFitFitter()
             model = self.spectrum.model
+
             model_fit = fitter(model, self.raw_spectrum.dispersion,
                                self.raw_spectrum.flux,
-                               # yerr=self.raw_spectrum.uncertainty,
-                               maxiter=500)
+                               maxiter=500,
+                               sigma=self.raw_spectrum.uncertainty
+                               )
 
             # Grab the covariance matrix
             param_cov = fitter.fit_info['param_cov']
 
-            # Compose the one standard deviation errors
-            try:
-                cov_diag = np.sqrt(np.diag(param_cov))
-            except:
-                cov_diag = np.zeros(model_fit.parameters.size)
+            if param_cov is None:
+                param_cov = np.zeros(len(model_fit.param_names))
 
             # This is not robust. The covariance matrix does not include
-            # fixed parameters, so we must insert some value for the
+            # constrained parameters, so we must insert some value for the
             # variance to make sure the number of parameters match.
-            cov_diag = np.insert(cov_diag, 2, 0.0)
+            for i, val in enumerate(model_fit.param_names):
+                if model_fit.tied.get(val) or model_fit.fixed.get(val):
+                    param_cov = np.insert(param_cov, i, 0.0)
 
             for name, rval, val, err in list(zip(model_fit.param_names,
                          ["{:g}".format(x) for x in model.parameters],
                          ["{:g}".format(x) for x in model_fit.parameters],
-                         ["{:g}".format(x) for x in cov_diag])):
+                         ["{:g}".format(x) for x in param_cov])):
                 print("{:20} {:20} {:20} {:20}".format(name, rval, val, err))
 
             self.spectrum.model.parameters = model_fit.parameters
@@ -161,9 +149,10 @@ class LevMarCurveFitFitter(object):
 
         return objective_function
 
-    def __call__(self, model, x, y, z=None, yerr=None,
+    def __call__(self, model, x, y, z=None, sigma=None,
                  maxiter=fitting.DEFAULT_MAXITER, acc=fitting.DEFAULT_ACC,
-                 epsilon=fitting.DEFAULT_EPS, estimate_jacobian=False):
+                 epsilon=fitting.DEFAULT_EPS, estimate_jacobian=False,
+                 **kwargs):
         """
         Fit data to this model.
 
@@ -187,15 +176,24 @@ class LevMarCurveFitFitter(object):
             self.objective_wrapper(model_copy), x, y,
             # method='trf',
             p0=init_values,
-            sigma=yerr,
+            sigma=sigma,
             epsfcn=epsilon,
             maxfev=maxiter,
             col_deriv=model_copy.col_fit_deriv,
-            xtol=acc)
+            xtol=acc,
+            **kwargs)
 
         fitting._fitter_to_model_params(model_copy, fit_params)
 
-        self.fit_info['param_cov'] = cov_x
+        cov_diag = []
+        for i in range(len(fit_params)):
+            try:
+                cov_diag.append(np.absolute(cov_x[i][i]) ** 0.5)
+            except:
+                cov_diag.append(0.00)
+
+        self.fit_info['cov_x'] = cov_x
+        self.fit_info['param_cov'] = cov_diag
 
         return model_copy
 
