@@ -103,9 +103,19 @@ class Spectrum1D:
     @property
     def uncertainty(self):
         if self._uncertainty is None:
-            self._uncertainty = np.ones(self.flux.size)
+            uncert = np.ones(self.flux.size)
+        else:
+            uncert = self._uncertainty
 
-        return self._uncertainty
+        # Apply LSFs
+        for lsf in self._lsfs:
+            uncert = convolve(uncert, lsf.kernel)
+
+        # Apply resampling
+        if self._remat is not None:
+            uncert = np.dot(self._remat, uncert)
+
+        return uncert
 
     @uncertainty.setter
     def uncertainty(self, value):
