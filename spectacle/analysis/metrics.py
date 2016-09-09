@@ -4,6 +4,42 @@ import numpy as np
 import uncertainties.unumpy as unp
 
 
+def _format_arrays(a, v):
+    # Clip the spectra to the same range
+    if a.dispersion[0] > v.dispersion[0]:
+        min_mask = (v.dispersion >= a.dispersion[0])
+    else:
+        min_mask = (a.dispersion >= v.dispersion[0])
+
+    if a.dispersion[-1] < v.dispersion[-1]:
+        max_mask = (v.dispersion <= a.dispersion[-1])
+    else:
+        max_mask = (a.dispersion <= v.dispersion[-1])
+
+    mask = min_mask & max_mask
+
+    al, vl = unp.uarray(a.flux[mask], a.uncertainty[mask]), \
+             unp.uarray(v.flux[mask], v.uncertainty[mask])
+
+    d_al = al[1].nominal_value - al[0].nominal_value
+    d_vl = vl[1].nominal_value - vl[0].nominal_value
+
+    # If the two spectra are not the same dimension, resample to lower
+    # resolution
+    if d_al != d_vl:
+        logging.warning("Dispersions have different deltas: {} and {}. "
+                        "Resampling to smallest delta.".format(d_al, d_vl))
+
+    if d_al > d_vl:
+        a = a.resample(v.dispersion)
+        al = unp.uarray(a.flux[mask], a.uncertainty[mask])
+    elif d_vl > d_al:
+        v = v.resample(a.dispersion)
+        vl = unp.uarray(v.flux[mask], v.uncertainty[mask])
+
+    return al, vl
+
+
 def npcorrelate(a, v, mode='valid', normalize=False):
     """
     Returns the 1d cross-correlation of two input arrays.
@@ -22,14 +58,15 @@ def npcorrelate(a, v, mode='valid', normalize=False):
     <returned value> : float
         The (normalized) correlation.
     """
-    al, vl = unp.uarray(a.flux, a.uncertainty), \
-             unp.uarray(v.flux, v.uncertainty)
+    al, vl = _format_arrays(a, v)
 
     if normalize:
         al = (al - al.mean()) / (al.std_dev() * al.size)
         vl = (vl - vl.mean()) / vl.std_dev()
 
-    return np.correlate(al.nominal_value, vl.nominal_value, mode)
+    ret = np.correlate(al, vl, mode)
+
+    return unp.nominal_values(ret), unp.std_devs(ret)
 
 
 def autocorrelate(a):
@@ -48,7 +85,7 @@ def autocorrelate(a):
     """
     af = unp.uarray(a.flux, a.uncertainty)
 
-    fin = np.zeros(a.flux.size)
+    fin = unp.uarray(np.zeros(a.flux.size), np.zeros(a.flux.size))
 
     for dv in range(fin.size):
         for i in range(fin.size):
@@ -56,7 +93,7 @@ def autocorrelate(a):
 
     ret = np.mean(fin)/(np.mean(fin) ** 2)
 
-    return ret
+    return ret.nominal_value, ret.std_dev
 
 
 def cross_correlate(a, v):
@@ -76,26 +113,11 @@ def cross_correlate(a, v):
     mat : ndarray
         The correlation coefficient matrix of the variables.
     """
-    al, vl = unp.uarray(a.flux, a.uncertainty), \
-             unp.uarray(v.flux, v.uncertainty)
-
-    d_al = al[1] - al[0]
-    d_vl = vl[1] - vl[0]
-
-    # If the two spectra are not the same dimension, resample to lower
-    # resolution
-    if d_al != d_vl:
-        logging.warning("Arguments have different dimensions: {} and {}. "
-                     "Resampling to lowest dimension.".format(al.shape,
-                                                              vl.shape))
-
-    if d_al > d_vl:
-        al = a.resample(v.dispersion, copy=True)
-    elif d_vl > d_al:
-        vl = v.resample(a.dispersion, copy=True)
+    al, vl = _format_arrays(a, v)
 
     mat = np.corrcoef(al, vl)[0, 1]
-    return mat
+
+    return unp.nominal_values(mat), unp.std_devs(mat)
 
 
 def correlate(a, v, mode='full'):
@@ -119,21 +141,8 @@ def correlate(a, v, mode='full'):
      ret : ndarray
         An array describing the correlation at every position.
     """
-    al, vl = a.flux, v.flux
+    al, vl = _format_arrays(a, v)
 
-    # If the two spectra are not the same dimension, resample to lower
-    # resolution
-    if al.size != vl.size:
-        logging.warning("Arguments have different dimensions: {} and {}. "
-                        "Resampling to lowest dimension.".format(al.shape,
-                                                                 vl.shape))
-
-    if al.size > vl.size:
-        al = a.resample(v.dispersion, copy=True)
-    elif vl.size > al.size:
-        vl = v.resample(a.dispersion, copy=True)
-
-    print(al.size, vl.size)
     # al = al[np.isfinite(al)]
     # vl = vl[np.isfinite(vl)]
 
@@ -147,4 +156,4 @@ def correlate(a, v, mode='full'):
     else:
         raise NameError("No such mode: {}".format(mode))
 
-    return ret
+    return unp.nominal_values(ret), unp.std_devs(ret)

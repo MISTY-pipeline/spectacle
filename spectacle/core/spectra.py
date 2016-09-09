@@ -69,9 +69,10 @@ class Spectrum1D:
             dispersion = np.arange(0, 2000, 0.1)
 
         if self._remat is not None:
-            dispersion = np.dot(self._remat, self._dispersion)
+            dispersion = np.dot(self._remat, dispersion)
 
-        return ma.masked_array(dispersion, self._mask)
+        # return ma.masked_array(dispersion, self._mask)
+        return dispersion
 
     @property
     def flux(self):
@@ -92,7 +93,7 @@ class Spectrum1D:
         if self._remat is not None:
             flux = np.dot(self._remat, flux)
 
-        flux = ma.masked_array(flux, self._mask)
+        # flux = ma.masked_array(flux, self._mask)
 
         return flux
 
@@ -103,7 +104,7 @@ class Spectrum1D:
     @property
     def uncertainty(self):
         if self._uncertainty is None:
-            uncert = np.ones(self.flux.size)
+            uncert = np.zeros(self.flux.size)
         else:
             uncert = self._uncertainty
 
@@ -137,11 +138,11 @@ class Spectrum1D:
 
     def copy(self):
         spectrum_copy = self.__class__()
+        spectrum_copy._uncertainty = self._uncertainty
         spectrum_copy._flux = self._flux
         spectrum_copy._dispersion = self._dispersion
         spectrum_copy._mask = self._mask
         spectrum_copy._lsfs = self._lsfs
-        spectrum_copy._line_models = self._line_models
         spectrum_copy._continuum_model = self._continuum_model
         spectrum_copy._remat = self._remat
         spectrum_copy._model = self._model
@@ -317,9 +318,17 @@ class Spectrum1D:
 
         return ew.nominal_value, ew.std_dev
 
-    def resample(self, dispersion):
+    def resample(self, dispersion, copy=True):
         remat = self._resample_matrix(self.dispersion, dispersion)
-        self._remat = remat
+
+        if copy:
+            new_spec = self.copy()
+            new_spec._remat = remat
+        else:
+            self._remat = remat
+            new_spec = self
+
+        return new_spec
 
     def _resample_matrix(self, orig_lamb, fin_lamb):
         """

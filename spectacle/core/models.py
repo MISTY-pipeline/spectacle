@@ -64,6 +64,9 @@ class Voigt1D(Fittable1DModel):
                              column_density=column_density,
                              n_lambda=x.size, lambda_bins=lambda_bins)
 
+        if lambda_bins is None:
+            self.meta['lambda_bins'] = profile.dispersion
+
         flux = np.exp(-profile.optical_depth) - 1.0
 
         return flux
