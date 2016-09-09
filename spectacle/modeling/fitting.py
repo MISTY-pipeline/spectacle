@@ -1,6 +1,7 @@
 import peakutils
 from scipy.signal import savgol_filter
 from astropy.modeling import fitting, models
+from astropy.table import Table
 from astropy.extern import six
 import numpy as np
 from ..core.spectra import Spectrum1D
@@ -14,6 +15,7 @@ class Fitter:
         self.detrend = False
         self.noise = noise
         self.min_dist = min_dist
+        self.fit_info = None
 
     def __call__(self, spectrum, detrend=None):
         self.raw_spectrum = spectrum
@@ -36,28 +38,22 @@ class Fitter:
 
         inv_flux = continuum - self.raw_spectrum.flux
 
-        indexes = peakutils.indexes(inv_flux,
-                                    thres=np.std(inv_flux)*self.noise/np.max(
-                                        inv_flux),
-                                    min_dist=self.min_dist)
+        indexes = peakutils.indexes(
+            inv_flux,
+            thres=np.std(inv_flux) * self.noise/np.max(inv_flux),
+            min_dist=self.min_dist)
         indexes = np.array(indexes)
 
         print("Found {} peaks".format(len(indexes)))
 
-        import matplotlib.pyplot as plt
-        plt.plot(self.raw_spectrum.dispersion, self.raw_spectrum.flux)
-
         for cind in indexes:
-            plt.plot(self.raw_spectrum.dispersion[cind],
-                     self.raw_spectrum.flux[cind], marker='o')
             amp, mu, gamma = (inv_flux[cind],
                               self.raw_spectrum.dispersion[cind],
                               1e8)
 
-            self.spectrum.add_line(lambda_0=mu, f_value=0.5, gamma=gamma,
-                                   v_doppler=1e7, column_density=1e14 * amp)
+            self.spectrum.add_line(lambda_0=mu, f_value=0.5, v_doppler=1e7,
+                                   column_density=1e14 * amp)
 
-        plt.show()
 
         print("Finished applying lines")
 
@@ -89,14 +85,20 @@ class Fitter:
                 if model_fit.tied.get(val) or model_fit.fixed.get(val):
                     param_cov = np.insert(param_cov, i, 0.0)
 
-            for name, rval, val, err in list(zip(model_fit.param_names,
-                         ["{:g}".format(x) for x in model.parameters],
-                         ["{:g}".format(x) for x in model_fit.parameters],
-                         ["{:g}".format(x) for x in param_cov])):
-                print("{:20} {:20} {:20} {:20}".format(name, rval, val, err))
+            # for name, rval, val, err in list(zip(model_fit.param_names,
+            #              ["{:g}".format(x) for x in model.parameters],
+            #              ["{:g}".format(x) for x in model_fit.parameters],
+            #              ["{:g}".format(x) for x in param_cov])):
+            #     print("{:20} {:20} {:20} {:20}".format(name, rval, val, err))
 
+            # Update fit info
+            self.fit_info = Table([model_fit.param_names, model.parameters,
+                                   model_fit.parameters, param_cov],
+                                   names=("Parameter", "Original Value",
+                                          "Fitted Value", "Uncertainty"))
+
+            # Update model with new parameters
             self.spectrum.model.parameters = model_fit.parameters
-
         else:
             optimize(self.spectrum)
 

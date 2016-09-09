@@ -11,6 +11,7 @@ def find_index(array, value):
     idx_sorted = np.argsort(array)
     sorted_array = np.array(array[idx_sorted])
     idx = np.searchsorted(sorted_array, value, side="left")
+        
     if idx >= len(array):
         idx_nearest = idx_sorted[len(array)-1]
     elif idx == 0:

@@ -5,7 +5,6 @@ from spectacle.core.spectra import Spectrum1D
 from astropy.io import fits
 
 import matplotlib.pyplot as plt
-import corner
 
 
 def lnprior(theta, y):

@@ -1,8 +1,8 @@
 # %ECSV 0.9
 # ---
-# columns:
-# - {name: index, type: int64, description: Index of kernel value}
-# - {name: value, type: float64, description: Kernel value}
+# datatype:
+# - {name: index, datatype: int64, description: Index of kernel value}
+# - {name: value, datatype: float64, description: Kernel value}
 index value
 -50 8.95741269841e-05
 -49 9.71033730159e-05

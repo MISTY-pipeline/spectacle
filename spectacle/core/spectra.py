@@ -24,6 +24,8 @@ class Spectrum1D:
         self._lsfs = []
         self._noise = []
         self._line_models = []
+        self._remat = None
+        self._model = None
 
         if flux is None:
             self._continuum_model = models.Linear1D(slope=0.0, intercept=1.0,
@@ -31,9 +33,6 @@ class Spectrum1D:
                                                            'intercept': True})
         else:
             self._continuum_model = self._find_continuum()
-
-        self._remat = None
-        self._model = None
 
     @property
     def model(self):
@@ -43,10 +42,13 @@ class Spectrum1D:
             if len(self._line_models) > 0:
                 self._model = self._model + np.sum(self._line_models)
 
-                for l in [x for x in self._model.param_names if 'lambda' in x]:
-                    gamma_val = 'gamma_' + l.split('_')[-1]
-                    getattr(self._model, gamma_val).tied = lambda x, ln=l: \
-                        _tie_gamma(x, ln)
+                # for l in [x for x in self._model.param_names if 'lambda' in x]:
+                #     gamma_val = 'gamma_' + l.split('_')[-1]
+                #     gamma_param = getattr(self._model, gamma_val)
+                #
+                #     if gamma_param.value is None:
+                #         gamma_param.tied = lambda x, ln=l: \
+                #             _tie_gamma(x, ln)
 
         return self._model
 
@@ -169,10 +171,20 @@ class Spectrum1D:
         noise = np.random.normal(0., std_dev, self.flux.size)
         self._noise.append(noise)
 
-    def add_line(self, lambda_0, f_value, gamma, v_doppler, column_density,
-                 name=""):
-        model = Voigt1D(lambda_0, f_value, gamma, v_doppler, column_density,
+        return noise
+
+    def add_line(self, lambda_0, f_value, v_doppler, column_density,
+                 gamma=None, name=""):
+        model = Voigt1D(lambda_0=lambda_0, f_value=f_value, gamma=gamma or 0,
+                        v_doppler=v_doppler, column_density=column_density,
                         name=name, meta={'lambda_bins': self.dispersion})
+
+        # If gamma has not been expicitly defined, tie it to lambda
+        if gamma is None:
+            ind = find_index(ION_TABLE['wave'], lambda_0)
+            gamma_val = ION_TABLE['gamma'][ind]
+            model.gamma.value = gamma_val
+            model.gamma.tied = lambda cmod, mod=model: _tie_gamma(cmod, mod)
 
         self._line_models.append(model)
 
@@ -180,6 +192,13 @@ class Spectrum1D:
         self._model = None
 
         return model
+
+    def remove_model(self, model=None, x_0=None):
+        if model is not None:
+            self._line_models.remove(model)
+        elif x_0 is not None:
+            model = self.get_profile(x_0)
+            self._line_models.remove(model)
 
     def set_continuum(self, function, *args, **kwargs):
         model = getattr(models, function)
@@ -202,15 +221,15 @@ class Spectrum1D:
 
     def fwhm(self, x_0):
         """
-          Calculates an approximation of the FWHM.
+        Calculates an approximation of the FWHM.
 
-          The approximation is accurate to
-          about 0.03% (see http://en.wikipedia.org/wiki/Voigt_profile).
+        The approximation is accurate to
+        about 0.03% (see http://en.wikipedia.org/wiki/Voigt_profile).
 
-          Returns
-          -------
-          FWHM : float
-              The estimate of the FWHM
+        Returns
+        -------
+        FWHM : float
+            The estimate of the FWHM
         """
         v_prof = self.get_profile(x_0)
 
@@ -357,6 +376,15 @@ ION_TABLE = Table.read(
     format='ascii', names=('name', 'wave', 'osc_str', 'gamma'))
 
 
-def _tie_gamma(model, lambda_name):
-    ind = find_index(ION_TABLE['wave'], getattr(model, lambda_name))
-    return ION_TABLE['gamma'][ind]
+def _tie_gamma(compound_model, model):
+    # Find the index of the original model in the compound model
+    mod_ind = compound_model._submodels.index(model)
+
+    # The auto-generated name of the parameter in the compoound model
+    param_name = "lambda_0_{}".format(mod_ind)
+    lambda_val = getattr(compound_model, param_name).value
+
+    ind = find_index(ION_TABLE['wave'], lambda_val)
+    gamma_val = ION_TABLE['gamma'][ind]
+
+    return gamma_val

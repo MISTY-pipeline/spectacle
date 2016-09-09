@@ -76,7 +76,8 @@ def cross_correlate(a, v):
     mat : ndarray
         The correlation coefficient matrix of the variables.
     """
-    al, vl = a.flux, v.flux
+    al, vl = unp.uarray(a.flux, a.uncertainty), \
+             unp.uarray(v.flux, v.uncertainty)
 
     d_al = al[1] - al[0]
     d_vl = vl[1] - vl[0]
@@ -147,5 +148,3 @@ def correlate(a, v, mode='full'):
         raise NameError("No such mode: {}".format(mode))
 
     return ret
-
-

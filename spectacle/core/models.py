@@ -1,6 +1,9 @@
 from astropy.modeling import Fittable1DModel, Parameter
+from astropy.table import Table
 import numpy as np
+import os
 
+from .utils import find_index
 from .profiles import TauProfile
 
 
