@@ -4,7 +4,7 @@ import numpy as np
 import uncertainties.unumpy as unp
 
 
-def _format_arrays(a, v):
+def _format_arrays(a, v, use_tau=False):
     # Clip the spectra to the same range
     if a.dispersion[0] > v.dispersion[0]:
         min_mask = (v.dispersion >= a.dispersion[0])
@@ -18,8 +18,13 @@ def _format_arrays(a, v):
 
     mask = min_mask & max_mask
 
-    al, vl = unp.uarray(a.flux[mask], a.uncertainty[mask]), \
-             unp.uarray(v.flux[mask], v.uncertainty[mask])
+    # Compose the uncertainty arrays
+    if use_tau:
+        al, vl = unp.uarray(a.tau[mask], a.tau_uncertainty[mask]), \
+                 unp.uarray(v.tau[mask], v.tau_uncertainty[mask])
+    else:
+        al, vl = unp.uarray(a.flux[mask], a.uncertainty[mask]), \
+                 unp.uarray(v.flux[mask], v.uncertainty[mask])
 
     d_al = al[1].nominal_value - al[0].nominal_value
     d_vl = vl[1].nominal_value - vl[0].nominal_value
@@ -32,15 +37,23 @@ def _format_arrays(a, v):
 
     if d_al > d_vl:
         a = a.resample(v.dispersion)
-        al = unp.uarray(a.flux[mask], a.uncertainty[mask])
+
+        if use_tau:
+            al = unp.uarray(a.tau[mask], a.tau_uncertainty[mask])
+        else:
+            al = unp.uarray(a.flux[mask], a.uncertainty[mask])
     elif d_vl > d_al:
         v = v.resample(a.dispersion)
-        vl = unp.uarray(v.flux[mask], v.uncertainty[mask])
+
+        if use_tau:
+            vl = unp.uarray(v.tau[mask], v.tau_uncertainty[mask])
+        else:
+            vl = unp.uarray(v.flux[mask], v.uncertainty[mask])
 
     return al, vl
 
 
-def npcorrelate(a, v, mode='valid', normalize=False):
+def npcorrelate(a, v, mode='valid', normalize=False, use_tau=False):
     """
     Returns the 1d cross-correlation of two input arrays.
 
@@ -58,7 +71,7 @@ def npcorrelate(a, v, mode='valid', normalize=False):
     <returned value> : float
         The (normalized) correlation.
     """
-    al, vl = _format_arrays(a, v)
+    al, vl = _format_arrays(a, v, use_tau=use_tau)
 
     if normalize:
         al = (al - al.mean()) / (al.std_dev() * al.size)
@@ -69,7 +82,7 @@ def npcorrelate(a, v, mode='valid', normalize=False):
     return unp.nominal_values(ret), unp.std_devs(ret)
 
 
-def autocorrelate(a):
+def autocorrelate(a, use_tau=False):
     """
     Implementation of the correlation function in Peeples et al. 2010.
 
@@ -83,7 +96,10 @@ def autocorrelate(a):
     ret : float
         Value representing the correlation.
     """
-    af = unp.uarray(a.flux, a.uncertainty)
+    if use_tau:
+        af = unp.uarray(a.tau, a.tau_uncertainty)
+    else:
+        af = unp.uarray(a.flux, a.uncertainty)
 
     fin = unp.uarray(np.zeros(a.flux.size), np.zeros(a.flux.size))
 
@@ -96,7 +112,7 @@ def autocorrelate(a):
     return ret.nominal_value, ret.std_dev
 
 
-def cross_correlate(a, v):
+def cross_correlate(a, v, use_tau=False):
     """
     Calculates the Pearson product-moment correlation. Returns the
     normalized covariance matrix.
@@ -113,14 +129,14 @@ def cross_correlate(a, v):
     mat : ndarray
         The correlation coefficient matrix of the variables.
     """
-    al, vl = _format_arrays(a, v)
+    al, vl = _format_arrays(a, v, use_tau=use_tau)
 
     mat = np.corrcoef(al, vl)[0, 1]
 
     return unp.nominal_values(mat), unp.std_devs(mat)
 
 
-def correlate(a, v, mode='full'):
+def correlate(a, v, mode='full', use_tau=False):
     """
     Correlation function described by Molly Peeples.
 
@@ -141,7 +157,7 @@ def correlate(a, v, mode='full'):
      ret : ndarray
         An array describing the correlation at every position.
     """
-    al, vl = _format_arrays(a, v)
+    al, vl = _format_arrays(a, v, use_tau=use_tau)
 
     # al = al[np.isfinite(al)]
     # vl = vl[np.isfinite(vl)]

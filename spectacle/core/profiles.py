@@ -1,7 +1,7 @@
 import astropy.units as u
 from astropy import constants as c
 import numpy as np
-from scipy.special import wofz
+from scipy import special
 
 
 class TauProfile:
@@ -85,7 +85,7 @@ class TauProfile:
         x = np.asarray(u).astype(np.float64)
         y = np.asarray(a).astype(np.float64)
 
-        return wofz(x + 1j * y).real
+        return special.wofz(x + 1j * y).real
 
 
 if __name__ == '__main__':

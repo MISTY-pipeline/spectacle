@@ -53,15 +53,6 @@ class Spectrum1D:
         return self._model
 
     @property
-    def tau(self):
-        if self.model is not None:
-            return -np.log(self.model(self.dispersion))
-        else:
-            logging.warning("No model exists, using flux values to generate"
-                            "tau.")
-            return -np.log(self.flux)
-
-    @property
     def dispersion(self):
         dispersion = self._dispersion
 
@@ -87,7 +78,11 @@ class Spectrum1D:
 
         # Apply LSFs
         for lsf in self._lsfs:
-            flux = convolve(flux, lsf.kernel)
+            # Convolving has unintend effects on the ends of the spectrum.
+            # Use tau instead.
+            tau = np.log(1/flux)
+            tau = convolve(tau, lsf.kernel)
+            flux = np.exp(-tau)
 
         # Apply resampling
         if self._remat is not None:
@@ -110,7 +105,11 @@ class Spectrum1D:
 
         # Apply LSFs
         for lsf in self._lsfs:
-            uncert = convolve(uncert, lsf.kernel)
+            # Convolving has unintend effects on the ends of the spectrum.
+            # Use tau instead.
+            tau = np.log(1/uncert)
+            tau = convolve(tau, lsf.kernel)
+            uncert = np.exp(-tau)
 
         # Apply resampling
         if self._remat is not None:
@@ -123,6 +122,18 @@ class Spectrum1D:
         self._uncertainty = value
 
     @property
+    def tau(self):
+        tau = unp.log(1.0/unp.uarray(self.flux, self.uncertainty))
+
+        return unp.nominal_values(tau)
+
+    @property
+    def tau_uncertainty(self):
+        tau = unp.log(1.0/unp.uarray(self.flux, self.uncertainty))
+
+        return unp.std_devs(tau)
+
+    @property
     def continuum(self):
         return self._continuum_model(self.dispersion)
 
@@ -131,8 +142,8 @@ class Spectrum1D:
                                intercept=np.median(self.flux))
         fitter = getattr(fitting, mode)()
         cont_fit = fitter(cont, self.dispersion, self.flux,
-                          weights=1 / (np.abs(np.median(self.flux) -
-                                              self.flux)) ** 3)
+                          weights=np.abs(np.median(self.flux) -
+                                         self.flux) ** -3)
 
         return cont_fit
 
@@ -266,8 +277,11 @@ class Spectrum1D:
         tau : float
             The value of the optical depth at the given wavelength.
         """
+        flux = flux = unp.uarray(self.flux, self.uncertainty)
         idx = (np.abs(self.dispersion - x_0)).argmin()
-        return -np.log(self.flux[idx])
+        tau = unp.log(1.0/flux[idx])
+
+        return unp.nominal_values(tau), unp.std_devs(tau)
 
     def centroid(self, x_0):
         """
@@ -286,11 +300,11 @@ class Spectrum1D:
         """
         profile = self.get_profile(x_0)
         disp = self.dispersion
-        flux = profile(disp)
+        flux = unp.uarray(self.flux, self.uncertainty)
 
         cent = np.trapz(disp * flux, disp) / np.trapz(flux, disp)
 
-        return cent
+        return unp.nominal_values(cent), unp.std_devs(cent)
 
     def equivalent_width(self, x1=None, x2=None):
         if x1 is None:
