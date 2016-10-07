@@ -1,27 +1,34 @@
 import os
 import numpy as np
+import abc
+import six
 
 from astropy.table import Table
 from astropy.convolution import Gaussian1DKernel, Kernel1D
 
 
-class LSF(object):
+@six.add_metaclass(abc.ABCMeta)
+class LSF:
     """
     Line spread function.
     """
-    def __init__(self, function=None, instrument=None, filename=None, *args,
-                 **kwargs):
-        if instrument is not None:
-            if instrument == 'cos':
-                self.kernel = COSKernel1D()
-        elif filename is not None:
-            pass
-        elif function is not None:
-            if function == 'gaussian':
-                self.kernel = Gaussian1DKernel(*args, **kwargs)
-            else:
-                raise NotImplementedError("LSF using {} is not "
-                                          "implemented.".format(function))
+    @abc.abstractmethod
+    def __init__(self, *args, **kwargs):
+        raise NotImplementedError
+
+
+class COSLSF(LSF):
+    def __init__(self):
+        self.kernel = COSKernel1D()
+
+        super(COSLSF, self).__init__()
+
+
+class GaussianLSF(LSF):
+    def __init__(self, *args, **kwargs):
+        self.kernel = Gaussian1DKernel(*args, **kwargs)
+
+        super(GaussianLSF, self).__init__()
 
 
 class COSKernel1D(Kernel1D):
@@ -31,10 +38,9 @@ class COSKernel1D(Kernel1D):
     _separable = True
     _is_bool = False
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self):
         path = os.path.abspath(
             os.path.join(__file__, '..', '..', 'data', 'lsfs', 'cos.ecsv'))
         table = Table.read(path, format='ascii')
 
-        super(COSKernel1D, self).__init__(array=table['value'], *args,
-                                          **kwargs)
+        super(COSKernel1D, self).__init__(array=table['value'])

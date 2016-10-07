@@ -15,6 +15,7 @@ setup(
         "scipy",
         "astropy",
         "peakutils",
-        "emcee"
+        "emcee",
+        "uncertainties"
     ]
 )

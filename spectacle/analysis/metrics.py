@@ -107,7 +107,7 @@ def autocorrelate(a, use_tau=False):
         for i in range(fin.size):
             fin[dv] += af[dv] * af[i]
 
-    ret = np.mean(fin)/(np.mean(fin) ** 2)
+    ret = np.mean(fin, axis=0)/(np.mean(fin, axis=0) ** 2)
 
     return ret.nominal_value, ret.std_dev
 
@@ -166,7 +166,7 @@ def correlate(a, v, mode='full', use_tau=False):
     sh_al = np.random.permutation(al)
 
     if mode == 'full':
-        ret = (al - vl) ** 2 / (sh_al * sh_vl) ** 2
+        ret = (al - vl) ** 2 / (sh_al * sh_vl)
     elif mode == 'lite':
         ret = (al * vl) / (sh_al * sh_vl)
     else:

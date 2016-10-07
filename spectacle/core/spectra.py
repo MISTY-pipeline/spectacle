@@ -66,6 +66,10 @@ class Spectrum1D:
         return dispersion
 
     @property
+    def velocity(self):
+        return
+
+    @property
     def flux(self):
         if self._flux is None:
             flux = self.model(self.dispersion)

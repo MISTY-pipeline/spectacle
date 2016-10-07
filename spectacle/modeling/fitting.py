@@ -5,102 +5,86 @@ from astropy.table import Table
 from astropy.extern import six
 import numpy as np
 from ..core.spectra import Spectrum1D
+import abc
+import six
+from scipy import optimize
 
-from .optimizer import optimize
 
-
+@six.add_metaclass(abc.ABCMeta)
 class Fitter:
-    def __init__(self, fit_method='LevMarLSQFitter', noise=3.5, min_dist=100):
-        self.fit_method = fit_method
+    def __init__(self, noise=3.5, min_dist=100):
         self.detrend = False
         self.noise = noise
         self.min_dist = min_dist
         self.fit_info = None
 
-    def __call__(self, spectrum, detrend=None):
-        self.raw_spectrum = spectrum
-        self.spectrum = Spectrum1D(dispersion=spectrum.dispersion)
+    @abc.abstractmethod
+    def __call__(self, *args, **kwargs):
+        raise NotImplementedError
 
-        if detrend is not None:
-            self.detrend = detrend
-
-        if self.detrend:
-            self.detrend_spectrum()
-
-        self.find_lines()
-        self.fit_models()
-
-        return self.spectrum
-
-    def find_lines(self):
-        continuum = self.spectrum.continuum if self.spectrum.continuum is not None \
-                                       else np.median(self.raw_spectrum.flux)
-
-        inv_flux = continuum - self.raw_spectrum.flux
+    def _find_lines(self, spectrum):
+        continuum = np.median(spectrum.flux)
+        inv_flux = continuum - spectrum.flux
 
         indexes = peakutils.indexes(
             inv_flux,
             thres=np.std(inv_flux) * self.noise/np.max(inv_flux),
             min_dist=self.min_dist)
+
         indexes = np.array(indexes)
 
         print("Found {} peaks".format(len(indexes)))
 
-        for cind in indexes:
-            amp, mu, gamma = (inv_flux[cind],
-                              self.raw_spectrum.dispersion[cind],
-                              1e8)
-
-            self.spectrum.add_line(lambda_0=mu, f_value=0.5, v_doppler=1e7,
-                                   column_density=1e14 * amp)
+        return indexes
 
 
-        print("Finished applying lines")
+class LevMarFitter(Fitter):
+    def __call__(self, spectrum):
+        # Create a new spectrum object with the same dispersion
+        result_spectrum = Spectrum1D(dispersion=spectrum.dispersion)
 
-    def detrend_spectrum(self):
-        self.raw_spectrum._flux = savgol_filter(self.raw_spectrum.flux, 5, 2)
+        # Find the lines in the flux array
+        indexes = self._find_lines(spectrum)
 
-    def fit_models(self):
-        if self.fit_method != 'mcmc':
-            # fitter = getattr(fitting, self.fit_method)()
-            fitter = LevMarCurveFitFitter()
-            model = self.spectrum.model
+        # Add a new line to the empty spectrum object for each found line
+        for ind in indexes:
+            result_spectrum.add_line(lambda_0=spectrum.dispersion[ind],
+                                     f_value=0.5, v_doppler=1e7,
+                                     column_density=1e14 * 0.5)
 
-            model_fit = fitter(model, self.raw_spectrum.dispersion,
-                               self.raw_spectrum.flux,
-                               maxiter=500,
-                               sigma=self.raw_spectrum.uncertainty
-                               )
+        # Create fitter instance
+        fitter = LevMarCurveFitFitter()
 
-            # Grab the covariance matrix
-            param_cov = fitter.fit_info['param_cov']
+        model_fit = fitter(result_spectrum.model,
+                           spectrum.dispersion,
+                           spectrum.flux,
+                           sigma=spectrum.uncertainty
+                           )
 
-            if param_cov is None:
-                param_cov = np.zeros(len(model_fit.param_names))
+        # Grab the covariance matrix
+        param_cov = fitter.fit_info['param_cov']
 
-            # This is not robust. The covariance matrix does not include
-            # constrained parameters, so we must insert some value for the
-            # variance to make sure the number of parameters match.
-            for i, val in enumerate(model_fit.param_names):
-                if model_fit.tied.get(val) or model_fit.fixed.get(val):
-                    param_cov = np.insert(param_cov, i, 0.0)
+        if param_cov is None:
+            param_cov = np.zeros(len(model_fit.param_names))
 
-            # for name, rval, val, err in list(zip(model_fit.param_names,
-            #              ["{:g}".format(x) for x in model.parameters],
-            #              ["{:g}".format(x) for x in model_fit.parameters],
-            #              ["{:g}".format(x) for x in param_cov])):
-            #     print("{:20} {:20} {:20} {:20}".format(name, rval, val, err))
+        # This is not robust. The covariance matrix does not include
+        # constrained parameters, so we must insert some value for the
+        # variance to make sure the number of parameters match.
+        for i, val in enumerate(model_fit.param_names):
+            if model_fit.tied.get(val) or model_fit.fixed.get(val):
+                param_cov = np.insert(param_cov, i, 0.0)
 
-            # Update fit info
-            self.fit_info = Table([model_fit.param_names, model.parameters,
-                                   model_fit.parameters, param_cov],
-                                   names=("Parameter", "Original Value",
-                                          "Fitted Value", "Uncertainty"))
+        # Update fit info
+        self.fit_info = Table([model_fit.param_names,
+                               result_spectrum.model.parameters,
+                               model_fit.parameters, param_cov],
+                              names=("Parameter", "Original Value",
+                                     "Fitted Value", "Uncertainty"))
 
-            # Update model with new parameters
-            self.spectrum.model.parameters = model_fit.parameters
-        else:
-            optimize(self.spectrum)
+        # Update model with new parameters
+        result_spectrum.model.parameters = model_fit.parameters
+
+        return result_spectrum
 
 
 @six.add_metaclass(fitting._FitterMeta)
@@ -135,7 +119,7 @@ class LevMarCurveFitFitter(object):
         super(LevMarCurveFitFitter, self).__init__()
 
     def objective_wrapper(self, model):
-        def objective_function(fps, *args):
+        def objective_function(dispersion, *param_vals):
             """
             Function to minimize.
             Parameters
@@ -145,9 +129,9 @@ class LevMarCurveFitFitter(object):
             args : list
                 [model, [weights], [input coordinates]]
             """
-            fitting._fitter_to_model_params(model, args)
+            fitting._fitter_to_model_params(model, param_vals)
 
-            return np.ravel(model(fps))
+            return np.ravel(model(dispersion))
 
         return objective_function
 
@@ -163,8 +147,6 @@ class LevMarCurveFitFitter(object):
         model_copy : `~astropy.modeling.FittableModel`
             a copy of the input model with parameters set by the fitter
         """
-        from scipy import optimize
-
         model_copy = fitting._validate_model(model, self.supported_constraints)
 
         if model_copy.fit_deriv is None or estimate_jacobian:
