@@ -1,3 +1,11 @@
+# %ECSV 0.9
+# ---
+# datatype:
+# - {name: name, datatype: str, description: Name of ion}
+# - {name: wave, unit: Angstrom, datatype: float64, description: Wavelength of strongest component}
+# - {name: osc_str, datatype: float64, description: Oscillator strength}
+# - {name: gamma, datatype: float64, description: Gamma factor}
+name   wave          osc_str       gamma
 HI     1.2156701e+03 4.1640000e-01 6.2650000e+08
 HI     1.0257223e+03 7.9120000e-02 1.8970000e+08
 HI     9.7253680e+02 2.9000000e-02 8.1270000e+07

@@ -65,9 +65,9 @@ class Spectrum1D:
         # return ma.masked_array(dispersion, self._mask)
         return dispersion
 
-    @property
-    def velocity(self):
-        return
+    def velocity(self, x_0=None):
+        center = x_0 or self.get_profile(0.0).mu
+        return ((self.dispersion - center) / self.dispersion * u.cgs.c).to("km/s")
 
     @property
     def flux(self):
@@ -141,6 +141,17 @@ class Spectrum1D:
     def continuum(self):
         return self._continuum_model(self.dispersion)
 
+    @property
+    def line_list(self):
+        """
+        List all available line names.
+
+        Returns
+        -------
+
+        """
+        print(ION_TABLE)
+
     def _find_continuum(self, mode='LinearLSQFitter'):
         cont = models.Linear1D(slope=0.0,
                                intercept=np.median(self.flux))
@@ -199,15 +210,24 @@ class Spectrum1D:
 
         return noise
 
-    def add_line(self, lambda_0, f_value, v_doppler, column_density,
-                 gamma=None, name=""):
+    def add_line(self, v_doppler, column_density, lambda_0=None, f_value=None,
+                 gamma=None, name=None):
+        if name is not None:
+            ind = np.where(ION_TABLE['name'] == name)
+            lambda_0 = ION_TABLE['wave'][ind]
+        else:
+            ind = find_index(ION_TABLE['wave'], lambda_0)
+            name = ION_TABLE['name'][ind]
+
+        if f_value is None:
+            f_value = ION_TABLE['osc_str'][ind]
+
         model = Voigt1D(lambda_0=lambda_0, f_value=f_value, gamma=gamma or 0,
                         v_doppler=v_doppler, column_density=column_density,
                         name=name, meta={'lambda_bins': self.dispersion})
 
-        # If gamma has not been expicitly defined, tie it to lambda
+        # If gamma has not been explicitly defined, tie it to lambda
         if gamma is None:
-            ind = find_index(ION_TABLE['wave'], lambda_0)
             gamma_val = ION_TABLE['gamma'][ind]
             model.gamma.value = gamma_val
             model.gamma.tied = lambda cmod, mod=model: _tie_gamma(cmod, mod)
@@ -302,7 +322,6 @@ class Spectrum1D:
         cent : float
             The centroid of the profile.
         """
-        profile = self.get_profile(x_0)
         disp = self.dispersion
         flux = unp.uarray(self.flux, self.uncertainty)
 
@@ -310,12 +329,16 @@ class Spectrum1D:
 
         return unp.nominal_values(cent), unp.std_devs(cent)
 
-    def equivalent_width(self, x1=None, x2=None):
-        if x1 is None:
-            x1 = self.dispersion[0]
-
-        if x2 is None:
-            x2 = self.dispersion[-1]
+    def equivalent_width(self, x_range=None, x_0=None, line_name=None):
+        if x_range is not None and (isinstance(x_range, list) or
+                                    isinstance(x_range, tuple)):
+            x1, x2 = x_range
+        elif x_0 is not None or line_name is not None:
+            region_mask = self._get_range_mask(x_0)
+            region_disp = self.dispersion[region_mask]
+            x1, x2 = region_disp[0], region_disp[-1]
+        else:
+            x1, x2 = self.dispersion[0], self.dispersion[-1]
 
         mask = (self.dispersion >= x1) & (self.dispersion <= x2)
         disp = self.dispersion[mask]
@@ -335,6 +358,13 @@ class Spectrum1D:
         ew = ((avg_cont - uflux) * (avg_dx / avg_cont)).sum()
 
         return ew.nominal_value, ew.std_dev
+
+    def _get_range_mask(self, x_0):
+        profile = self.get_profile(x_0)
+        vdisp = profile(self.dispersion)
+        cont = np.ones(self.dispersion.shape)
+
+        return np.isclose(vdisp, cont)
 
     def resample(self, dispersion, copy=True):
         remat = self._resample_matrix(self.dispersion, dispersion)
@@ -409,8 +439,8 @@ class Spectrum1D:
 
 ION_TABLE = Table.read(
     os.path.abspath(
-        os.path.join(__file__, '..', '..', 'data', 'line_list', 'atom.dat')),
-    format='ascii', names=('name', 'wave', 'osc_str', 'gamma'))
+        os.path.join(__file__, '..', '..', 'data', 'line_list', 'ions.ecsv')),
+    format='ascii.ecsv')
 
 
 def _tie_gamma(compound_model, model):

@@ -26,8 +26,8 @@ def _format_arrays(a, v, use_tau=False):
         al, vl = unp.uarray(a.flux[mask], a.uncertainty[mask]), \
                  unp.uarray(v.flux[mask], v.uncertainty[mask])
 
-    d_al = al[1].nominal_value - al[0].nominal_value
-    d_vl = vl[1].nominal_value - vl[0].nominal_value
+    d_al = a.dispersion[1] - a.dispersion[0]
+    d_vl = v.dispersion[1] - v.dispersion[0]
 
     # If the two spectra are not the same dimension, resample to lower
     # resolution
@@ -101,13 +101,15 @@ def autocorrelate(a, use_tau=False):
     else:
         af = unp.uarray(a.flux, a.uncertainty)
 
-    fin = unp.uarray(np.zeros(a.flux.size), np.zeros(a.flux.size))
+    # fin = unp.uarray(np.zeros(a.flux.size), np.zeros(a.flux.size))
+    #
+    # for dv in range(fin.size):
+    #     for i in range(fin.size):
+    #         fin[dv] += af[dv] * af[i]
 
-    for dv in range(fin.size):
-        for i in range(fin.size):
-            fin[dv] += af[dv] * af[i]
+    ret = (af[:-1] * af[1:]).mean() / af.mean() ** 2
 
-    ret = np.mean(fin, axis=0)/(np.mean(fin, axis=0) ** 2)
+    # ret = np.mean(fin, axis=0)/(np.mean(fin, axis=0) ** 2)
 
     return ret.nominal_value, ret.std_dev
 

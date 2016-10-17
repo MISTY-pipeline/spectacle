@@ -160,7 +160,7 @@ class LevMarCurveFitFitter(object):
             self.objective_wrapper(model_copy), x, y,
             # method='trf',
             p0=init_values,
-            sigma=sigma,
+            # sigma=sigma,
             epsfcn=epsilon,
             maxfev=maxiter,
             col_deriv=model_copy.col_fit_deriv,
