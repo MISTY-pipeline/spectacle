@@ -45,7 +45,7 @@ def lnprob(theta, model, x, y, yerr):
 
 def optimize(spectrum):
     # Grab original data
-    disp, flux = spectrum.dispersion, spectrum.flux
+    disp, flux = spectrum.lambda_bins, spectrum.flux
 
     # Generate parameter list
     params = np.array(list(spectrum.model.parameters) + [0.5])

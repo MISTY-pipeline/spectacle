@@ -1,4 +1,6 @@
+import os
 import numpy as np
+from astropy.table import Table
 
 
 def find_index(array, value):
@@ -23,3 +25,9 @@ def find_index(array, value):
             idx_nearest = idx_sorted[idx]
 
     return idx_nearest
+
+
+ION_TABLE = Table.read(
+    os.path.abspath(
+        os.path.join(__file__, '..', '..', 'data', 'line_list', 'ions.ecsv')),
+    format='ascii.ecsv')

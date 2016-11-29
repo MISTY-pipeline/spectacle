@@ -1,15 +1,11 @@
-from .utils import find_index
+from .utils import find_index, ION_TABLE
 from .models import Voigt1D
-from .profiles import TauProfile
 
-import os
 import numpy as np
-import scipy as sp
-import numpy.ma as ma
 import astropy.units as u
+from astropy import constants as c
 from astropy.convolution import convolve
 from astropy.modeling import models, fitting
-from astropy.table import Table
 from uncertainties import unumpy as unp
 
 import logging
@@ -34,6 +30,9 @@ class Spectrum1D:
         else:
             self._continuum_model = self._find_continuum()
 
+    def __repr__(self):
+        return self.model
+
     @property
     def model(self):
         if self._model is None:
@@ -41,14 +40,6 @@ class Spectrum1D:
 
             if len(self._line_models) > 0:
                 self._model = self._model + np.sum(self._line_models)
-
-                # for l in [x for x in self._model.param_names if 'lambda' in x]:
-                #     gamma_val = 'gamma_' + l.split('_')[-1]
-                #     gamma_param = getattr(self._model, gamma_val)
-                #
-                #     if gamma_param.value is None:
-                #         gamma_param.tied = lambda x, ln=l: \
-                #             _tie_gamma(x, ln)
 
         return self._model
 
@@ -67,7 +58,8 @@ class Spectrum1D:
 
     def velocity(self, x_0=None):
         center = x_0 or self.get_profile(0.0).mu
-        return ((self.dispersion - center) / self.dispersion * u.cgs.c).to("km/s")
+        return ((self.dispersion - center) /
+                self.dispersion * c.c.cgs).to("km/s")
 
     @property
     def flux(self):
@@ -145,10 +137,6 @@ class Spectrum1D:
     def line_list(self):
         """
         List all available line names.
-
-        Returns
-        -------
-
         """
         print(ION_TABLE)
 
@@ -211,7 +199,7 @@ class Spectrum1D:
         return noise
 
     def add_line(self, v_doppler, column_density, lambda_0=None, f_value=None,
-                 gamma=None, name=None):
+                 gamma=None, delta_v=None, delta_lambda=None, name=None):
         if name is not None:
             ind = np.where(ION_TABLE['name'] == name)
             lambda_0 = ION_TABLE['wave'][ind]
@@ -224,7 +212,9 @@ class Spectrum1D:
 
         model = Voigt1D(lambda_0=lambda_0, f_value=f_value, gamma=gamma or 0,
                         v_doppler=v_doppler, column_density=column_density,
-                        name=name, meta={'lambda_bins': self.dispersion})
+                        delta_v=delta_v, delta_lambda=delta_lambda, name=name,
+                        meta={'lambda_bins': self.dispersion}
+                        )
 
         # If gamma has not been explicitly defined, tie it to lambda
         if gamma is None:
@@ -236,6 +226,9 @@ class Spectrum1D:
 
         # Force the compound model to be recreated
         self._model = None
+
+        # Set the new dispersion value
+        self._dispersion = model.lambda_bins
 
         return model
 
@@ -435,12 +428,6 @@ class Spectrum1D:
         resamp_mat /= delta_fin
 
         return resamp_mat
-
-
-ION_TABLE = Table.read(
-    os.path.abspath(
-        os.path.join(__file__, '..', '..', 'data', 'line_list', 'ions.ecsv')),
-    format='ascii.ecsv')
 
 
 def _tie_gamma(compound_model, model):

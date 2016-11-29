@@ -76,38 +76,9 @@ class TauProfile:
     def optical_depth(self):
         return self.tau_phi
 
-    @property
-    def dispersion(self):
-        return self.lambda_bins
-
     @classmethod
     def voigt(cls, a, u):
         x = np.asarray(u).astype(np.float64)
         y = np.asarray(a).astype(np.float64)
 
         return special.wofz(x + 1j * y).real
-
-
-if __name__ == '__main__':
-    tau_profile = TauProfile(977.02, 0.4164, 1e6, 87.3, 5.25e13,
-                             delta_lambda=10)
-    tau_profile2 = TauProfile(877.02, 0.4164, 10, 1.27e6, 5.25e13)
-    # tau_profile3 = TauProfile(977.02, 0.4164, 1e-7, 1.27e6, 5.25e13)
-
-    import matplotlib.pyplot as plt
-
-    f, (ax1, ax2) = plt.subplots(2, 1)
-
-    ax1.step(tau_profile.dispersion, tau_profile.optical_depth)
-    plt.step(tau_profile2.lambda_bins, tau_profile2.tau_phi)
-    # plt.step(tau_profile3.lambda_bins, tau_profile3.tau_phi)
-
-    mask = (tau_profile.dispersion > 950) & (tau_profile.lambda_bins < 1000)
-
-    ax2.axhline(1.0, linestyle='--')
-    ax2.step(tau_profile.dispersion[mask],
-             np.exp(-tau_profile.optical_depth[mask]))
-    ax2.set_ylim(0.0, 1.0)
-    # plt.step(tau_profile2.lambda_bins, np.exp(-tau_profile2.tau_phi))
-    # plt.step(tau_profile3.lambda_bins, np.exp(-tau_profile3.tau_phi))
-    plt.show()

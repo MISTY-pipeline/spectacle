@@ -133,9 +133,9 @@ def cross_correlate(a, v, use_tau=False):
     """
     al, vl = _format_arrays(a, v, use_tau=use_tau)
 
-    mat = np.corrcoef(al, vl)[0, 1]
+    mat = np.corrcoef(unp.nominal_values(al), unp.nominal_values(vl))[0, 1]
 
-    return unp.nominal_values(mat), unp.std_devs(mat)
+    return mat
 
 
 def correlate(a, v, mode='full', use_tau=False):

@@ -16,6 +16,8 @@ setup(
         "astropy",
         "peakutils",
         "emcee",
-        "uncertainties"
+        "uncertainties",
+        "pyyaml",
+        "six"
     ]
 )

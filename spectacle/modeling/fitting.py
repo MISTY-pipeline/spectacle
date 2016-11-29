@@ -1,13 +1,16 @@
 import peakutils
 from scipy.signal import savgol_filter
 from astropy.modeling import fitting, models
+from astropy.modeling.fitting import LevMarLSQFitter
 from astropy.table import Table
 from astropy.extern import six
 import numpy as np
-from ..core.spectra import Spectrum1D
 import abc
 import six
 from scipy import optimize
+
+from ..core.utils import ION_TABLE, find_index
+from ..core.spectra import Spectrum1D
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -22,7 +25,24 @@ class Fitter:
     def __call__(self, *args, **kwargs):
         raise NotImplementedError
 
-    def _find_lines(self, spectrum):
+    def _find_lines(self, spectrum, strict):
+        """
+        Simple peak finder.
+
+        Parameters
+        ----------
+        spectrum : :class:`spectacle.core.spectra.Spectrum1D`
+            Original spectrum object.
+        strict : bool
+            If `True`, will require that any found peaks also exist in the
+            provided ions lookup table.
+
+        Returns
+        -------
+        indexes : np.array
+            An array of indices providing the peak locations in the original
+            spectrum object.
+        """
         continuum = np.median(spectrum.flux)
         inv_flux = continuum - spectrum.flux
 
@@ -33,32 +53,47 @@ class Fitter:
 
         indexes = np.array(indexes)
 
-        print("Found {} peaks".format(len(indexes)))
+        if strict:
+            # Find the indices of the ion table that correspond with the found
+            # indices in the peak search
+            tab_indexes = np.array(list(set(
+                map(lambda x: find_index(ION_TABLE['wave'], x),
+                    spectrum.dispersion[indexes]))))
+
+            # Given the indices in the ion tab, find the indices in the
+            #  dispersion array that correspond to the ion table lambda
+            indexes = np.array(list(
+                map(lambda x: find_index(spectrum.dispersion, x),
+                    ION_TABLE['wave'][tab_indexes])))
 
         return indexes
 
 
 class LevMarFitter(Fitter):
-    def __call__(self, spectrum):
+    def __call__(self, spectrum, strict=False):
         # Create a new spectrum object with the same dispersion
-        result_spectrum = Spectrum1D(dispersion=spectrum.dispersion)
+        result_spectrum = Spectrum1D(dispersion=spectrum.lambda_bins)
 
         # Find the lines in the flux array
-        indexes = self._find_lines(spectrum)
+        indexes = self._find_lines(spectrum, strict=strict)
 
         # Add a new line to the empty spectrum object for each found line
         for ind in indexes:
-            result_spectrum.add_line(lambda_0=spectrum.dispersion[ind],
-                                     f_value=0.5, v_doppler=1e7,
-                                     column_density=1e14 * 0.5)
+            result_spectrum.add_line(lambda_0=spectrum.lambda_bins[ind],
+                                     v_doppler=1e7,
+                                     column_density=10**14,
+                                     # name=ION_TABLE['name'][ind]
+                                     )
 
         # Create fitter instance
         fitter = LevMarCurveFitFitter()
+        # fitter = LevMarLSQFitter()
 
         model_fit = fitter(result_spectrum.model,
-                           spectrum.dispersion,
+                           spectrum.lambda_bins,
                            spectrum.flux,
-                           sigma=spectrum.uncertainty
+                           sigma=spectrum.uncertainty,
+                           maxiter=min(4000, 250 * len(indexes))
                            )
 
         # Grab the covariance matrix
@@ -160,11 +195,12 @@ class LevMarCurveFitFitter(object):
             self.objective_wrapper(model_copy), x, y,
             # method='trf',
             p0=init_values,
-            # sigma=sigma,
+            sigma=sigma,
             epsfcn=epsilon,
             maxfev=maxiter,
             col_deriv=model_copy.col_fit_deriv,
             xtol=acc,
+            absolute_sigma=True,
             **kwargs)
 
         fitting._fitter_to_model_params(model_copy, fit_params)

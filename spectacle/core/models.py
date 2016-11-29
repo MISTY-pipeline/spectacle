@@ -52,20 +52,24 @@ class Voigt1D(Fittable1DModel):
       and http://en.wikipedia.org/wiki/Error_function.
     """
     lambda_0 = Parameter()
-    f_value = Parameter(min=0.0, max=1.0)
+    f_value = Parameter(min=-1.0, max=1.0)
     gamma = Parameter()
     v_doppler = Parameter()
     column_density = Parameter(min=1e10, max=1e30)
+    delta_v = Parameter(default=0)
+    delta_lambda = Parameter(default=0)
 
-    def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density):
+    def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
+                 delta_v, delta_lambda):
         lambda_bins = self.meta.get('lambda_bins', None)
         profile = TauProfile(lambda_0=lambda_0, f_value=f_value,
                              gamma=gamma, v_doppler=v_doppler,
                              column_density=column_density,
-                             n_lambda=x.size, lambda_bins=lambda_bins)
+                             n_lambda=x.size, lambda_bins=lambda_bins,
+                             delta_v=delta_v, delta_lambda=delta_lambda)
 
         if lambda_bins is None:
-            self.meta['lambda_bins'] = profile.dispersion
+            self.meta['lambda_bins'] = profile.lambda_bins
 
         flux = np.exp(-profile.optical_depth) - 1.0
 
@@ -74,3 +78,7 @@ class Voigt1D(Fittable1DModel):
     @staticmethod
     def fit_deriv(x, x_0, b, gamma, f):
         return [0, 0, 0, 0]
+
+    @property
+    def lambda_bins(self):
+        return self.meta.get('lambda_bins')
