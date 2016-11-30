@@ -56,10 +56,10 @@ class Spectrum1D:
         # return ma.masked_array(dispersion, self._mask)
         return dispersion
 
-    def velocity(self, x_0=None):
-        center = x_0 or self.get_profile(0.0).mu
-        return ((self.dispersion - center) /
-                self.dispersion * c.c.cgs).to("km/s")
+    def velocity(self, x_0=None, mask=None):
+        center = x_0 or self.get_profile(0.0).lambda_0
+        return ((self.dispersion[mask] - center) /
+                self.dispersion[mask] * c.c.cgs).to("km/s")
 
     @property
     def flux(self):
@@ -352,12 +352,12 @@ class Spectrum1D:
 
         return ew.nominal_value, ew.std_dev
 
-    def _get_range_mask(self, x_0):
-        profile = self.get_profile(x_0)
+    def _get_range_mask(self, x_0=None):
+        profile = self.get_profile(x_0 or 0.0)
         vdisp = profile(self.dispersion)
-        cont = np.ones(self.dispersion.shape)
+        cont = np.zeros(self.dispersion.shape)
 
-        return np.isclose(vdisp, cont)
+        return ~np.isclose(vdisp, cont)
 
     def resample(self, dispersion, copy=True):
         remat = self._resample_matrix(self.dispersion, dispersion)

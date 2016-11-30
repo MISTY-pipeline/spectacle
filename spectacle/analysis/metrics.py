@@ -4,7 +4,30 @@ import numpy as np
 import uncertainties.unumpy as unp
 
 
-def _format_arrays(a, v, use_tau=False):
+def _format_arrays(a, v, use_tau=False, use_region=True):
+    # Extract only the parts of the spectrum with data in it
+    a_region_mask = None
+    v_region_mask = None
+
+    if use_region:
+        a_region_mask = a._get_range_mask()
+        v_region_mask = v._get_range_mask()
+
+        diff = a_region_mask[a_region_mask].size - v_region_mask[v_region_mask].size
+
+        if diff > 0:
+            diff = np.abs(diff)
+            min_add, max_add = diff // 2, diff // 2 + diff % 2
+            mn_ind, mx_ind = np.argmax(v_region_mask), \
+                             v_region_mask.size - np.argmax(v_region_mask[::-1]) - 1
+            v_region_mask[mn_ind-min_add:mx_ind+1+max_add] = True
+        else:
+            diff = np.abs(diff)
+            min_add, max_add = diff // 2, diff // 2 + diff % 2
+            mn_ind, mx_ind = np.argmax(a_region_mask), \
+                             a_region_mask.size - np.argmax(a_region_mask[::-1]) - 1
+            a_region_mask[mn_ind-min_add:mx_ind+1+max_add] = True
+
     # Clip the spectra to the same range
     if a.dispersion[0] > v.dispersion[0]:
         min_mask = (v.dispersion >= a.dispersion[0])
@@ -17,14 +40,16 @@ def _format_arrays(a, v, use_tau=False):
         max_mask = (a.dispersion <= v.dispersion[-1])
 
     mask = min_mask & max_mask
+    a_mask = mask & a_region_mask
+    v_mask = mask & v_region_mask
 
     # Compose the uncertainty arrays
     if use_tau:
-        al, vl = unp.uarray(a.tau[mask], a.tau_uncertainty[mask]), \
-                 unp.uarray(v.tau[mask], v.tau_uncertainty[mask])
+        al, vl = unp.uarray(a.tau[a_mask], a.tau_uncertainty[a_mask]), \
+                 unp.uarray(v.tau[v_mask], v.tau_uncertainty[v_mask])
     else:
-        al, vl = unp.uarray(a.flux[mask], a.uncertainty[mask]), \
-                 unp.uarray(v.flux[mask], v.uncertainty[mask])
+        al, vl = unp.uarray(a.flux[a_mask], a.uncertainty[a_mask]), \
+                 unp.uarray(v.flux[v_mask], v.uncertainty[v_mask])
 
     d_al = a.dispersion[1] - a.dispersion[0]
     d_vl = v.dispersion[1] - v.dispersion[0]
@@ -39,16 +64,16 @@ def _format_arrays(a, v, use_tau=False):
         a = a.resample(v.dispersion)
 
         if use_tau:
-            al = unp.uarray(a.tau[mask], a.tau_uncertainty[mask])
+            al = unp.uarray(a.tau[a_mask], a.tau_uncertainty[a_mask])
         else:
-            al = unp.uarray(a.flux[mask], a.uncertainty[mask])
+            al = unp.uarray(a.flux[a_mask], a.uncertainty[a_mask])
     elif d_vl > d_al:
         v = v.resample(a.dispersion)
 
         if use_tau:
-            vl = unp.uarray(v.tau[mask], v.tau_uncertainty[mask])
+            vl = unp.uarray(v.tau[v_mask], v.tau_uncertainty[v_mask])
         else:
-            vl = unp.uarray(v.flux[mask], v.uncertainty[mask])
+            vl = unp.uarray(v.flux[v_mask], v.uncertainty[v_mask])
 
     return al, vl
 
