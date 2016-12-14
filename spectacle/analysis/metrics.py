@@ -6,27 +6,8 @@ import uncertainties.unumpy as unp
 
 def _format_arrays(a, v, use_tau=False, use_region=True):
     # Extract only the parts of the spectrum with data in it
-    a_region_mask = None
-    v_region_mask = None
-
-    if use_region:
-        a_region_mask = a._get_range_mask()
-        v_region_mask = v._get_range_mask()
-
-        diff = a_region_mask[a_region_mask].size - v_region_mask[v_region_mask].size
-
-        if diff > 0:
-            diff = np.abs(diff)
-            min_add, max_add = diff // 2, diff // 2 + diff % 2
-            mn_ind, mx_ind = np.argmax(v_region_mask), \
-                             v_region_mask.size - np.argmax(v_region_mask[::-1]) - 1
-            v_region_mask[mn_ind-min_add:mx_ind+1+max_add] = True
-        else:
-            diff = np.abs(diff)
-            min_add, max_add = diff // 2, diff // 2 + diff % 2
-            mn_ind, mx_ind = np.argmax(a_region_mask), \
-                             a_region_mask.size - np.argmax(a_region_mask[::-1]) - 1
-            a_region_mask[mn_ind-min_add:mx_ind+1+max_add] = True
+    a_region_mask = a._get_range_mask()
+    v_region_mask = v._get_range_mask()
 
     # Clip the spectra to the same range
     if a.dispersion[0] > v.dispersion[0]:
@@ -39,17 +20,15 @@ def _format_arrays(a, v, use_tau=False, use_region=True):
     else:
         max_mask = (a.dispersion <= v.dispersion[-1])
 
-    mask = min_mask & max_mask
-    a_mask = mask & a_region_mask
-    v_mask = mask & v_region_mask
+    mask = (min_mask & max_mask) & (a_region_mask | v_region_mask)
 
     # Compose the uncertainty arrays
     if use_tau:
-        al, vl = unp.uarray(a.tau[a_mask], a.tau_uncertainty[a_mask]), \
-                 unp.uarray(v.tau[v_mask], v.tau_uncertainty[v_mask])
+        al, vl = unp.uarray(a.tau[mask], a.tau_uncertainty[mask]), \
+                 unp.uarray(v.tau[mask], v.tau_uncertainty[mask])
     else:
-        al, vl = unp.uarray(a.flux[a_mask], a.uncertainty[a_mask]), \
-                 unp.uarray(v.flux[v_mask], v.uncertainty[v_mask])
+        al, vl = unp.uarray(a.flux[mask], a.uncertainty[mask]), \
+                 unp.uarray(v.flux[mask], v.uncertainty[mask])
 
     d_al = a.dispersion[1] - a.dispersion[0]
     d_vl = v.dispersion[1] - v.dispersion[0]
@@ -64,18 +43,18 @@ def _format_arrays(a, v, use_tau=False, use_region=True):
         a = a.resample(v.dispersion)
 
         if use_tau:
-            al = unp.uarray(a.tau[a_mask], a.tau_uncertainty[a_mask])
+            al = unp.uarray(a.tau[mask], a.tau_uncertainty[mask])
         else:
-            al = unp.uarray(a.flux[a_mask], a.uncertainty[a_mask])
+            al = unp.uarray(a.flux[mask], a.uncertainty[mask])
     elif d_vl > d_al:
         v = v.resample(a.dispersion)
 
         if use_tau:
-            vl = unp.uarray(v.tau[v_mask], v.tau_uncertainty[v_mask])
+            vl = unp.uarray(v.tau[mask], v.tau_uncertainty[mask])
         else:
-            vl = unp.uarray(v.flux[v_mask], v.uncertainty[v_mask])
+            vl = unp.uarray(v.flux[mask], v.uncertainty[mask])
 
-    return al, vl
+    return al, vl, mask
 
 
 def npcorrelate(a, v, mode='valid', normalize=False, use_tau=False):
@@ -163,7 +142,7 @@ def cross_correlate(a, v, use_tau=False):
     return mat
 
 
-def correlate(a, v, mode='full', use_tau=False):
+def correlate(a, v, mode='true', use_tau=False):
     """
     Correlation function described by Molly Peeples.
 
@@ -184,19 +163,23 @@ def correlate(a, v, mode='full', use_tau=False):
      ret : ndarray
         An array describing the correlation at every position.
     """
-    al, vl = _format_arrays(a, v, use_tau=use_tau)
+    al, vl, mask = _format_arrays(a, v, use_tau=use_tau)
 
     # al = al[np.isfinite(al)]
     # vl = vl[np.isfinite(vl)]
 
-    sh_vl = np.random.permutation(vl)
-    sh_al = np.random.permutation(al)
-
-    if mode == 'full':
+    if mode == 'true':
+        ret = (al * vl) / (np.linalg.norm(unp.nominal_values(al)) *
+                           np.linalg.norm(unp.nominal_values(vl)))
+    elif mode == 'full':
+        sh_vl = np.random.permutation(vl)
+        sh_al = np.random.permutation(al)
         ret = (al - vl) ** 2 / (sh_al * sh_vl)
     elif mode == 'lite':
+        sh_vl = np.random.permutation(vl)
+        sh_al = np.random.permutation(al)
         ret = (al * vl) / (sh_al * sh_vl)
     else:
         raise NameError("No such mode: {}".format(mode))
 
-    return unp.nominal_values(ret), unp.std_devs(ret)
+    return unp.nominal_values(ret), unp.std_devs(ret), mask

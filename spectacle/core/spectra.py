@@ -59,7 +59,7 @@ class Spectrum1D:
     def velocity(self, x_0=None, mask=None):
         center = x_0 or self.get_profile(0.0).lambda_0
         return ((self.dispersion[mask] - center) /
-                self.dispersion[mask] * c.c.cgs).to("km/s")
+                self.dispersion[mask] * c.c.cgs).to("km/s").value
 
     @property
     def flux(self):
@@ -83,6 +83,9 @@ class Spectrum1D:
         # Apply resampling
         if self._remat is not None:
             flux = np.dot(self._remat, flux)
+
+        # Flux values cannot be negative
+        flux[flux < 0.0] = 0.0
 
         # flux = ma.masked_array(flux, self._mask)
 
@@ -193,10 +196,11 @@ class Spectrum1D:
         self._lsfs.append(lsf)
 
     def add_noise(self, std_dev=0.2):
-        noise = np.random.normal(0., std_dev, self.flux.size)
-        self._noise.append(noise)
+        if std_dev > 0:
+            noise = np.random.normal(0., std_dev, self.flux.size)
+            self._noise.append(noise)
 
-        return noise
+            return noise
 
     def add_line(self, v_doppler, column_density, lambda_0=None, f_value=None,
                  gamma=None, delta_v=None, delta_lambda=None, name=None):
@@ -357,7 +361,7 @@ class Spectrum1D:
         vdisp = profile(self.dispersion)
         cont = np.zeros(self.dispersion.shape)
 
-        return ~np.isclose(vdisp, cont)
+        return ~np.isclose(vdisp, cont, rtol=1e-2, atol=1e-5)
 
     def resample(self, dispersion, copy=True):
         remat = self._resample_matrix(self.dispersion, dispersion)
