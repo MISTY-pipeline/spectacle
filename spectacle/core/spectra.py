@@ -104,7 +104,7 @@ class Spectrum1D:
 
         # Apply LSFs
         for lsf in self._lsfs:
-            # Convolving has unintend effects on the ends of the spectrum.
+            # Convolving has unintended effects on the ends of the spectrum.
             # Use tau instead.
             tau = np.log(1/uncert)
             tau = convolve(tau, lsf.kernel)

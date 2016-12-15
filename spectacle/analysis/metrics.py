@@ -165,12 +165,11 @@ def correlate(a, v, mode='true', use_tau=False):
     """
     al, vl, mask = _format_arrays(a, v, use_tau=use_tau)
 
-    # al = al[np.isfinite(al)]
-    # vl = vl[np.isfinite(vl)]
-
     if mode == 'true':
-        ret = (al * vl) / (np.linalg.norm(unp.nominal_values(al)) *
-                           np.linalg.norm(unp.nominal_values(vl)))
+        # ret = (al * vl) / (np.linalg.norm(unp.nominal_values(al)) *
+        #                    np.linalg.norm(unp.nominal_values(vl)))
+        ret = (al * vl) / (unp.sqrt((al ** 2).sum()) *
+                           unp.sqrt((vl ** 2).sum()))
     elif mode == 'full':
         sh_vl = np.random.permutation(vl)
         sh_al = np.random.permutation(al)
@@ -182,4 +181,4 @@ def correlate(a, v, mode='true', use_tau=False):
     else:
         raise NameError("No such mode: {}".format(mode))
 
-    return unp.nominal_values(ret), unp.std_devs(ret), mask
+    return ret, mask
