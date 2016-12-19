@@ -1,5 +1,6 @@
 from .utils import find_index, ION_TABLE
 from .models import Voigt1D
+from ..analysis.resample import resample
 
 import numpy as np
 from astropy import constants as c
@@ -366,8 +367,8 @@ class Spectrum1D:
 
         return ~np.isclose(vdisp, cont, rtol=1e-2, atol=1e-5)
 
-    def resample(self, dispersion, copy=True):
-        remat = self._resample_matrix(self.dispersion, dispersion)
+    def resample(self, dispersion, copy=True, **kwargs):
+        remat = resample(self.dispersion, dispersion, **kwargs)
 
         if copy:
             new_spec = self.copy()
