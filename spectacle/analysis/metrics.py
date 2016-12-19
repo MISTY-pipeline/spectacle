@@ -1,6 +1,5 @@
 import logging
 import numpy as np
-# from skimage.feature import match_template
 import uncertainties.unumpy as unp
 
 
@@ -75,7 +74,7 @@ def npcorrelate(a, v, mode='valid', normalize=False, use_tau=False):
     <returned value> : float
         The (normalized) correlation.
     """
-    al, vl = _format_arrays(a, v, use_tau=use_tau)
+    al, vl, mask = _format_arrays(a, v, use_tau=use_tau)
 
     if normalize:
         al = (al - al.mean()) / (al.std_dev() * al.size)
@@ -83,7 +82,7 @@ def npcorrelate(a, v, mode='valid', normalize=False, use_tau=False):
 
     ret = np.correlate(al, vl, mode)
 
-    return unp.nominal_values(ret), unp.std_devs(ret)
+    return unp.nominal_values(ret), unp.std_devs(ret), mask
 
 
 def autocorrelate(a, use_tau=False):
@@ -115,7 +114,7 @@ def autocorrelate(a, use_tau=False):
 
     # ret = np.mean(fin, axis=0)/(np.mean(fin, axis=0) ** 2)
 
-    return ret.nominal_value, ret.std_dev
+    return ret
 
 
 def cross_correlate(a, v, use_tau=False):
@@ -135,11 +134,11 @@ def cross_correlate(a, v, use_tau=False):
     mat : ndarray
         The correlation coefficient matrix of the variables.
     """
-    al, vl = _format_arrays(a, v, use_tau=use_tau)
+    al, vl, mask = _format_arrays(a, v, use_tau=use_tau)
 
     mat = np.corrcoef(unp.nominal_values(al), unp.nominal_values(vl))[0, 1]
 
-    return mat
+    return mat, mask
 
 
 def correlate(a, v, mode='true', use_tau=False):
@@ -181,4 +180,4 @@ def correlate(a, v, mode='true', use_tau=False):
     else:
         raise NameError("No such mode: {}".format(mode))
 
-    return ret, mask
+    return unp.nominal_values(ret), unp.std_devs(ret), mask

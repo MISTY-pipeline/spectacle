@@ -2,8 +2,8 @@ from .utils import find_index, ION_TABLE
 from .models import Voigt1D
 
 import numpy as np
-import astropy.units as u
 from astropy import constants as c
+from astropy import units as u
 from astropy.convolution import convolve
 from astropy.modeling import models, fitting
 from uncertainties import unumpy as unp
@@ -57,9 +57,12 @@ class Spectrum1D:
         return dispersion
 
     def velocity(self, x_0=None, mask=None):
+        mask = mask if mask is not None else np.ones(shape=self.dispersion.shape, dtype=bool)
         center = x_0 or self.get_profile(0.0).lambda_0
-        return ((self.dispersion[mask] - center) /
-                self.dispersion[mask] * c.c.cgs).to("km/s").value
+        dispersion = self.dispersion[mask] * u.Angstrom
+        center = center * u.Angstrom
+        return ((dispersion - center) /
+                dispersion * c.c.cgs).to("km/s").value
 
     @property
     def flux(self):
@@ -74,7 +77,7 @@ class Spectrum1D:
 
         # Apply LSFs
         for lsf in self._lsfs:
-            # Convolving has unintend effects on the ends of the spectrum.
+            # Convolving has unintended effects on the ends of the spectrum.
             # Use tau instead.
             tau = np.log(1/flux)
             tau = convolve(tau, lsf.kernel)
@@ -206,13 +209,13 @@ class Spectrum1D:
                  gamma=None, delta_v=None, delta_lambda=None, name=None):
         if name is not None:
             ind = np.where(ION_TABLE['name'] == name)
-            lambda_0 = ION_TABLE['wave'][ind]
+            lambda_0 = ION_TABLE['wave'][ind][0]
         else:
             ind = find_index(ION_TABLE['wave'], lambda_0)
-            name = ION_TABLE['name'][ind]
+            name = ION_TABLE['name'][ind][0]
 
         if f_value is None:
-            f_value = ION_TABLE['osc_str'][ind]
+            f_value = ION_TABLE['osc_str'][ind][0]
 
         model = Voigt1D(lambda_0=lambda_0, f_value=f_value, gamma=gamma or 0,
                         v_doppler=v_doppler, column_density=column_density,
@@ -250,7 +253,7 @@ class Spectrum1D:
     def get_profile(self, x_0):
         # Find the nearest voigt profile to the given central wavelength
         v_arr = sorted(self._line_models, key=lambda x: x.lambda_0.value)
-        v_x_0_arr = [x.lambda_0.value for x in v_arr]
+        v_x_0_arr = np.array([x.lambda_0.value for x in v_arr])
 
         if len(v_x_0_arr) > 1:
             ind = find_index(v_x_0_arr, x_0)
@@ -357,7 +360,7 @@ class Spectrum1D:
         return ew.nominal_value, ew.std_dev
 
     def _get_range_mask(self, x_0=None):
-        profile = self.get_profile(x_0 or 0.0)
+        profile = np.sum(self._line_models) #self.get_profile(x_0 or 0.0)
         vdisp = profile(self.dispersion)
         cont = np.zeros(self.dispersion.shape)
 
@@ -375,70 +378,12 @@ class Spectrum1D:
 
         return new_spec
 
-    def _resample_matrix(self, orig_lamb, fin_lamb):
-        """
-        Create a resampling matrix to be used in resampling spectra in a way
-        that conserves flux. This is adapted from code created by the SEAGal
-        Group.
-
-        .. note:: This method assumes uniform grids.
-
-        Parameters
-        ----------
-        orig_lamb : ndarray
-            The original dispersion array.
-        fin_lamb : ndarray
-            The desired dispersion array.
-
-        Returns
-        -------
-        resample_map : ndarray
-            An [[N_{fin_lamb}, M_{orig_lamb}]] matrix.
-        """
-        # Get step size
-        delta_orig = orig_lamb[1] - orig_lamb[0]
-        delta_fin = fin_lamb[1] - fin_lamb[0]
-
-        n_orig_lamb = len(orig_lamb)
-        n_fin_lamb = len(fin_lamb)
-
-        # Lower bin and upper bin edges
-        orig_low = orig_lamb - delta_orig * 0.5
-        orig_upp = orig_lamb + delta_orig * 0.5
-        fin_low = fin_lamb - delta_fin * 0.5
-        fin_upp = fin_lamb + delta_fin * 0.5
-
-        # Create resampling matrix
-        resamp_mat = np.zeros(shape=(n_fin_lamb, n_orig_lamb))
-
-        for i in range(n_fin_lamb):
-            # Calculate the contribution of each original bin to the
-            # resampled bin
-            l_inf = np.where(orig_low > fin_low[i], orig_low, fin_low[i])
-            l_sup = np.where(orig_upp < fin_upp[i], orig_upp, fin_upp[i])
-
-            # Interval overlap of each original bin for current resampled
-            # bin; negatives clipped
-            dl = (l_sup - l_inf).clip(0)
-
-            # This will only happen at the edges of lorig.
-            # Discard resampled bin if it's not fully covered (> 99%) by the
-            #  original bin -- only happens at the edges of the original bins
-            if 0 < dl.sum() < 0.99 * delta_fin:
-                dl = 0 * orig_lamb
-
-            resamp_mat[i, :] = dl
-
-        resamp_mat /= delta_fin
-
-        return resamp_mat
-
 
 def _tie_gamma(compound_model, model):
     # Find the index of the original model in the compound model
     mod_ind = compound_model._submodels.index(model)
 
-    # The auto-generated name of the parameter in the compoound model
+    # The auto-generated name of the parameter in the compound model
     param_name = "lambda_0_{}".format(mod_ind)
     lambda_val = getattr(compound_model, param_name).value
 
