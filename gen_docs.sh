@@ -12,7 +12,7 @@ git push origin master
 git checkout gh-pages
 rm -rf .
 touch .nojekyll
-git checkout master docs/build/html
+git checkout master docs/_build/html
 mv ./docs/_build/html/* ./
 rm -rf ./docs
 git add -A
