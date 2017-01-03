@@ -36,6 +36,9 @@ class Spectrum1D:
 
     @property
     def model(self):
+        """
+        Returns the complete :class:`astropy.modeling.Models` object.
+        """
         if self._model is None:
             self._model = self._continuum_model
 
@@ -46,6 +49,17 @@ class Spectrum1D:
 
     @property
     def dispersion(self):
+        """
+        The dispersion axis of the spectral object. This property will return a
+        default dispersion if no custom dispersion has been provided. The
+        returned dispersion object will also be rebinned if a binning matrix
+        has been calculated.
+
+        Returns
+        -------
+        dispersion : ndarray
+            The spectral dispersion values.
+        """
         dispersion = self._dispersion
 
         if dispersion is None:
@@ -58,12 +72,32 @@ class Spectrum1D:
         return dispersion
 
     def velocity(self, x_0=None, mask=None):
-        mask = mask if mask is not None else np.ones(shape=self.dispersion.shape, dtype=bool)
+        """
+        Calculates the velocity values of the dispersion axis.
+
+        Parameters
+        ----------
+        x_0 : float
+            Lambda value of the center wavelength element.
+        mask : ndarray
+            Boolean array describing which elements are to be included in the
+            returned velocity array.
+
+        Returns
+        -------
+        velocity : ndarray
+            Velocity values given the central wavelength and dispersion
+            information.
+        """
+        mask = mask if mask is not None else np.ones(
+            shape=self.dispersion.shape, dtype=bool)
         center = x_0 or self.get_profile(0.0).lambda_0
         dispersion = self.dispersion[mask] * u.Angstrom
         center = center * u.Angstrom
-        return ((dispersion - center) /
-                dispersion * c.c.cgs).to("km/s").value
+        velocity = ((dispersion - center) /
+                    dispersion * c.c.cgs).to("km/s").value
+
+        return velocity
 
     @property
     def flux(self):
