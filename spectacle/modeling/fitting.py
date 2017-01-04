@@ -43,8 +43,8 @@ class Fitter:
             An array of indices providing the peak locations in the original
             spectrum object.
         """
-        continuum = np.median(spectrum.flux)
-        inv_flux = continuum - spectrum.flux
+        continuum = np.median(spectrum.data)
+        inv_flux = continuum - spectrum.data
 
         indexes = peakutils.indexes(
             inv_flux,
@@ -72,14 +72,14 @@ class Fitter:
 class LevMarFitter(Fitter):
     def __call__(self, spectrum, strict=False):
         # Create a new spectrum object with the same dispersion
-        result_spectrum = Spectrum1D(dispersion=spectrum.lambda_bins)
+        result_spectrum = Spectrum1D(dispersion=spectrum.dispersion)
 
         # Find the lines in the flux array
         indexes = self._find_lines(spectrum, strict=strict)
 
         # Add a new line to the empty spectrum object for each found line
         for ind in indexes:
-            result_spectrum.add_line(lambda_0=spectrum.lambda_bins[ind],
+            result_spectrum.add_line(lambda_0=spectrum.dispersion[ind],
                                      v_doppler=1e7,
                                      column_density=10**14,
                                      # name=ION_TABLE['name'][ind]
@@ -90,8 +90,8 @@ class LevMarFitter(Fitter):
         # fitter = LevMarLSQFitter()
 
         model_fit = fitter(result_spectrum.model,
-                           spectrum.lambda_bins,
-                           spectrum.flux,
+                           spectrum.dispersion,
+                           spectrum.data,
                            sigma=spectrum.uncertainty,
                            maxiter=min(4000, 250 * len(indexes))
                            )

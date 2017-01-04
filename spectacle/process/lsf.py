@@ -24,8 +24,6 @@ class COSLSF(LSF):
     def __init__(self):
         self.kernel = COSKernel1D()
 
-        super(COSLSF, self).__init__()
-
 
 class GaussianLSF(LSF):
     """
@@ -33,8 +31,6 @@ class GaussianLSF(LSF):
     """
     def __init__(self, *args, **kwargs):
         self.kernel = Gaussian1DKernel(*args, **kwargs)
-
-        super(GaussianLSF, self).__init__()
 
 
 class COSKernel1D(Kernel1D):

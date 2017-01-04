@@ -26,8 +26,8 @@ def _format_arrays(a, v, use_tau=False, use_region=True):
         al, vl = unp.uarray(a.tau[mask], a.tau_uncertainty[mask]), \
                  unp.uarray(v.tau[mask], v.tau_uncertainty[mask])
     else:
-        al, vl = unp.uarray(a.flux[mask], a.uncertainty[mask]), \
-                 unp.uarray(v.flux[mask], v.uncertainty[mask])
+        al, vl = unp.uarray(a.data[mask], a.uncertainty[mask]), \
+                 unp.uarray(v.data[mask], v.uncertainty[mask])
 
     d_al = a.dispersion[1] - a.dispersion[0]
     d_vl = v.dispersion[1] - v.dispersion[0]
@@ -44,14 +44,14 @@ def _format_arrays(a, v, use_tau=False, use_region=True):
         if use_tau:
             al = unp.uarray(a.tau[mask], a.tau_uncertainty[mask])
         else:
-            al = unp.uarray(a.flux[mask], a.uncertainty[mask])
+            al = unp.uarray(a.data[mask], a.uncertainty[mask])
     elif d_vl > d_al:
         v = v.resample(a.dispersion)
 
         if use_tau:
             vl = unp.uarray(v.tau[mask], v.tau_uncertainty[mask])
         else:
-            vl = unp.uarray(v.flux[mask], v.uncertainty[mask])
+            vl = unp.uarray(v.data[mask], v.uncertainty[mask])
 
     return al, vl, mask
 
@@ -102,7 +102,7 @@ def autocorrelate(a, use_tau=False):
     if use_tau:
         af = unp.uarray(a.tau, a.tau_uncertainty)
     else:
-        af = unp.uarray(a.flux, a.uncertainty)
+        af = unp.uarray(a.data, a.uncertainty)
 
     # fin = unp.uarray(np.zeros(a.flux.size), np.zeros(a.flux.size))
     #

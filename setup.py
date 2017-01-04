@@ -18,6 +18,7 @@ setup(
         "emcee",
         "uncertainties",
         "pyyaml",
-        "six"
+        "six",
+        "pytest"
     ]
 )

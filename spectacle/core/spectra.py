@@ -7,29 +7,37 @@ from astropy import constants as c
 from astropy import units as u
 from astropy.convolution import convolve
 from astropy.modeling import models, fitting
+from astropy.nddata import NDDataRef, NDUncertainty, StdDevUncertainty
+from astropy.wcs import WCS, WCSSUB_SPECTRAL
 from uncertainties import unumpy as unp
 
 import logging
 
 
-class Spectrum1D:
-    def __init__(self, dispersion=None, flux=None, uncertainty=None):
-        self._uncertainty = uncertainty
-        self._flux = flux
+class Spectrum1D(NDDataRef):
+    def __init__(self, data, dispersion=None, uncertainty=None,
+                 dispersion_unit=None, **kwargs):
+        # If the uncertainty value is not an NDUncertainty class, make it so
+        if not isinstance(uncertainty, NDUncertainty):
+            if uncertainty is None:
+                # Provide an uncertainty array with no value
+                uncertainty = np.zeros(data.size)
+
+            # We assume the uncertainties are standard deviations
+            uncertainty = StdDevUncertainty(uncertainty)
+
+        super(Spectrum1D, self).__init__(data, uncertainty=uncertainty,
+                                         **kwargs)
+
         self._dispersion = dispersion
-        self._mask = None
+        self._dispersion_unit = None
         self._lsfs = []
         self._noise = []
         self._line_models = []
         self._remat = None
         self._model = None
 
-        if flux is None:
-            self._continuum_model = models.Linear1D(slope=0.0, intercept=1.0,
-                                                    fixed={'slope': True,
-                                                           'intercept': True})
-        else:
-            self._continuum_model = self._find_continuum()
+        self._continuum_model = self._find_continuum()
 
     def __repr__(self):
         return self.model
@@ -48,6 +56,50 @@ class Spectrum1D:
         return self._model
 
     @property
+    def data(self):
+        """
+        Returns the calculated flux of the spectrum. This is either
+
+        1. Defined explicitly via some real or synthetic data, or
+        2. Calculated based on a set of models representing the continuum and
+           any associated absorption features.
+
+        In all cases, any noise defined by the user will be added, as well as
+        any line spread functions or resampling.
+
+        Returns
+        -------
+        data : ndarray
+            The resulting data array representing the flux of the spectrum.
+
+        """
+        if self._data is None:
+            data = self.model(self.dispersion)
+        else:
+            data = self._data
+
+        # Add noise before apply lsf
+        for noise in self._noise:
+            data += noise
+
+        # Apply LSFs
+        for lsf in self._lsfs:
+            # Convolving has unintended effects on the ends of the spectrum.
+            # Use tau instead.
+            tau = np.log(1/data)
+            tau = convolve(tau, lsf.kernel)
+            data = np.exp(-tau)
+
+        # Apply resampling
+        if self._remat is not None:
+            data = np.dot(self._remat, data)
+
+        # Flux values cannot be negative
+        data[data < 0.0] = 0.0
+
+        return data
+
+    @property
     def dispersion(self):
         """
         The dispersion axis of the spectral object. This property will return a
@@ -60,16 +112,59 @@ class Spectrum1D:
         dispersion : ndarray
             The spectral dispersion values.
         """
+        # If dispersion has not yet been defined, attempt to use the wcs
+        # information, if it exists
+        if self._dispersion is None and self.wcs is not None:
+            self._dispersion = np.arange(self.data.shape[0])
+
+            if isinstance(self.wcs, WCS):
+                # Try to reference the spectral axis
+                wcs_spec = self.wcs.sub([WCSSUB_SPECTRAL])
+
+                # Check to see if it actually is a real coordinate description
+                if wcs_spec.naxis == 0:
+                    # It's not real, so attempt to get the spectral axis by
+                    # specifying axis by integer
+                    wcs_spec = self.wcs.sub([self.wcs.naxis])
+
+                # Construct the dispersion array
+                self._dispersion = wcs_spec.all_pix2world(
+                    np.arange(self.data.shape[0]), 0)[0]
+
         dispersion = self._dispersion
 
+        # If dispersion is still none, create a basic wavelength array
         if dispersion is None:
-            dispersion = np.arange(0, 2000, 0.1)
+            dispersion = np.linspace(0, 2000, self.data.size)
 
         if self._remat is not None:
             dispersion = np.dot(self._remat, dispersion)
 
-        # return ma.masked_array(dispersion, self._mask)
         return dispersion
+
+    @property
+    def dispersion_unit(self):
+        # If wcs information is provided, attempt to get the dispersion unit
+        # from the header
+        if self._dispersion_unit is None and self.wcs is not None:
+            try:
+                self._dispersion_unit = self.wcs.wcs.cunit[0]
+            except AttributeError:
+                logging.warning("No dispersion unit information in WCS.")
+
+                try:
+                    self._dispersion_unit = u.Unit(
+                        self.meta['header']['cunit'][0])
+                except KeyError:
+                    logging.warning("No dispersion unit information in meta.")
+
+                    self._dispersion_unit = u.Unit("")
+
+        return self._dispersion_unit
+
+    @dispersion_unit.setter
+    def dispersion_unit(self, value):
+        self._dispersion_unit = value
 
     def velocity(self, x_0=None, mask=None):
         """
@@ -99,46 +194,9 @@ class Spectrum1D:
 
         return velocity
 
-    @property
-    def flux(self):
-        if self._flux is None:
-            flux = self.model(self.dispersion)
-        else:
-            flux = self._flux
-
-        # Add noise before apply lsf
-        for noise in self._noise:
-            flux += noise
-
-        # Apply LSFs
-        for lsf in self._lsfs:
-            # Convolving has unintended effects on the ends of the spectrum.
-            # Use tau instead.
-            tau = np.log(1/flux)
-            tau = convolve(tau, lsf.kernel)
-            flux = np.exp(-tau)
-
-        # Apply resampling
-        if self._remat is not None:
-            flux = np.dot(self._remat, flux)
-
-        # Flux values cannot be negative
-        flux[flux < 0.0] = 0.0
-
-        # flux = ma.masked_array(flux, self._mask)
-
-        return flux
-
-    @flux.setter
-    def flux(self, value):
-        self._flux = value
-
-    @property
+    @NDDataRef.uncertainty.getter
     def uncertainty(self):
-        if self._uncertainty is None:
-            uncert = np.zeros(self.flux.size)
-        else:
-            uncert = self._uncertainty
+        uncert = self._uncertainty
 
         # Apply LSFs
         for lsf in self._lsfs:
@@ -154,19 +212,15 @@ class Spectrum1D:
 
         return uncert
 
-    @uncertainty.setter
-    def uncertainty(self, value):
-        self._uncertainty = value
-
     @property
     def tau(self):
-        tau = unp.log(1.0/unp.uarray(self.flux, self.uncertainty))
+        tau = unp.log(1.0 / unp.uarray(self.data, self.uncertainty))
 
         return unp.nominal_values(tau)
 
     @property
     def tau_uncertainty(self):
-        tau = unp.log(1.0/unp.uarray(self.flux, self.uncertainty))
+        tau = unp.log(1.0 / unp.uarray(self.data, self.uncertainty))
 
         return unp.std_devs(tau)
 
@@ -179,63 +233,41 @@ class Spectrum1D:
         """
         List all available line names.
         """
-        print(ION_TABLE)
+        return ION_TABLE
 
     def _find_continuum(self, mode='LinearLSQFitter'):
         cont = models.Linear1D(slope=0.0,
-                               intercept=np.median(self.flux))
+                               intercept=np.median(self.data))
         fitter = getattr(fitting, mode)()
-        cont_fit = fitter(cont, self.dispersion, self.flux,
-                          weights=np.abs(np.median(self.flux) -
-                                         self.flux) ** -3)
+        cont_fit = fitter(cont, self.dispersion, self.data,
+                          weights=np.abs(np.median(self.data) -
+                                         self.data) ** -3)
 
         return cont_fit
 
-    def copy(self):
-        spectrum_copy = self.__class__()
-        spectrum_copy._uncertainty = self._uncertainty
-        spectrum_copy._flux = self._flux
-        spectrum_copy._dispersion = self._dispersion
-        spectrum_copy._mask = self._mask
-        spectrum_copy._lsfs = self._lsfs
-        spectrum_copy._continuum_model = self._continuum_model
-        spectrum_copy._remat = self._remat
-        spectrum_copy._model = self._model
-
-        return spectrum_copy
-
     @classmethod
-    def read(cls, filename, format='fits'):
-        from astropy.table import Table
+    def copy(cls, original, deep_copy=True, **kwargs):
+        """
+        Create a new `Spectrum1D` object using current property
+        values. Takes all the arguments a Spectrum1D expects, arguments that
+        are not included use this instance's values.
+        """
+        self_kwargs = {"data": original._data,
+                       "dispersion": original._dispersion,
+                       "unit": original.unit, "wcs": original.wcs,
+                       "uncertainty": original._uncertainty,
+                       "mask": original.mask, "meta": original.meta}
 
-        t = Table.read(filename, format)
+        self_kwargs.update(kwargs)
 
-        spectrum = cls(dispersion=t['dispersion'].data, flux=t['flux'].data,
-                       uncertainty=t['uncertainty'].data)
-
-        return spectrum
-
-    def write(self, filename='spectrum'):
-        from astropy.table import Table
-
-        t = Table([self.dispersion, self.flux, self.uncertainty], names=(
-            'dispersion', 'flux', 'uncertainty'))
-        t.write(filename, format='fits')
-
-    def set_mask(self, mask):
-        if np.array(mask).shape != self._flux.shape or \
-                        np.array(mask).shape != self._dispersion.shape:
-            logging.warning("Mask shape does not match data shape.")
-            return
-
-        self._mask = mask
+        return cls(copy=deep_copy, **self_kwargs)
 
     def add_lsf(self, lsf):
         self._lsfs.append(lsf)
 
     def add_noise(self, std_dev=0.2):
         if std_dev > 0:
-            noise = np.random.normal(0., std_dev, self.flux.size)
+            noise = np.random.normal(0., std_dev, self.data.size)
             self._noise.append(noise)
 
             return noise
@@ -244,13 +276,13 @@ class Spectrum1D:
                  gamma=None, delta_v=None, delta_lambda=None, name=None):
         if name is not None:
             ind = np.where(ION_TABLE['name'] == name)
-            lambda_0 = ION_TABLE['wave'][ind][0]
+            lambda_0 = ION_TABLE['wave'][ind]
         else:
             ind = find_index(ION_TABLE['wave'], lambda_0)
-            name = ION_TABLE['name'][ind][0]
+            name = ION_TABLE['name'][ind]
 
         if f_value is None:
-            f_value = ION_TABLE['osc_str'][ind][0]
+            f_value = ION_TABLE['osc_str'][ind]
 
         model = Voigt1D(lambda_0=lambda_0, f_value=f_value, gamma=gamma or 0,
                         v_doppler=v_doppler, column_density=column_density,
@@ -336,7 +368,7 @@ class Spectrum1D:
         tau : float
             The value of the optical depth at the given wavelength.
         """
-        flux = flux = unp.uarray(self.flux, self.uncertainty)
+        flux = unp.uarray(self.data, self.uncertainty)
         idx = (np.abs(self.dispersion - x_0)).argmin()
         tau = unp.log(1.0/flux[idx])
 
@@ -358,7 +390,7 @@ class Spectrum1D:
             The centroid of the profile.
         """
         disp = self.dispersion
-        flux = unp.uarray(self.flux, self.uncertainty)
+        flux = unp.uarray(self.data, self.uncertainty)
 
         cent = np.trapz(disp * flux, disp) / np.trapz(flux, disp)
 
@@ -377,7 +409,7 @@ class Spectrum1D:
 
         mask = (self.dispersion >= x1) & (self.dispersion <= x2)
         disp = self.dispersion[mask]
-        flux = self.flux[mask]
+        flux = self.data[mask]
         uncert = self.uncertainty[mask]
 
         # Compose the uncertainty array
