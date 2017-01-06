@@ -39,3 +39,6 @@ class TestSpectrum1D:
         assert isinstance(spec.dispersion_unit, Unit)
         assert spec.unit.name == "Jy"
         assert spec.dispersion_unit.name == "Angstrom"
+
+    def test_create_from_file(self):
+        pass

@@ -11,6 +11,7 @@ from scipy import optimize
 
 from ..core.utils import ION_TABLE, find_index
 from ..core.spectra import Spectrum1D
+from ..core.models import Spectrum1DModel
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -25,7 +26,7 @@ class Fitter:
     def __call__(self, *args, **kwargs):
         raise NotImplementedError
 
-    def _find_lines(self, spectrum, strict):
+    def _find_lines(self, spectrum, strict=False):
         """
         Simple peak finder.
 
@@ -44,7 +45,7 @@ class Fitter:
             spectrum object.
         """
         continuum = np.median(spectrum.data)
-        inv_flux = continuum - spectrum.data
+        inv_flux = 1 - spectrum.data
 
         indexes = peakutils.indexes(
             inv_flux,
@@ -68,32 +69,50 @@ class Fitter:
 
         return indexes
 
+    def _find_continuum(self, spectrum, mode='LinearLSQFitter'):
+        data_med = np.median(spectrum.data)
+        cont = models.Linear1D(slope=0.0, intercept=data_med)
+
+        fitter = getattr(fitting, mode)()
+
+        # We only want to use weights if there is an appreciable difference
+        # between the median and the continuum
+        diff = np.abs(data_med - spectrum.data)
+        weights = diff ** -3 if np.sum(diff) > np.min(spectrum.data) else None
+
+        cont_fit = fitter(cont, spectrum.dispersion, spectrum.data,
+                          weights=weights)
+
+        return cont_fit
+
 
 class LevMarFitter(Fitter):
-    def __call__(self, spectrum, strict=False):
-        # Create a new spectrum object with the same dispersion
-        result_spectrum = Spectrum1D(dispersion=spectrum.dispersion)
+    def __call__(self, spectrum, model=None, strict=False):
+        if model is None:
+            # Create a new spectrum object with the same dispersion
+            model = Spectrum1DModel()
 
-        # Find the lines in the flux array
-        indexes = self._find_lines(spectrum, strict=strict)
+            # Find the lines in the flux array
+            indexes = self._find_lines(spectrum, strict=strict)
 
-        # Add a new line to the empty spectrum object for each found line
-        for ind in indexes:
-            result_spectrum.add_line(lambda_0=spectrum.dispersion[ind],
-                                     v_doppler=1e7,
-                                     column_density=10**14,
-                                     # name=ION_TABLE['name'][ind]
-                                     )
+            print("found {} lines".format(len(indexes)))
+
+            # Add a new line to the empty spectrum object for each found line
+            for ind in indexes:
+                model.add_line(lambda_0=spectrum.dispersion[ind],
+                               v_doppler=1e7, column_density=10**14,
+                               # name=ION_TABLE['name'][ind]
+                               )
 
         # Create fitter instance
-        fitter = LevMarCurveFitFitter()
-        # fitter = LevMarLSQFitter()
+        # fitter = LevMarCurveFitFitter()
+        fitter = LevMarLSQFitter()
 
-        model_fit = fitter(result_spectrum.model,
+        model_fit = fitter(model.model,
                            spectrum.dispersion,
                            spectrum.data,
-                           sigma=spectrum.uncertainty,
-                           maxiter=min(4000, 250 * len(indexes))
+                           # sigma=spectrum.uncertainty.array,
+                           maxiter=min(1000, 250 * len(model._line_models))
                            )
 
         # Grab the covariance matrix
@@ -105,21 +124,22 @@ class LevMarFitter(Fitter):
         # This is not robust. The covariance matrix does not include
         # constrained parameters, so we must insert some value for the
         # variance to make sure the number of parameters match.
-        for i, val in enumerate(model_fit.param_names):
-            if model_fit.tied.get(val) or model_fit.fixed.get(val):
-                param_cov = np.insert(param_cov, i, 0.0)
+        # for i, val in enumerate(model_fit.param_names):
+        #     if model_fit.tied.get(val) or model_fit.fixed.get(val):
+        #         param_cov = np.insert(param_cov, i, 0.0)
 
         # Update fit info
         self.fit_info = Table([model_fit.param_names,
-                               result_spectrum.model.parameters,
-                               model_fit.parameters, param_cov],
+                               model.model.parameters,
+                               model_fit.parameters,
+                               param_cov],
                               names=("Parameter", "Original Value",
                                      "Fitted Value", "Uncertainty"))
 
         # Update model with new parameters
-        result_spectrum.model.parameters = model_fit.parameters
+        model.model.parameters = model_fit.parameters
 
-        return result_spectrum
+        return model(spectrum.dispersion)
 
 
 @six.add_metaclass(fitting._FitterMeta)
