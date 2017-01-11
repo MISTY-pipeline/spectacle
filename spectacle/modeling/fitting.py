@@ -1,24 +1,40 @@
+import abc
+
+import numpy as np
 import peakutils
-from scipy.signal import savgol_filter
+import six
 from astropy.modeling import fitting, models
 from astropy.modeling.fitting import LevMarLSQFitter
 from astropy.table import Table
-from astropy.extern import six
-import numpy as np
-import abc
-import six
 from scipy import optimize
 
-from ..core.utils import ION_TABLE, find_index
-from ..core.spectra import Spectrum1D
-from ..core.models import Spectrum1DModel
+from spectacle.modeling.models import Absorption1D
+from ..core.utils import ION_TABLE, find_nearest
 
 
 @six.add_metaclass(abc.ABCMeta)
-class Fitter:
-    def __init__(self, noise=3.5, min_dist=100):
+class Fitter1D:
+    """
+    Base fitter class for routines that run on the
+    :class:`spectacle.core.spectra.Spectrum1D` object.
+    """
+    def __init__(self, threshold=0.3, min_dist=100):
+        """
+        The fitter class is responsible for finding absorption features using
+        a basic peak finding utility. This is done only if the fitting routine
+        is not supplied with a pre-made model object which contains user-
+        supplied lines.
+
+        Parameters
+        ----------
+        threshold : float
+            Normalized threshold. Only the peaks with amplitude higher than the
+            threshold will be detected.
+        min_dist :
+            The minimum distance between detected peaks.
+        """
         self.detrend = False
-        self.noise = noise
+        self.threshold = threshold
         self.min_dist = min_dist
         self.fit_info = None
 
@@ -49,7 +65,7 @@ class Fitter:
 
         indexes = peakutils.indexes(
             inv_flux,
-            thres=np.std(inv_flux) * self.noise/np.max(inv_flux),
+            thres=self.threshold, # np.std(inv_flux) * self.noise/np.max(inv_flux),
             min_dist=self.min_dist)
 
         indexes = np.array(indexes)
@@ -58,13 +74,13 @@ class Fitter:
             # Find the indices of the ion table that correspond with the found
             # indices in the peak search
             tab_indexes = np.array(list(set(
-                map(lambda x: find_index(ION_TABLE['wave'], x),
+                map(lambda x: find_nearest(ION_TABLE['wave'], x),
                     spectrum.dispersion[indexes]))))
 
             # Given the indices in the ion tab, find the indices in the
             #  dispersion array that correspond to the ion table lambda
             indexes = np.array(list(
-                map(lambda x: find_index(spectrum.dispersion, x),
+                map(lambda x: find_nearest(spectrum.dispersion, x),
                     ION_TABLE['wave'][tab_indexes])))
 
         return indexes
@@ -86,11 +102,11 @@ class Fitter:
         return cont_fit
 
 
-class LevMarFitter(Fitter):
+class LevMarFitter(Fitter1D):
     def __call__(self, spectrum, model=None, strict=False):
         if model is None:
             # Create a new spectrum object with the same dispersion
-            model = Spectrum1DModel()
+            model = Absorption1D()
 
             # Find the lines in the flux array
             indexes = self._find_lines(spectrum, strict=strict)

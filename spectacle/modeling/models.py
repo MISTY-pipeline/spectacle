@@ -4,9 +4,9 @@ from astropy.table import Table
 import numpy as np
 import os
 
-from .utils import find_index, ION_TABLE
-from .profiles import TauProfile
-from .spectra import Spectrum1D
+from spectacle.core.utils import find_nearest, ION_TABLE
+from spectacle.core.profiles import TauProfile
+from spectacle.core.spectra import Spectrum1D
 
 
 class Voigt1D(Fittable1DModel):
@@ -47,7 +47,7 @@ class Voigt1D(Fittable1DModel):
     #     return self.meta.get('lambda_bins')
 
 
-class Spectrum1DModel:
+class Absorption1D:
     def __init__(self):
         self._continuum_model = None
         self._line_models = []
@@ -107,7 +107,7 @@ class Spectrum1DModel:
             ind = np.where(ION_TABLE['name'] == name)
             lambda_0 = ION_TABLE['wave'][ind]
         else:
-            ind = find_index(ION_TABLE['wave'], lambda_0)
+            ind = find_nearest(ION_TABLE['wave'], lambda_0)
             name = ION_TABLE['name'][ind]
 
         if f_value is None:
@@ -145,7 +145,7 @@ class Spectrum1DModel:
         v_x_0_arr = np.array([x.lambda_0.value for x in v_arr])
 
         if len(v_x_0_arr) > 1:
-            ind = find_index(v_x_0_arr, x_0)
+            ind = find_nearest(v_x_0_arr, x_0)
 
             # Retrieve the voigt profile at that wavelength
             v_prof = v_arr[ind]
@@ -153,13 +153,6 @@ class Spectrum1DModel:
             v_prof = v_arr[0]
 
         return v_prof
-
-    def _get_range_mask(self, x_0=None):
-        profile = np.sum(self._line_models) #self.get_profile(x_0 or 0.0)
-        vdisp = profile(self.dispersion)
-        cont = np.zeros(self.dispersion.shape)
-
-        return ~np.isclose(vdisp, cont, rtol=1e-2, atol=1e-5)
 
 
 def _tie_gamma(compound_model, model):
@@ -170,7 +163,7 @@ def _tie_gamma(compound_model, model):
     param_name = "lambda_0_{}".format(mod_ind)
     lambda_val = getattr(compound_model, param_name).value
 
-    ind = find_index(ION_TABLE['wave'], lambda_val)
+    ind = find_nearest(ION_TABLE['wave'], lambda_val)
     gamma_val = ION_TABLE['gamma'][ind]
 
     return gamma_val

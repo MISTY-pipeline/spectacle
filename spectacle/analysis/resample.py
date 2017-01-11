@@ -11,10 +11,8 @@ def resample(orig_lamb, fin_lamb, **kwargs):
     ----------
     orig_lamb : ndarray
         Original dispersion grid.
-
     fin_lamb : ndarray
         Final dispersion grid.
-
     kwargs : dict
         Extra keyword arguments to pass to functions.
 
@@ -23,7 +21,11 @@ def resample(orig_lamb, fin_lamb, **kwargs):
     resample_mat : ndarray
         The resampling matrix to be applied to data arrays.
     """
-    if np.all(np.diff(orig_lamb - fin_lamb) == 0):
+    orig_space = orig_lamb[1:] - orig_lamb[:-1]
+    fin_space = fin_lamb[1:] - fin_lamb[:-1]
+
+    if np.all(orig_space == orig_space[0]) and \
+       np.all(fin_space == fin_space[0]):
         logging.info("Re-sampling: original and final grids are uniform.")
         mat = _uniform_matrix(orig_lamb, fin_lamb)
     else:
@@ -106,10 +108,8 @@ def _nonuniform_matrix(orig_lamb, fin_lamb, extrapolate=False):
     ----------
     orig_lamb : array_like
         Original spectrum lambda array.
-
     fin_lamb : array_like
         Spectrum lambda array in which the spectrum should be sampled.
-
     extrapolate : boolean, optional
         Extrapolate values, i.e. values for fin_lamb < orig_lamb[0] are set to
         match orig_lamb[0] and values for fin_lamb > orig_lamb[-1] are set to

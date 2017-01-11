@@ -3,28 +3,29 @@ import numpy as np
 from astropy.table import Table
 
 
-def find_index(array, value):
+def find_nearest(array, value, side="left"):
     """
     The function below works whether or not the input array is sorted. The
     function below returns the index of the input array corresponding to the
     closest value, which is somewhat more general.
     """
-    array = np.array(array)
-    idx_sorted = np.argsort(array)
-    sorted_array = np.array(array[idx_sorted])
-    idx = np.searchsorted(sorted_array, value, side="left")
-        
-    if idx >= len(array):
-        idx_nearest = idx_sorted[len(array)-1]
-    elif idx == 0:
-        idx_nearest = idx_sorted[0]
+    if side == "right":
+        idx = len(array) - 1 - (np.abs(array[::-1]-value)).argmin()
     else:
-        if abs(value - sorted_array[idx-1]) < abs(value - sorted_array[idx]):
-            idx_nearest = idx_sorted[idx-1]
-        else:
-            idx_nearest = idx_sorted[idx]
+        idx = (np.abs(array-value)).argmin()
 
-    return idx_nearest
+    return idx
+
+
+def find_bounds(array, start_index, value, cap=False):
+    if cap:
+        array = np.array(array)
+        array[array > value] = value
+
+    left_ind = find_nearest(array[:start_index:-1], value, side="right")
+    right_ind = start_index + find_nearest(array[start_index:], value)
+
+    return left_ind, right_ind
 
 
 ION_TABLE = Table.read(
