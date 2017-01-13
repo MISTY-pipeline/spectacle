@@ -49,10 +49,17 @@ class Voigt1D(Fittable1DModel):
 
 
 class Absorption1D:
-    def __init__(self):
+    def __init__(self, line_list=None):
         self._continuum_model = None
         self._line_models = []
         self._model = None
+
+        if line_list is None:
+            line_list = os.path.abspath(
+                os.path.join(__file__, '..', '..', 'data', 'line_list',
+                             'atoms.ecsv'))
+
+        self._line_list = Table.read(line_list, format='ascii.ecsv')
 
     def __repr__(self):
         return self.model.__repr__()
@@ -100,7 +107,7 @@ class Absorption1D:
         """
         List all available line names.
         """
-        return ION_TABLE
+        return self._line_list
 
     def add_line(self, v_doppler, column_density, lambda_0=None, f_value=None,
                  gamma=None, delta_v=None, delta_lambda=None, name=None):

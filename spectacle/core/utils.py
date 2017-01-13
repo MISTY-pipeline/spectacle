@@ -28,7 +28,4 @@ def find_bounds(array, start_index, value, cap=False):
     return left_ind, right_ind
 
 
-ION_TABLE = Table.read(
-    os.path.abspath(
-        os.path.join(__file__, '..', '..', 'data', 'line_list', 'atoms.ecsv')),
-    format='ascii.ecsv')
+ION_TABLE =
