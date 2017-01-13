@@ -137,7 +137,6 @@ class Absorption1D:
 
         # If gamma has not been explicitly defined, tie it to lambda
         if gamma is None:
-            print(ind, line_registry['gamma'][ind])
             gamma_val = line_registry['gamma'][ind]
             model.gamma.value = gamma_val
             model.gamma.tied = lambda cmod, mod=model: _tie_gamma(cmod, mod)

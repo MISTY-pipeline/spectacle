@@ -194,6 +194,11 @@ class Spectrum1D(NDDataRef):
 
         return uncert
 
+    @uncertainty.setter
+    def uncertainty(self, value):
+        value = StdDevUncertainty(value)
+        NDDataRef.uncertainty.fset(self, value)
+
     @property
     def tau(self):
         tau = unp.log(1.0 / unp.uarray(self.data, self.uncertainty))
