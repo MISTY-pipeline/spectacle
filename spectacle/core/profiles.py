@@ -35,12 +35,14 @@ class TauProfile:
     dlambda : float
         Lambda bin width in Angstroms if lambda_bins is None. Default: 0.01.
     """
-    def __init__(self, lambda_0, f_value, gamma, v_doppler, column_density,
+    def __init__(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v=None, delta_lambda=None, lambda_bins=None,
                  n_lambda=12000, dlambda=0.01):
         charge_proton = u.Quantity(4.8032056e-10, 'esu')
         tau_factor = ((np.sqrt(np.pi) * charge_proton ** 2 /
                        (u.M_e.cgs * c.c.cgs))).cgs.value
+
+        lambda_bins = x
 
         # shift lambda_0 by delta_v
         if delta_v is not None:

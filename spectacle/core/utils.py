@@ -30,5 +30,5 @@ def find_bounds(array, start_index, value, cap=False):
 
 ION_TABLE = Table.read(
     os.path.abspath(
-        os.path.join(__file__, '..', '..', 'data', 'line_list', 'ions.ecsv')),
+        os.path.join(__file__, '..', '..', 'data', 'line_list', 'atoms.ecsv')),
     format='ascii.ecsv')

@@ -251,7 +251,7 @@ class Spectrum1D(NDDataRef):
 
         inds = np.where(diff)[0]
 
-        return
+        return inds
 
     def fwhm(self, x_0):
         """
@@ -290,39 +290,79 @@ class Spectrum1D(NDDataRef):
             The value of the optical depth at the given wavelength.
         """
         flux = unp.uarray(self.data, self.uncertainty)
-        idx = (np.abs(self.dispersion - x_0)).argmin()
+        idx = find_nearest(self.data, x_0)
         tau = unp.log(1.0/flux[idx])
 
         return unp.nominal_values(tau), unp.std_devs(tau)
 
-    def centroid(self, x_0):
+    def centroid(self, x_0=None, x_range=None, line_name=None):
         """
         Return the centroid for Voigt profile near the given wavelength.
 
         Parameters
         ----------
-        x_0 : float
+        x_0 : float, optional
             Wavelength new the given profile from which to calculate the
             centroid.
+        x_range : list-like, optional
+            A list or tuple of size 2 which define the start and end
+            wavelengths demarcating the range of interest.
+        line_name : string, optional
+            This will trigger a look-up of the `x_0` value in the provided ion
+            table.
 
         Returns
         -------
-        cent : float
-            The centroid of the profile.
+        float, float
+            The centroid of the profile, and the associated uncertainty.
         """
-        disp = self.dispersion
-        flux = unp.uarray(self.data, self.uncertainty)
+        if x_range is not None and (isinstance(x_range, list) or
+                                        isinstance(x_range, tuple)):
+            x1, x2 = x_range
+        elif x_0 is not None:
+            ind_x = find_nearest(self.dispersion, x_0)
+            ind_left, ind_right = find_bounds(self.data, ind_x, 1.0, cap=True)
+            x1, x2 = self.dispersion[ind_left], self.dispersion[ind_right]
+        else:
+            x1, x2 = self.dispersion[0], self.dispersion[-1]
+
+        mask = (self.dispersion >= x1) & (self.dispersion <= x2)
+        disp = self.dispersion[mask]
+        flux = self.data[mask]
+        uncert = self.uncertainty[mask]
 
         cent = np.trapz(disp * flux, disp) / np.trapz(flux, disp)
 
         return unp.nominal_values(cent), unp.std_devs(cent)
 
-    def equivalent_width(self, x_range=None, x_0=None, line_name=None):
+    def equivalent_width(self, x_0=None, x_range=None, line_name=None):
+        """
+        Return the centroid for Voigt profile near the given wavelength.
+
+        Parameters
+        ----------
+        x_0 : float, optional
+            Wavelength new the given profile from which to calculate the
+            centroid.
+        x_range : list-like, optional
+            A list or tuple of size 2 which define the start and end
+            wavelengths demarcating the range of interest.
+        line_name : string, optional
+            This will trigger a look-up of the `x_0` value in the provided ion
+            table.
+
+        Returns
+        -------
+        float, float
+            The equivalent width of the profile, and the associated
+            uncertainty.
+        """
         if x_range is not None and (isinstance(x_range, list) or
                                     isinstance(x_range, tuple)):
             x1, x2 = x_range
         elif x_0 is not None:
             ind_x = find_nearest(self.dispersion, x_0)
+            # TODO: try applying a smoothing kernel before calculating bounds
             ind_left, ind_right = find_bounds(self.data, ind_x, 1.0, cap=True)
             x1, x2 = self.dispersion[ind_left], self.dispersion[ind_right]
         else:

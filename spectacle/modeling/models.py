@@ -3,6 +3,7 @@ from astropy.modeling.models import Linear1D
 from astropy.table import Table
 import numpy as np
 import os
+import logging
 
 from spectacle.core.utils import find_nearest, ION_TABLE
 from spectacle.core.profiles import TauProfile
@@ -25,7 +26,7 @@ class Voigt1D(Fittable1DModel):
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
         #lambda_bins = self.meta.get('lambda_bins', None)
-        profile = TauProfile(lambda_0=lambda_0, f_value=f_value,
+        profile = TauProfile(x, lambda_0=lambda_0, f_value=f_value,
                              gamma=gamma, v_doppler=v_doppler,
                              column_density=column_density,
                              n_lambda=x.size,# lambda_bins=lambda_bins,
@@ -104,7 +105,16 @@ class Absorption1D:
     def add_line(self, v_doppler, column_density, lambda_0=None, f_value=None,
                  gamma=None, delta_v=None, delta_lambda=None, name=None):
         if name is not None:
-            ind = np.where(ION_TABLE['name'] == name)
+            ind = np.where(ION_TABLE['name'] == name)[0]
+
+            if len(ind) == 0:
+                logging.error("No line with name {} found.".format(name))
+                return
+            elif len(ind) > 1:
+                logging.warning(
+                    "Multiple lines found with name {}.".format(name))
+
+            ind = ind[0]
             lambda_0 = ION_TABLE['wave'][ind]
         else:
             ind = find_nearest(ION_TABLE['wave'], lambda_0)
@@ -115,12 +125,11 @@ class Absorption1D:
 
         model = Voigt1D(lambda_0=lambda_0, f_value=f_value, gamma=gamma or 0,
                         v_doppler=v_doppler, column_density=column_density,
-                        delta_v=delta_v, delta_lambda=delta_lambda, name=name,
-                        #meta={'lambda_bins': self.dispersion}
-                        )
+                        delta_v=delta_v, delta_lambda=delta_lambda, name=name)
 
         # If gamma has not been explicitly defined, tie it to lambda
         if gamma is None:
+            print(ind, ION_TABLE['gamma'][ind])
             gamma_val = ION_TABLE['gamma'][ind]
             model.gamma.value = gamma_val
             model.gamma.tied = lambda cmod, mod=model: _tie_gamma(cmod, mod)
@@ -140,6 +149,19 @@ class Absorption1D:
             self._line_models.remove(model)
 
     def get_profile(self, x_0):
+        """
+        Retrieves the specific Voigt profile from the model object.
+
+        Parameters
+        ----------
+        x_0 : float
+            The lambda value used to retrieve the related Voigt profile.
+
+        Returns
+        -------
+        v_prof : :class:`spectacle.modeling.models.Voigt1D`
+            The Voigt profile at the given lambda value.
+        """
         # Find the nearest voigt profile to the given central wavelength
         v_arr = sorted(self._line_models, key=lambda x: x.lambda_0.value)
         v_x_0_arr = np.array([x.lambda_0.value for x in v_arr])
@@ -153,6 +175,34 @@ class Absorption1D:
             v_prof = v_arr[0]
 
         return v_prof
+
+    def get_range_mask(self, dispersion, x_0=None):
+        """
+        Returns a mask for the model spectrum that indicates where the values
+        are discernible from the continuum. I.e. where the absorption data
+        is contained.
+
+        If a `x_0` value is provided, only the related Voigt profile will be
+        considered, otherwise, the entire model is considered.
+
+        Parameters
+        ----------
+        dispersion : array-like
+            The x values for which the model spectrum will be calculated.
+        x_0 : float, optional
+            The lambda value from which to grab a specific Voigt profile.
+
+        Returns
+        -------
+        array-like
+            Boolean array indicating indices of interest.
+
+        """
+        profile = self.model if x_0 is None else self.get_profile(x_0)
+        vdisp = profile(dispersion)
+        cont = np.zeros(dispersion.shape)
+
+        return ~np.isclose(vdisp, cont, rtol=1e-2, atol=1e-5)
 
 
 def _tie_gamma(compound_model, model):
