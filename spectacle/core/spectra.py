@@ -1,4 +1,4 @@
-from .utils import find_nearest, ION_TABLE, find_bounds
+from .utils import find_nearest, find_bounds
 from ..analysis.resample import resample
 
 import numpy as np

@@ -8,8 +8,9 @@ from astropy.modeling.fitting import LevMarLSQFitter
 from astropy.table import Table
 from scipy import optimize
 
-from spectacle.modeling.models import Absorption1D
-from ..core.utils import ION_TABLE, find_nearest
+from ..modeling.models import Absorption1D
+from ..core.utils import find_nearest
+from ..core.registries import line_registry
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -74,14 +75,14 @@ class Fitter1D:
             # Find the indices of the ion table that correspond with the found
             # indices in the peak search
             tab_indexes = np.array(list(set(
-                map(lambda x: find_nearest(ION_TABLE['wave'], x),
+                map(lambda x: find_nearest(line_registry['wave'], x),
                     spectrum.dispersion[indexes]))))
 
             # Given the indices in the ion tab, find the indices in the
             #  dispersion array that correspond to the ion table lambda
             indexes = np.array(list(
                 map(lambda x: find_nearest(spectrum.dispersion, x),
-                    ION_TABLE['wave'][tab_indexes])))
+                    line_registry['wave'][tab_indexes])))
 
         return indexes
 
@@ -117,7 +118,7 @@ class LevMarFitter(Fitter1D):
             for ind in indexes:
                 model.add_line(lambda_0=spectrum.dispersion[ind],
                                v_doppler=1e7, column_density=10**14,
-                               # name=ION_TABLE['name'][ind]
+                               # name=line_registry['name'][ind]
                                )
 
         # Create fitter instance

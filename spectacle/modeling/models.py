@@ -5,9 +5,10 @@ import numpy as np
 import os
 import logging
 
-from spectacle.core.utils import find_nearest, ION_TABLE
-from spectacle.core.profiles import TauProfile
-from spectacle.core.spectra import Spectrum1D
+from ..core.utils import find_nearest
+from ..core.profiles import TauProfile
+from ..core.spectra import Spectrum1D
+from ..core.registries import line_registry
 
 
 class Voigt1D(Fittable1DModel):
@@ -112,7 +113,7 @@ class Absorption1D:
     def add_line(self, v_doppler, column_density, lambda_0=None, f_value=None,
                  gamma=None, delta_v=None, delta_lambda=None, name=None):
         if name is not None:
-            ind = np.where(ION_TABLE['name'] == name)[0]
+            ind = np.where(line_registry['name'] == name)[0]
 
             if len(ind) == 0:
                 logging.error("No line with name {} found.".format(name))
@@ -122,13 +123,13 @@ class Absorption1D:
                     "Multiple lines found with name {}.".format(name))
 
             ind = ind[0]
-            lambda_0 = ION_TABLE['wave'][ind]
+            lambda_0 = line_registry['wave'][ind]
         else:
-            ind = find_nearest(ION_TABLE['wave'], lambda_0)
-            name = ION_TABLE['name'][ind]
+            ind = find_nearest(line_registry['wave'], lambda_0)
+            name = line_registry['name'][ind]
 
         if f_value is None:
-            f_value = ION_TABLE['osc_str'][ind]
+            f_value = line_registry['osc_str'][ind]
 
         model = Voigt1D(lambda_0=lambda_0, f_value=f_value, gamma=gamma or 0,
                         v_doppler=v_doppler, column_density=column_density,
@@ -136,8 +137,8 @@ class Absorption1D:
 
         # If gamma has not been explicitly defined, tie it to lambda
         if gamma is None:
-            print(ind, ION_TABLE['gamma'][ind])
-            gamma_val = ION_TABLE['gamma'][ind]
+            print(ind, line_registry['gamma'][ind])
+            gamma_val = line_registry['gamma'][ind]
             model.gamma.value = gamma_val
             model.gamma.tied = lambda cmod, mod=model: _tie_gamma(cmod, mod)
 
@@ -220,7 +221,7 @@ def _tie_gamma(compound_model, model):
     param_name = "lambda_0_{}".format(mod_ind)
     lambda_val = getattr(compound_model, param_name).value
 
-    ind = find_nearest(ION_TABLE['wave'], lambda_val)
-    gamma_val = ION_TABLE['gamma'][ind]
+    ind = find_nearest(line_registry['wave'], lambda_val)
+    gamma_val = line_registry['gamma'][ind]
 
     return gamma_val

@@ -1,6 +1,4 @@
-import os
 import numpy as np
-from astropy.table import Table
 
 
 def find_nearest(array, value, side="left"):
@@ -26,6 +24,3 @@ def find_bounds(array, start_index, value, cap=False):
     right_ind = start_index + find_nearest(array[start_index:], value)
 
     return left_ind, right_ind
-
-
-ION_TABLE =
