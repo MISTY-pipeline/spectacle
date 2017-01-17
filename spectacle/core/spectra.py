@@ -254,14 +254,32 @@ class Spectrum1D(NDDataRef):
 
         return new_spec
 
-    def _get_range_mask(self, x_0):
-        # This makes the assumption that the continuum has been normalized to 1
-        cont = np.ones(self.dispersion.shape)
-        diff = np.isclose(self.data, cont, rtol=1e-2, atol=1e-5)
+    def _get_line_mask(self, x_0):
+        ind_x = find_nearest(self.dispersion, x_0)
+        # TODO: try applying a smoothing kernel before calculating bounds
+        ind_left, ind_right = find_bounds(self.data, ind_x, 1.0, cap=True)
+        x1, x2 = self.dispersion[ind_left], self.dispersion[ind_right]
 
-        inds = np.where(diff)[0]
+        print(ind_x, x1, x2)
+        print("Value at {}: {}".format(ind_x, self.data[ind_x]))
 
-        return inds
+        mask = (self.dispersion >= x1) & (self.dispersion <= x2)
+
+        return mask
+
+    @property
+    def line_mask(self):
+        mask_list = []
+
+        for lambda_0 in self._lines.values():
+            mask_list.append(self._get_line_mask(lambda_0))
+
+        if len(mask_list) == 0:
+            line_mask = np.zeros(shape=self.dispersion.shape, dtype=bool)
+        else:
+            line_mask = np.logical_or.reduce(mask_list)
+
+        return line_mask
 
     def fwhm(self, x_0):
         """

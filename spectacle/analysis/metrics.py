@@ -5,10 +5,10 @@ import uncertainties.unumpy as unp
 
 def _format_arrays(a, v, use_tau=False):
     # Extract only the parts of the spectrum with data in it
-    # a_region_mask = a._get_range_mask()
-    # v_region_mask = v._get_range_mask()
-    a_region_mask = np.ones(a.data.shape, dtype=bool)
-    v_region_mask = np.ones(v.data.shape, dtype=bool)
+    a_region_mask = a.line_mask
+    v_region_mask = v.line_mask
+    # a_region_mask = np.ones(a.data.shape, dtype=bool)
+    # v_region_mask = np.ones(v.data.shape, dtype=bool)
 
     # Clip the spectra to the same range
     if a.dispersion[0] > v.dispersion[0]:
