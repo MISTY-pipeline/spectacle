@@ -21,6 +21,9 @@ class LineRegistry:
 
         return self._line_list[key]
 
+    def __repr__(self):
+        return self._line_list.__repr__()
+
     @staticmethod
     def parse(path, format):
         line_list = Table.read(path, format=format)

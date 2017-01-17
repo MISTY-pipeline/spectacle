@@ -55,13 +55,6 @@ class Absorption1D:
         self._line_models = []
         self._model = None
 
-        if line_list is None:
-            line_list = os.path.abspath(
-                os.path.join(__file__, '..', '..', 'data', 'line_list',
-                             'atoms.ecsv'))
-
-        self._line_list = Table.read(line_list, format='ascii.ecsv')
-
     def __repr__(self):
         return self.model.__repr__()
 
@@ -102,13 +95,6 @@ class Absorption1D:
     @property
     def continuum(self, dispersion):
         return self._continuum_model(dispersion)
-
-    @property
-    def line_list(self):
-        """
-        List all available line names.
-        """
-        return self._line_list
 
     def add_line(self, v_doppler, column_density, lambda_0=None, f_value=None,
                  gamma=None, delta_v=None, delta_lambda=None, name=None):
