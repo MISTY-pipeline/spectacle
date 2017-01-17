@@ -88,7 +88,8 @@ class Absorption1D:
         """
         data = self.model(dispersion)
 
-        mod_spec = Spectrum1D(data, dispersion=dispersion)
+        lines = {l.name: l.lambda_0 for l in self._line_models}
+        mod_spec = Spectrum1D(data, dispersion=dispersion, lines=lines)
 
         return mod_spec
 
