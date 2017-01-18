@@ -116,7 +116,7 @@ def autocorrelate(a, use_tau=False):
 
     # ret = np.mean(fin, axis=0)/(np.mean(fin, axis=0) ** 2)
 
-    return ret
+    return unp.nominal_values(ret), unp.std_devs(ret)
 
 
 def cross_correlate(a, v, use_tau=False):

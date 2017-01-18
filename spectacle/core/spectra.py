@@ -255,13 +255,10 @@ class Spectrum1D(NDDataRef):
         return new_spec
 
     def _get_line_mask(self, x_0):
-        ind_x = find_nearest(self.dispersion, x_0)
         # TODO: try applying a smoothing kernel before calculating bounds
-        ind_left, ind_right = find_bounds(self.data, ind_x, 1.0, cap=True)
+        ind_left, ind_right = find_bounds(self.dispersion, self.data, x_0, 1.0,
+                                          cap=True)
         x1, x2 = self.dispersion[ind_left], self.dispersion[ind_right]
-
-        print(ind_x, x1, x2)
-        print("Value at {}: {}".format(ind_x, self.data[ind_x]))
 
         mask = (self.dispersion >= x1) & (self.dispersion <= x2)
 
@@ -345,16 +342,15 @@ class Spectrum1D(NDDataRef):
             The centroid of the profile, and the associated uncertainty.
         """
         if x_range is not None and (isinstance(x_range, list) or
-                                        isinstance(x_range, tuple)):
-            x1, x2 = x_range
+                                    isinstance(x_range, tuple)):
+            mask = (self.dispersion >= x_range[0]) & \
+                   (self.dispersion <= x_range[1])
         elif x_0 is not None:
-            ind_x = find_nearest(self.dispersion, x_0)
-            ind_left, ind_right = find_bounds(self.data, ind_x, 1.0, cap=True)
-            x1, x2 = self.dispersion[ind_left], self.dispersion[ind_right]
+            mask = self._get_line_mask(x_0)
         else:
-            x1, x2 = self.dispersion[0], self.dispersion[-1]
+            mask = (self.dispersion >= self.dispersion[0]) & \
+                   (self.dispersion <= self.dispersion[1])
 
-        mask = (self.dispersion >= x1) & (self.dispersion <= x2)
         disp = self.dispersion[mask]
         flux = self.data[mask]
         uncert = self.uncertainty[mask]
@@ -386,17 +382,15 @@ class Spectrum1D(NDDataRef):
             uncertainty.
         """
         if x_range is not None and (isinstance(x_range, list) or
-                                    isinstance(x_range, tuple)):
-            x1, x2 = x_range
+                                        isinstance(x_range, tuple)):
+            mask = (self.dispersion >= x_range[0]) & \
+                   (self.dispersion <= x_range[1])
         elif x_0 is not None:
-            ind_x = find_nearest(self.dispersion, x_0)
-            # TODO: try applying a smoothing kernel before calculating bounds
-            ind_left, ind_right = find_bounds(self.data, ind_x, 1.0, cap=True)
-            x1, x2 = self.dispersion[ind_left], self.dispersion[ind_right]
+            mask = self._get_line_mask(x_0)
         else:
-            x1, x2 = self.dispersion[0], self.dispersion[-1]
+            mask = (self.dispersion >= self.dispersion[0]) & \
+                   (self.dispersion <= self.dispersion[1])
 
-        mask = (self.dispersion >= x1) & (self.dispersion <= x2)
         disp = self.dispersion[mask]
         flux = self.data[mask]
         uncert = self.uncertainty[mask]

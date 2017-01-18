@@ -22,7 +22,11 @@ def find_bounds(dispersion, data, center, value, cap=False):
 
     cind = find_nearest(dispersion, center)
     creg = _get_absorption_regions(data)
-    ind = np.where((creg[:, 0] <= cind) & (creg[:, 1] >= cind))[0][0]
+
+    try:
+        ind = np.where((creg[:, 0] <= cind) & (creg[:, 1] >= cind))[0][0]
+    except IndexError:
+        return 0, len(data) - 1
 
     left_ind, right_ind = creg[ind]
 
