@@ -12,31 +12,17 @@ and comparing analytic spectra, synthetic spectra (e.g. from hydrodynamic
 simulations), and real spectra.
 
 
-Framework
----------
-For the intrigued, there are several documents describing the fundamental data
-objects and their interactions.
-
-* :doc:`Core spectrum object </spectrum>`
-* :doc:`Modeling and fitting spectra </modeling>`
-* :doc:`Comparison metrics and interpretations </comparison>`
-
-
-Usage
------
-If you're interested in using this package, there are several ways to get
-started.
-
-* :doc:`Installation </installation>`
-* :doc:`Quickstart </quickstart>`
-* :doc:`Tutorial </tutorial>`
-
-
 Contents:
 
 .. toctree::
    :maxdepth: 2
 
+   installation
+   quickstart
+   spectrum
+   read_writing
+   line_lists
+   comparison
 
 
 Indices and tables
