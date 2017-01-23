@@ -121,7 +121,12 @@ html_theme = 'alabaster'
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-#html_theme_options = {}
+html_theme_options = {
+    'github_repo': 'MISTY-pipeline/spectacle',
+    'github_user': 'nmearl',
+    'description': 'Spectral analysis, reducer, and comparison package.',
+    'github_button': True
+}
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []
@@ -277,7 +282,7 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
     (master_doc, 'Spectacle', 'Spectacle Documentation',
-     author, 'Spectacle', 'One line description of project.',
+     author, 'Spectacle', 'Spectral generator, reducers, and analyzer.',
      'Miscellaneous'),
 ]
 

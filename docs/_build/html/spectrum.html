@@ -1,0 +1,157 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Handling Spectra &mdash; Spectacle 0.1.0 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.1.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="top" title="Spectacle 0.1.0 documentation" href="index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body role="document">  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="handling-spectra">
+<h1>Handling Spectra<a class="headerlink" href="#handling-spectra" title="Permalink to this headline">¶</a></h1>
+<p>The core spectrum object <code class="xref py py-class docutils literal"><span class="pre">spectacle.core.spectra.Spectrum</span></code> is used to
+contain all elements and behaviors of a spectrum. This includes the ability to
+pass around and propagate uncertainties, convert between wavelength and
+velocity space, calculate statistical values of absorption lines, and much
+more.</p>
+<p>The <code class="xref py py-class docutils literal"><span class="pre">spectacle.core.spectra.Spectrum</span></code> class inherits from the
+<code class="xref py py-class docutils literal"><span class="pre">astropy.nddata.NDDataRef</span></code> class, allowing for a unified IO, unit,
+uncertainty, wcs, and mask interface.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">The uncertainty is considered to be the standard deviation, and all</p>
+</div>
+<p>error propagation currently works under this assumption.</p>
+<div class="section" id="creating-spectra">
+<h2>Creating Spectra<a class="headerlink" href="#creating-spectra" title="Permalink to this headline">¶</a></h2>
+<p>Spectra objects can be created one of two ways: either defining their data and
+associated properties manually, or by reading in a recognized file.</p>
+<p>Reading in a file requires that IO registry contains some way of recognizing
+the file format. Basic formats, as well as how to include custom formats, can
+be seen in <span class="xref doc">Reading and Writing Files</span>.</p>
+<p>Once the registry is aware of the format of the file, creating a spectrum
+object is as simple as:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">spectrum</span> <span class="o">=</span> <span class="n">Spectrum1D</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s2">&quot;my_spectrum_file.fits&quot;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;my_format&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The format is defined by the custom IO registry you create.</p>
+<p>To manually create the spectrum object is a matter of passing in the relevant
+information to the spectrum class:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">spectrum</span> <span class="o">=</span> <span class="n">Spectrum1D</span><span class="p">(</span><span class="n">flux_arr</span><span class="p">,</span> <span class="n">dispersion</span><span class="o">=</span><span class="n">wavelength_arr</span><span class="p">,</span>
+<span class="go">                          disp_unit=wavelength_unit,</span>
+<span class="go">                          uncertainty=uncert_array)</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="modeling-spectra">
+<h2>Modeling Spectra<a class="headerlink" href="#modeling-spectra" title="Permalink to this headline">¶</a></h2>
+<p>Spectral models are the de-facto means of either analytically creating a
+spectrum, or quantifying already existing spectrum data.</p>
+<p>The modeling system follows the Astropy approach, and as such, the spectrum
+model is implemented as a <code class="xref py py-class docutils literal"><span class="pre">spectacle.modeling.models.Absorption1D</span></code>
+callable that returns a new spectrum object.</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">Absorption1D</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dispersion</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">spectrum</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">dispersion</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Lines are added to the model, not the spectrum object, as the latter is only a
+container for spectral information.</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">add_line</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;NV1239&quot;</span><span class="p">,</span> <span class="n">v_doppler</span><span class="o">=</span><span class="mf">2.5e7</span><span class="p">,</span> <span class="n">column_density</span><span class="o">=</span><span class="mi">10</span><span class="o">**</span><span class="mf">14.66</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">spectrum_with_line</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">dispersion</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>To get more information on the default line lists, or how to add custom line
+lists, see <span class="xref doc">Line Lists</span></p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Handling Spectra</a><ul>
+<li><a class="reference internal" href="#creating-spectra">Creating Spectra</a></li>
+<li><a class="reference internal" href="#modeling-spectra">Modeling Spectra</a></li>
+</ul>
+</li>
+</ul>
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/spectrum.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2017, Nicholas Earl, Molly Peeples.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.4.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.7</a>
+      
+      |
+      <a href="_sources/spectrum.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

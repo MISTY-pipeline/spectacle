@@ -1,0 +1,170 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Reading and Writing Spectra &mdash; Spectacle 0.1.0 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.1.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="top" title="Spectacle 0.1.0 documentation" href="index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body role="document">  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="reading-and-writing-spectra">
+<h1>Reading and Writing Spectra<a class="headerlink" href="#reading-and-writing-spectra" title="Permalink to this headline">¶</a></h1>
+<p>The spectrum object leverages the Astropy IO infrastructure to allow custom
+loading of spectral data. By default, the loader understands ASCII and FITS
+files that follow simple rules:</p>
+<blockquote>
+<div><ul class="simple">
+<li>ASCII files have to have three columns. If the file is not an <cite>.ecsv</cite>,
+then the loader assumes that the first column is data (e.g. flux), the
+second uncertainty, and the third dispersion.</li>
+<li>FITS files are expected to have a single table extension with three
+columns in the same order as above.</li>
+</ul>
+</div></blockquote>
+<p>When spectral data is read in, the format can be specified explicitly.
+Otherwise, the system will attempt to automatically discern the type of data:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">spectrum</span> <span class="o">=</span> <span class="n">Spectrum1D</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s2">&quot;my_data.fits&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">spectrum</span> <span class="o">=</span> <span class="n">Spectrum1D</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s2">&quot;my_data.fits&quot;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;fits&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Likewise, there are three default writers to export spectral data. FITS, basic
+ASCII, and ECSV. As with reading a custom spectrum data file, writing one
+should also specify the format:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">spectrum</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;my_new_data.fits&quot;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;fits&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="section" id="custom-readers-and-writers">
+<h2>Custom Readers and Writers<a class="headerlink" href="#custom-readers-and-writers" title="Permalink to this headline">¶</a></h2>
+<p>Custom readers and writers are used to help Spectacle parse unique data sets.
+This is done by defining a function that returns a <cite>Spectrum1D</cite> object, and
+adding that function to the IO registry via a simple decorator.</p>
+<p>All custom functions should be placed in a python file in the directory
+<cite>~/.spectacle</cite>.</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">spectacle.core.decorators</span> <span class="k">import</span> <span class="n">data_loader</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+
+<span class="nd">@data_loader</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s2">&quot;my-data&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">my_data_loader</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="c1"># A simple three-column file</span>
+    <span class="n">flux</span><span class="p">,</span> <span class="n">disp</span><span class="p">,</span> <span class="n">uncert</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">loadtxt</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="n">unpack</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">spec</span> <span class="o">=</span> <span class="n">Spectrum1D</span><span class="p">(</span><span class="n">flux</span><span class="p">,</span> <span class="n">dispersion</span><span class="o">=</span><span class="n">disp</span><span class="p">,</span> <span class="n">uncertainty</span><span class="o">=</span><span class="n">uncert</span><span class="p">,</span>
+                      <span class="n">disp_unit</span><span class="o">=</span><span class="s2">&quot;Angstrom&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">spec</span>
+</pre></div>
+</div>
+<p>This custom loader would be called from called like so:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">spectrum</span> <span class="o">=</span> <span class="n">Spectrum1D</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s2">&quot;path/to/my_data.txt&quot;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;my-data&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Likewise, a custom writer can be added your <cite>.py</cite> file in the <cite>~/.spectacle</cite>
+directory in a similar fashion:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">spectacle.core.decorators</span> <span class="k">import</span> <span class="n">data_wrtier</span>
+
+
+<span class="nd">@data_writer</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s2">&quot;my-data&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">my_data_writer</span><span class="p">(</span><span class="n">spectrum</span><span class="p">,</span> <span class="n">file_path</span><span class="p">,</span> <span class="n">clobber</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="n">flux</span> <span class="o">=</span> <span class="n">spectrum</span><span class="o">.</span><span class="n">data</span>
+    <span class="n">wave</span> <span class="o">=</span> <span class="n">spectrum</span><span class="o">.</span><span class="n">dispersion</span>
+    <span class="n">uncert</span> <span class="o">=</span> <span class="n">spectrum</span><span class="o">.</span><span class="n">uncertainty</span>
+
+    <span class="n">np</span><span class="o">.</span><span class="n">savetxt</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">transpose</span><span class="p">([</span><span class="n">flux</span><span class="p">,</span> <span class="n">uncert</span><span class="p">,</span> <span class="n">wave</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>And to call the custom writer:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">spectrum</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;path/to/save/my_new_data.txt&quot;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;my-data&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Reading and Writing Spectra</a><ul>
+<li><a class="reference internal" href="#custom-readers-and-writers">Custom Readers and Writers</a></li>
+</ul>
+</li>
+</ul>
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/reading_writing.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2017, Nicholas Earl, Molly Peeples.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.4.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.7</a>
+      
+      |
+      <a href="_sources/reading_writing.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
