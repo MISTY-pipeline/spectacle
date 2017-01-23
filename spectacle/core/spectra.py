@@ -5,8 +5,7 @@ import numpy as np
 from astropy import constants as c
 from astropy import units as u
 from astropy.convolution import convolve
-from astropy.modeling import models, fitting
-from astropy.nddata import NDDataRef, NDUncertainty, StdDevUncertainty
+from astropy.nddata import NDDataRef, StdDevUncertainty
 from astropy.wcs import WCS, WCSSUB_SPECTRAL
 from uncertainties import unumpy as unp
 
@@ -35,6 +34,22 @@ class Spectrum1D(NDDataRef):
 
         super(Spectrum1D, self).__init__(data, uncertainty=uncertainty, *args,
                                          **kwargs)
+
+    @classmethod
+    def formats(cls):
+        """
+        Retrieves the currently loaded formats available for reading/writing
+        spectral data.
+
+        Returns
+        -------
+        :class:`astropy.table.Table`
+            An Astropy Table object listing the available formats for the
+            :class:`spectacle.core.spectra.Spectrum1D` object.
+        """
+        from astropy.io import registry as io_registry
+
+        io_registry.get_formats(cls)
 
     @property
     def data(self):
