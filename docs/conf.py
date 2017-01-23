@@ -133,10 +133,10 @@ html_theme_options = {
 
 # The name for this set of Sphinx documents.
 # "<project> v<release> documentation" by default.
-#html_title = 'Spectacle v0.1.0'
+html_title = 'Spectacle v0.1.0'
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
-#html_short_title = None
+html_short_title = 'Spectacle'
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
@@ -282,7 +282,7 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
     (master_doc, 'Spectacle', 'Spectacle Documentation',
-     author, 'Spectacle', 'Spectral generator, reducers, and analyzer.',
+     author, 'Spectacle', 'Spectral generator, reducer, and analyzer.',
      'Miscellaneous'),
 ]
 
