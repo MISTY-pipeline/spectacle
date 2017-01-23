@@ -4,10 +4,10 @@ import importlib.machinery as mach
 import importlib.util as util
 import logging
 
+logging.basicConfig(level=logging.INFO)
+
 # Load the default IO functions
 from .io import *
-
-logging.basicConfig(level=logging.INFO)
 
 
 def load_user():
@@ -22,13 +22,9 @@ def load_user():
     for file in os.listdir(path):
         if not file.endswith("py"):
             continue
-        # loader = mach.SourceFileLoader('custom', os.path.join(path, file))
-        # mod = util.spec_from_loader(loader.name, loader)
-        # loader.exec_module(mod)
-        spec = util.spec_from_file_location('custom', os.path.join(path, file))
+
+        spec = util.spec_from_file_location(file[:-3], os.path.join(path, file))
         mod = util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        logging.info("Loaded module {}.".format(mod))
-
 
 load_user()

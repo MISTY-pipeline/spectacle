@@ -17,9 +17,26 @@ def identify_misty_fits(origin, *args, **kwargs):
 
 
 @data_loader("misty", identifier=identify_misty_fits)
-def misty_reader(filename):
+def misty_reader(file_path):
+    """
+    Custom loader specifically designed to parse MISTY data files.
+
+    .. note:: The MISTY FITS data file is a **collection** of spectra. Thus,
+              the returned object is a *list* of `Spectrum1D` objects.
+
+    Parameters
+    ----------
+    file_path : str
+        Path to the file.
+
+    Returns
+    -------
+    spec_list : list
+        List of `Spectrum1D` objects.
+
+    """
     # Open the fits file
-    hdulist = fits.open(filename)
+    hdulist = fits.open(file_path)
 
     # The primary header contains general information; the extensions contain
     # information on individual absorptions features
@@ -27,16 +44,19 @@ def misty_reader(filename):
 
     meta['primary'] = dict(hdulist[0].header)
 
+    spec_list = []
+
     for i in range(1, len(hdulist)):
         ext_hdr = hdulist[i].header
         meta[hdulist[0].header['LINE_{}'.format(i)]] = dict(ext_hdr)
 
-        spec = Spectrum1D(hdulist[i].data['flux'], )
+        spec = Spectrum1D(data=hdulist[i].data['flux'],
+                          dispersion=hdulist[i].data['wavelength'],
+                          tau=hdulist[i].data['tau'])
 
-    # Attempt to parse the unit for the data value
-    unit = Unit("")
+        spec_list.append(spec)
 
     hdulist.close()
 
-    return Spectrum1D()
+    return spec_list
 
