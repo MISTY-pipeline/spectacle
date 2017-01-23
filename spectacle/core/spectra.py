@@ -17,7 +17,7 @@ class Spectrum1D(NDDataRef):
     A spectrum container object for real or synthetic spectral data.
     """
     def __init__(self, data, dispersion=None, uncertainty=None,
-                 dispersion_unit=None, lines=None, *args, **kwargs):
+                 dispersion_unit=None, lines=None, tau=None, *args, **kwargs):
         if dispersion is None:
             self._dispersion = np.linspace(0, 2000, len(data))
         else:
@@ -31,6 +31,7 @@ class Spectrum1D(NDDataRef):
         self._noise = []
         self._remat = None
         self._lines = lines if lines is not None else {}
+        self._tau = tau
 
         super(Spectrum1D, self).__init__(data, uncertainty=uncertainty, *args,
                                          **kwargs)
@@ -217,15 +218,19 @@ class Spectrum1D(NDDataRef):
 
     @property
     def tau(self):
-        tau = unp.log(1.0 / unp.uarray(self.data, self.uncertainty))
+        if self._tau is None:
+            tau = unp.log(1.0 / unp.uarray(self.data, self.uncertainty))
 
-        return unp.nominal_values(tau)
+            return unp.nominal_values(tau)
+
+        return self._tau
 
     @property
     def tau_uncertainty(self):
-        tau = unp.log(1.0 / unp.uarray(self.data, self.uncertainty))
+        if self._tau is None:
+            tau = unp.log(1.0 / unp.uarray(self.data, self.uncertainty))
 
-        return unp.std_devs(tau)
+            return unp.std_devs(tau)
 
     @property
     def lines(self):

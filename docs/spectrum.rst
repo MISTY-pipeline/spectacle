@@ -1,7 +1,7 @@
 
 
-Handling Spectra
-================
+Interacting With Spectra
+========================
 
 The core spectrum object :py:class:`spectacle.core.spectra.Spectrum` is used to
 contain all elements and behaviors of a spectrum. This includes the ability to

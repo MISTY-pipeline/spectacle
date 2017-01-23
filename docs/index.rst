@@ -20,7 +20,7 @@ Contents:
    installation
    quickstart
    spectrum
-   read_writing
+   reading_writing
    line_lists
    comparison
 

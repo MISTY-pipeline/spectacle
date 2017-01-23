@@ -17,7 +17,7 @@ def identify_misty_fits(origin, *args, **kwargs):
 
 
 @data_loader("misty", identifier=identify_misty_fits)
-def trident_reader(filename):
+def misty_reader(filename):
     # Open the fits file
     hdulist = fits.open(filename)
 
@@ -30,6 +30,8 @@ def trident_reader(filename):
     for i in range(1, len(hdulist)):
         ext_hdr = hdulist[i].header
         meta[hdulist[0].header['LINE_{}'.format(i)]] = dict(ext_hdr)
+
+        spec = Spectrum1D(hdulist[i].data['flux'], )
 
     # Attempt to parse the unit for the data value
     unit = Unit("")
