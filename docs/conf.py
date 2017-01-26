@@ -19,7 +19,7 @@ import os
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-#sys.path.insert(0, os.path.abspath('.'))
+sys.path.insert(0, os.path.abspath('../'))
 
 # -- General configuration ------------------------------------------------
 
@@ -32,6 +32,7 @@ import os
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.intersphinx',
+    'sphinx.ext.napoleon',
     'sphinx.ext.coverage',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
@@ -122,10 +123,12 @@ html_theme = 'alabaster'
 # further.  For a list of options available for each theme, see the
 # documentation.
 html_theme_options = {
-    'github_repo': 'MISTY-pipeline/spectacle',
+    'github_repo': 'MISTY-pipeline',
     'github_user': 'nmearl',
-    'description': 'Spectral analysis, reducer, and comparison package.',
-    'github_button': True
+    'description': 'Spectral analysis, reducer, and comparison package',
+    'github_button': True,
+    'logo_name': True,
+    'logo': 'logo.png'
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -167,7 +170,11 @@ html_static_path = ['_static']
 #html_use_smartypants = True
 
 # Custom sidebar templates, maps document names to template names.
-#html_sidebars = {}
+html_sidebars = {
+    '**': [
+        'about.html', 'navigation.html', 'searchbox.html'
+    ]
+}
 
 # Additional templates that should be rendered to pages, maps page names to
 # template names.
@@ -300,4 +307,7 @@ texinfo_documents = [
 
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None}
+intersphinx_mapping = {
+    'https://docs.python.org/': None,
+    'http://docs.astropy.org/en/stable/': None
+}

@@ -1,7 +1,6 @@
 import abc
 
 import numpy as np
-import peakutils
 import six
 from astropy.modeling import fitting, models
 from astropy.modeling.fitting import LevMarLSQFitter
@@ -12,6 +11,8 @@ from ..modeling.models import Absorption1D
 from ..core.utils import find_nearest
 from ..core.registries import line_registry
 
+import logging
+
 
 @six.add_metaclass(abc.ABCMeta)
 class Fitter1D:
@@ -19,7 +20,7 @@ class Fitter1D:
     Base fitter class for routines that run on the
     :class:`spectacle.core.spectra.Spectrum1D` object.
     """
-    def __init__(self, threshold=0.3, min_dist=100):
+    def __init__(self):
         """
         The fitter class is responsible for finding absorption features using
         a basic peak finding utility. This is done only if the fitting routine
@@ -34,57 +35,13 @@ class Fitter1D:
         min_dist :
             The minimum distance between detected peaks.
         """
-        self.detrend = False
-        self.threshold = threshold
-        self.min_dist = min_dist
         self.fit_info = None
+        self._model = None
+        self._indices = []
 
     @abc.abstractmethod
     def __call__(self, *args, **kwargs):
         raise NotImplementedError
-
-    def _find_lines(self, spectrum, strict=False):
-        """
-        Simple peak finder.
-
-        Parameters
-        ----------
-        spectrum : :class:`spectacle.core.spectra.Spectrum1D`
-            Original spectrum object.
-        strict : bool
-            If `True`, will require that any found peaks also exist in the
-            provided ions lookup table.
-
-        Returns
-        -------
-        indexes : np.array
-            An array of indices providing the peak locations in the original
-            spectrum object.
-        """
-        continuum = np.median(spectrum.data)
-        inv_flux = 1 - spectrum.data
-
-        indexes = peakutils.indexes(
-            inv_flux,
-            thres=self.threshold, # np.std(inv_flux) * self.noise/np.max(inv_flux),
-            min_dist=self.min_dist)
-
-        indexes = np.array(indexes)
-
-        if strict:
-            # Find the indices of the ion table that correspond with the found
-            # indices in the peak search
-            tab_indexes = np.array(list(set(
-                map(lambda x: find_nearest(line_registry['wave'], x),
-                    spectrum.dispersion[indexes]))))
-
-            # Given the indices in the ion tab, find the indices in the
-            #  dispersion array that correspond to the ion table lambda
-            indexes = np.array(list(
-                map(lambda x: find_nearest(spectrum.dispersion, x),
-                    line_registry['wave'][tab_indexes])))
-
-        return indexes
 
     def _find_continuum(self, spectrum, mode='LinearLSQFitter'):
         data_med = np.median(spectrum.data)
@@ -102,34 +59,22 @@ class Fitter1D:
 
         return cont_fit
 
+    @property
+    def model(self):
+        return self._model
+
 
 class LevMarFitter(Fitter1D):
-    def __call__(self, spectrum, model=None, strict=False):
-        if model is None:
-            # Create a new spectrum object with the same dispersion
-            model = Absorption1D()
-
-            # Find the lines in the flux array
-            indexes = self._find_lines(spectrum, strict=strict)
-
-            print("found {} lines".format(len(indexes)))
-
-            # Add a new line to the empty spectrum object for each found line
-            for ind in indexes:
-                model.add_line(lambda_0=spectrum.dispersion[ind],
-                               v_doppler=1e7, column_density=10**14,
-                               # name=line_registry['name'][ind]
-                               )
-
+    def __call__(self, model, x, y, err=None):
         # Create fitter instance
-        # fitter = LevMarCurveFitFitter()
-        fitter = LevMarLSQFitter()
+        fitter = LevMarCurveFitFitter()
+        # fitter = LevMarLSQFitter()
 
         model_fit = fitter(model.model,
-                           spectrum.dispersion,
-                           spectrum.data,
-                           # sigma=spectrum.uncertainty.array,
-                           maxiter=min(1000, 250 * len(model._line_models))
+                           x, #spectrum.dispersion,
+                           y, #spectrum.data,
+                           err, #sigma=spectrum.uncertainty,
+                           maxiter=min(2000, 100 * len(model.model.submodel_names))
                            )
 
         # Grab the covariance matrix
@@ -141,9 +86,9 @@ class LevMarFitter(Fitter1D):
         # This is not robust. The covariance matrix does not include
         # constrained parameters, so we must insert some value for the
         # variance to make sure the number of parameters match.
-        # for i, val in enumerate(model_fit.param_names):
-        #     if model_fit.tied.get(val) or model_fit.fixed.get(val):
-        #         param_cov = np.insert(param_cov, i, 0.0)
+        for i, val in enumerate(model_fit.param_names):
+            if model_fit.tied.get(val) or model_fit.fixed.get(val):
+                param_cov = np.insert(param_cov, i, 0)
 
         # Update fit info
         self.fit_info = Table([model_fit.param_names,
@@ -153,10 +98,12 @@ class LevMarFitter(Fitter1D):
                               names=("Parameter", "Original Value",
                                      "Fitted Value", "Uncertainty"))
 
-        # Update model with new parameters
-        model.model.parameters = model_fit.parameters
+        # Create new model instance with fitted params
+        new_model = model.copy(from_model=model_fit)
 
-        return model(spectrum.dispersion)
+        # self._model = model_fit
+
+        return new_model, model_fit
 
 
 @six.add_metaclass(fitting._FitterMeta)
@@ -194,6 +141,7 @@ class LevMarCurveFitFitter(object):
         def objective_function(dispersion, *param_vals):
             """
             Function to minimize.
+
             Parameters
             ----------
             fps : list
@@ -228,21 +176,27 @@ class LevMarCurveFitFitter(object):
 
         init_values, _ = fitting._model_to_fit_params(model_copy)
 
-        fit_params, cov_x = optimize.curve_fit(
-            self.objective_wrapper(model_copy), x, y,
-            # method='trf',
-            p0=init_values,
-            sigma=sigma,
-            epsfcn=epsilon,
-            maxfev=maxiter,
-            col_deriv=model_copy.col_fit_deriv,
-            xtol=acc,
-            absolute_sigma=True,
-            **kwargs)
+        try:
+            fit_params, cov_x = optimize.curve_fit(
+                self.objective_wrapper(model_copy), x, y,
+                # method='trf',
+                p0=init_values,
+                sigma=sigma,
+                epsfcn=epsilon,
+                maxfev=maxiter,
+                col_deriv=model_copy.col_fit_deriv,
+                xtol=acc,
+                # absolute_sigma=True,
+                **kwargs)
+        except RuntimeError as e:
+            logging.error(e)
+            fit_params, _ = fitting._model_to_fit_params(model_copy)
+            cov_x = []
 
         fitting._fitter_to_model_params(model_copy, fit_params)
 
         cov_diag = []
+
         for i in range(len(fit_params)):
             try:
                 cov_diag.append(np.absolute(cov_x[i][i]) ** 0.5)

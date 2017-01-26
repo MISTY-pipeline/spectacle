@@ -12,7 +12,8 @@ and comparing analytic spectra, synthetic spectra (e.g. from hydrodynamic
 simulations), and real spectra.
 
 
-Contents:
+User Guide
+----------
 
 .. toctree::
    :maxdepth: 2
@@ -23,6 +24,7 @@ Contents:
    reading_writing
    line_lists
    comparison
+   source/modules
 
 
 Indices and tables

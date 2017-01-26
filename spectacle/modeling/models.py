@@ -4,6 +4,8 @@ from astropy.table import Table
 import numpy as np
 import os
 import logging
+from scipy.signal import savgol_filter
+import peakutils
 
 from ..core.utils import find_nearest
 from ..core.profiles import TauProfile
@@ -21,7 +23,7 @@ class Voigt1D(Fittable1DModel):
     gamma = Parameter(min=0)
     v_doppler = Parameter()
     column_density = Parameter(min=1e10, max=1e30)
-    delta_v = Parameter(default=0)
+    delta_v = Parameter(default=0, fixed=True)
     delta_lambda = Parameter(default=0)
 
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
@@ -66,7 +68,7 @@ class Absorption1D:
         if self._continuum_model is None:
             self._continuum_model = Linear1D(slope=0.0, intercept=1.0)
 
-        if self._model is None or self._line_models != len(self._model):
+        if self._model is None or len(self._line_models) != len(self._model):
             model = self._continuum_model
 
             if len(self._line_models) > 0:
@@ -93,9 +95,28 @@ class Absorption1D:
 
         return mod_spec
 
+    def copy(self, from_model=None):
+        new_model = self.__class__()
+
+        if from_model is not None:
+            new_model._continuum_model = from_model._submodels[0]
+            new_model._line_models = from_model._submodels[1:]
+
+        return new_model
+
     @property
     def continuum(self, dispersion):
         return self._continuum_model(dispersion)
+
+    @property
+    def parameters(self):
+        return self.model.parameters
+
+    def set_parameters_from_model(self, model):
+        self._continuum_model.parameters = model[0].parameters
+
+        for i in range(1, len(model.submodel_names)):
+            self._line_models[i-1].parameters = model[i].parameters
 
     def add_line(self, v_doppler, column_density, lambda_0=None, f_value=None,
                  gamma=None, delta_v=None, delta_lambda=None, name=None):
@@ -110,10 +131,16 @@ class Absorption1D:
                     "Multiple lines found with name {}.".format(name))
 
             ind = ind[0]
-            lambda_0 = line_registry['wave'][ind]
-        else:
+
+            if lambda_0 is None:
+                lambda_0 = line_registry['wave'][ind]
+        elif lambda_0 is not None:
             ind = find_nearest(line_registry['wave'], lambda_0)
             name = line_registry['name'][ind]
+        else:
+            logging.error("Unable to estimate line values from given "
+                          "information.")
+            return
 
         if f_value is None:
             f_value = line_registry['osc_str'][ind]
@@ -135,12 +162,31 @@ class Absorption1D:
 
         return model
 
-    def remove_line(self, model=None, x_0=None):
+    def has_line(self, name=None, x_0=None):
+        if name is not None:
+            return self.get_line(name=name) is not None
+        elif x_0 is not None:
+            return self.get_line(x_0=x_0) is not None
+
+    def remove_line(self, model=None, name=None, x_0=None):
         if model is not None:
+            self._line_models.remove(model)
+        elif name is not None:
+            model = self.get_line(name=name)
             self._line_models.remove(model)
         elif x_0 is not None:
             model = self.get_profile(x_0)
             self._line_models.remove(model)
+
+    def get_line(self, name=None, x_0=None):
+        if name is not None:
+            lines = [x for x in self._line_models if x.name == name]
+
+            if len(lines) > 0:
+                return lines[0]
+
+        elif x_0 is not None:
+            return self.get_profile(x_0)
 
     def get_profile(self, x_0):
         """
@@ -197,6 +243,78 @@ class Absorption1D:
         cont = np.zeros(dispersion.shape)
 
         return ~np.isclose(vdisp, cont, rtol=1e-2, atol=1e-5)
+
+    def find_lines(self, spectrum, threshold=0.7, min_dist=100, strict=False):
+        """
+        Simple peak finder.
+
+        Parameters
+        ----------
+        spectrum : :class:`spectacle.core.spectra.Spectrum1D`
+            Original spectrum object.
+        strict : bool
+            If `True`, will require that any found peaks also exist in the
+            provided ions lookup table.
+
+        Returns
+        -------
+        indexes : np.array
+            An array of indices providing the peak locations in the original
+            spectrum object.
+        """
+        continuum = np.median(spectrum.data)
+        inv_flux = 1 - spectrum.data
+
+        # Filter with SG
+        y = savgol_filter(inv_flux, 49, 3)
+
+        indexes = peakutils.indexes(
+            y,
+            thres=threshold, # np.std(inv_flux) * self.noise/np.max(inv_flux),
+            min_dist=min_dist)
+
+        self._indices = indexes
+
+        if strict:
+            print("Using strict line associations.")
+            # Find the indices of the ion table that correspond with the found
+            # indices in the peak search
+            tab_indexes = np.array(list(set(
+                map(lambda x: find_nearest(line_registry['wave'], x),
+                    spectrum.dispersion[indexes]))))
+
+            # Given the indices in the ion tab, find the indices in the
+            #  dispersion array that correspond to the ion table lambda
+            indexes = np.array(list(
+                map(lambda x: find_nearest(spectrum.dispersion, x),
+                    line_registry['wave'][tab_indexes])))
+
+        logging.info("Found {} lines.".format(len(indexes)))
+
+        # Add a new line to the empty spectrum object for each found line
+        for ind in indexes:
+            il = find_nearest(line_registry['wave'],
+                              spectrum.dispersion[ind])
+
+            nearest_name = line_registry['name'][il]
+            nearest_wave = line_registry['wave'][il]
+
+            logging.info("Found {} ({}) at {}. Strict is {}.".format(
+                nearest_name,
+                nearest_wave,
+                spectrum.dispersion[ind],
+                strict))
+
+            mod = self.add_line(lambda_0=spectrum.dispersion[ind],
+                                 v_doppler=1e6, column_density=10**14,
+                                 name=nearest_name,
+                                 delta_v=0
+                                 )
+
+        logging.info("There are {} lines in the model.".format(
+            len(self._line_models)))
+
+        return indexes
 
 
 def _tie_gamma(compound_model, model):
