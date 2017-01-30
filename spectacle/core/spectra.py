@@ -1,5 +1,7 @@
 from .utils import find_nearest, find_bounds
 from ..analysis.resample import resample
+from .registries import line_registry
+from .lines import Line
 
 import numpy as np
 from astropy import constants as c
@@ -8,6 +10,8 @@ from astropy.convolution import convolve
 from astropy.nddata import NDDataRef, StdDevUncertainty
 from astropy.wcs import WCS, WCSSUB_SPECTRAL
 from uncertainties import unumpy as unp
+from scipy.signal import savgol_filter
+import peakutils
 
 import logging
 
@@ -428,3 +432,82 @@ class Spectrum1D(NDDataRef):
         ew = ((avg_cont - uflux) * (avg_dx / avg_cont)).sum()
 
         return ew.nominal_value, ew.std_dev
+
+    def find_lines(self, threshold=0.7, min_dist=100, strict=False):
+        """
+        Simple peak finder.
+
+        Parameters
+        ----------
+        self : :class:`spectacle.core.spectra.Spectrum1D`
+            Original spectrum object.
+        strict : bool
+            If `True`, will require that any found peaks also exist in the
+            provided ions lookup table.
+
+        Returns
+        -------
+        indexes : np.array
+            An array of indices providing the peak locations in the original
+            spectrum object.
+        """
+        continuum = np.median(self.data)
+        inv_flux = 1 - self.data
+
+        # Filter with SG
+        y = savgol_filter(inv_flux, 49, 3)
+
+        indexes = peakutils.indexes(
+            y,
+            thres=threshold, # np.std(inv_flux) * self.noise/np.max(inv_flux),
+            min_dist=min_dist)
+
+        if strict:
+            print("Using strict line associations.")
+            # Find the indices of the ion table that correspond with the found
+            # indices in the peak search
+            tab_indexes = np.array(list(set(
+                map(lambda x: find_nearest(line_registry['wave'], x),
+                    self.dispersion[indexes]))))
+
+            # Given the indices in the ion tab, find the indices in the
+            #  dispersion array that correspond to the ion table lambda
+            indexes = np.array(list(
+                map(lambda x: find_nearest(self.dispersion, x),
+                    line_registry['wave'][tab_indexes])))
+
+        logging.info("Found {} lines.".format(len(indexes)))
+
+        line_list = {}
+
+        # Add a new line to the empty spectrum object for each found line
+        for ind in indexes:
+            il = find_nearest(line_registry['wave'],
+                              self.dispersion[ind])
+
+            nearest_wave = line_registry['wave'][il]
+            nearest_name = line_registry['name'][il]
+
+            if nearest_name in line_list:
+                nearest_name = "{}_{}".format(
+                    nearest_name,
+                    len([k for k in line_list if k == nearest_name]))
+
+            logging.info("Found {} ({}) at {}. Strict is {}.".format(
+                nearest_name,
+                nearest_wave,
+                self.dispersion[ind],
+                strict))
+
+            mod = Line(lambda_0=self.dispersion[ind],
+                       v_doppler=1e6, column_density=10**14,
+                       name=nearest_name,
+                       delta_v=0)
+
+            if mod is not None:
+                line_list[nearest_name] = mod
+
+        logging.info("There are {} lines in the model.".format(
+            len(line_list)))
+
+        return list(line_list.values())
