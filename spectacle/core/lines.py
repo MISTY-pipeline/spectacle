@@ -4,6 +4,7 @@ from ..core.utils import find_nearest
 
 import numpy as np
 import logging
+from uncertainties import unumpy as unp
 
 
 class Line(Voigt1D):
@@ -11,13 +12,8 @@ class Line(Voigt1D):
     Data class encapsulating the absorption line feature.
     """
     def __init__(self, name, v_doppler, column_density, lambda_0=None,
-                 f_value=None, gamma=None, delta_v=None, delta_lambda=None):
-        ind = find_nearest(line_registry['wave'], lambda_0)
-
-        f_value = line_registry['osc_str'][ind]
-        lambda_0 = line_registry['wave'][ind]
-        gamma_val = line_registry['gamma'][ind]
-
+                 f_value=None, gamma=None, delta_v=None, delta_lambda=None,
+                 tied=None):
         super(Line, self).__init__(lambda_0=lambda_0,
                                    f_value=f_value,
                                    gamma=gamma or 0,
@@ -28,9 +24,32 @@ class Line(Voigt1D):
                                    name=name)
 
         # If gamma has not been explicitly defined, tie it to lambda
-        if gamma is None:
-            self.gamma.value = gamma_val
-            self.gamma.tied = lambda cmod, mod=self: _tie_gamma(cmod, mod)
+        if tied is not None:
+            if 'gamma' in tied:
+                self.gamma.tied = lambda cmod, mod=self: _tie_gamma(cmod, mod)
+
+    @property
+    def fwhm(self):
+        """
+        Calculates an approximation of the FWHM.
+
+        The approximation is accurate to
+        about 0.03% (see http://en.wikipedia.org/wiki/Voigt_profile).
+
+        Returns
+        -------
+        fwhm : float
+            The estimate of the FWHM
+        """
+        # The width of the Lorentz profile
+        fl = 2.0 * self.gamma
+
+        # Width of the Gaussian [2.35 = 2*sigma*sqrt(2*ln(2))]
+        fd = 2.35482 * 1/np.sqrt(2.)
+
+        fwhm = 0.5346 * fl + np.sqrt(0.2166 * (fl ** 2.) + fd ** 2.)
+
+        return fwhm
 
 
 def _tie_gamma(compound_model, model):

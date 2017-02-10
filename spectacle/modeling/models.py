@@ -19,7 +19,7 @@ class Voigt1D(Fittable1DModel):
     gamma = Parameter(min=0)
     v_doppler = Parameter()
     column_density = Parameter(min=1e10, max=1e30)
-    delta_v = Parameter(default=0, fixed=True)
+    delta_v = Parameter(default=0)
     delta_lambda = Parameter(default=0)
 
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
@@ -82,6 +82,8 @@ class Absorption1D(Fittable1DModel):
     """
     def __init__(self, lines=None, continuum=None, *args, **kwargs):
         """
+        Custom fittable model representing a spectrum object.
+
         Parameters
         ----------
         lines : list
@@ -149,3 +151,21 @@ class Absorption1D(Fittable1DModel):
             The Voigt model for the particular line.
         """
         return next((sm for sm in self._submodels if sm.name == name), None)
+
+    def get_fwhm(self, line_name):
+        """
+        Return the full width at half max for a given absorption line feature.
+
+        Parameters
+        ----------
+        line_name : str
+            The name of the absorption line feature.
+
+        Returns
+        -------
+        float
+            The calculated full width at half max.
+        """
+        profile = self.get_profile(line_name)
+
+        return profile.fwhm

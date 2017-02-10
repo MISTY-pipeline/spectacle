@@ -302,137 +302,6 @@ class Spectrum1D(NDDataRef):
 
         return line_mask
 
-    def fwhm(self, x_0):
-        """
-        Calculates an approximation of the FWHM.
-
-        The approximation is accurate to
-        about 0.03% (see http://en.wikipedia.org/wiki/Voigt_profile).
-
-        Returns
-        -------
-        FWHM : float
-            The estimate of the FWHM
-        """
-        v_prof = self.get_profile(x_0)
-
-        # The width of the Lorentz profile
-        fl = 2.0 * v_prof.gamma
-
-        # Width of the Gaussian [2.35 = 2*sigma*sqrt(2*ln(2))]
-        fd = 2.35482 * 1/np.sqrt(2.)
-
-        return 0.5346 * fl + np.sqrt(0.2166 * (fl ** 2.) + fd ** 2.)
-
-    def optical_depth(self, x_0):
-        """
-        Return the optical depth at some wavelength.
-
-        Parameters
-        ----------
-        x_0 : float
-            Line center from which to calculate tau.
-
-        Returns
-        -------
-        tau : float
-            The value of the optical depth at the given wavelength.
-        """
-        flux = unp.uarray(self.data, self.uncertainty)
-        idx = find_nearest(self.data, x_0)
-        tau = unp.log(1.0/flux[idx])
-
-        return unp.nominal_values(tau), unp.std_devs(tau)
-
-    def centroid(self, x_0=None, x_range=None, line_name=None):
-        """
-        Return the centroid for Voigt profile near the given wavelength.
-
-        Parameters
-        ----------
-        x_0 : float, optional
-            Wavelength new the given profile from which to calculate the
-            centroid.
-        x_range : list-like, optional
-            A list or tuple of size 2 which define the start and end
-            wavelengths demarcating the range of interest.
-        line_name : string, optional
-            This will trigger a look-up of the `x_0` value in the provided ion
-            table.
-
-        Returns
-        -------
-        float, float
-            The centroid of the profile, and the associated uncertainty.
-        """
-        if x_range is not None and (isinstance(x_range, list) or
-                                    isinstance(x_range, tuple)):
-            mask = (self.dispersion >= x_range[0]) & \
-                   (self.dispersion <= x_range[1])
-        elif x_0 is not None:
-            mask = self._get_line_mask(x_0)
-        else:
-            mask = (self.dispersion >= self.dispersion[0]) & \
-                   (self.dispersion <= self.dispersion[1])
-
-        disp = self.dispersion[mask]
-        flux = self.data[mask]
-        uncert = self.uncertainty[mask]
-
-        cent = np.trapz(disp * flux, disp) / np.trapz(flux, disp)
-
-        return unp.nominal_values(cent), unp.std_devs(cent)
-
-    def equivalent_width(self, x_0=None, x_range=None, line_name=None):
-        """
-        Return the centroid for Voigt profile near the given wavelength.
-
-        Parameters
-        ----------
-        x_0 : float, optional
-            Wavelength new the given profile from which to calculate the
-            centroid.
-        x_range : list-like, optional
-            A list or tuple of size 2 which define the start and end
-            wavelengths demarcating the range of interest.
-        line_name : string, optional
-            This will trigger a look-up of the `x_0` value in the provided ion
-            table.
-
-        Returns
-        -------
-        float, float
-            The equivalent width of the profile, and the associated
-            uncertainty.
-        """
-        if x_range is not None and (isinstance(x_range, list) or
-                                        isinstance(x_range, tuple)):
-            mask = (self.dispersion >= x_range[0]) & \
-                   (self.dispersion <= x_range[1])
-        elif x_0 is not None:
-            mask = self._get_line_mask(x_0)
-        else:
-            mask = (self.dispersion >= self.dispersion[0]) & \
-                   (self.dispersion <= self.dispersion[1])
-
-        disp = self.dispersion[mask]
-        flux = self.data[mask]
-        uncert = self.uncertainty[mask]
-
-        # Compose the uncertainty array
-        uflux = unp.uarray(flux, uncert)
-
-        # Continuum is always assumed to be 1.0
-        avg_cont = 1.0
-
-        # Average dispersion in the line region.
-        avg_dx = np.mean(disp[1:] - disp[:-1])
-
-        # Calculate equivalent width
-        ew = ((avg_cont - uflux) * (avg_dx / avg_cont)).sum()
-
-        return ew.nominal_value, ew.std_dev
-
     def find_lines(self, threshold=0.7, min_dist=100, strict=False):
         """
         Simple peak finder.
@@ -487,6 +356,8 @@ class Spectrum1D(NDDataRef):
 
             nearest_wave = line_registry['wave'][il]
             nearest_name = line_registry['name'][il]
+            f_value = line_registry['osc_str'][il]
+            gamma_val = line_registry['gamma'][il]
 
             if nearest_name in line_list:
                 nearest_name = "{}_{}".format(
@@ -499,10 +370,9 @@ class Spectrum1D(NDDataRef):
                 self.dispersion[ind],
                 strict))
 
-            mod = Line(lambda_0=self.dispersion[ind],
-                       v_doppler=1e6, column_density=10**14,
-                       name=nearest_name,
-                       delta_v=0)
+            mod = Line(lambda_0=self.dispersion[ind], f_value=f_value,
+                       gamma=gamma_val, v_doppler=1e6, column_density=10**14,
+                       name=nearest_name)
 
             if mod is not None:
                 line_list[nearest_name] = mod
@@ -511,3 +381,114 @@ class Spectrum1D(NDDataRef):
             len(line_list)))
 
         return list(line_list.values())
+
+    def optical_depth(self):
+        """
+        Return the optical depth at some wavelength.
+
+        Parameters
+        ----------
+        x_0 : float
+            Line center from which to calculate tau.
+
+        Returns
+        -------
+        tau : float
+            The value of the optical depth at the given wavelength.
+        """
+        flux = unp.uarray(self.data, self.uncertainty)
+        tau = unp.log(1.0/flux)
+
+        return unp.nominal_values(tau), unp.std_devs(tau)
+
+    def centroid(self, x_0=None, x_range=None):
+        """
+        Return the centroid for Voigt profile near the given wavelength.
+
+        Parameters
+        ----------
+        x_0 : float, optional
+            Wavelength new the given profile from which to calculate the
+            centroid.
+        x_range : list-like, optional
+            A list or tuple of size 2 which define the start and end
+            wavelengths demarcating the range of interest.
+        line_name : string, optional
+            This will trigger a look-up of the `x_0` value in the provided ion
+            table.
+
+        .. warning:: Currently, uncertainties are not included in the
+                     calculation.
+
+        Returns
+        -------
+        float, float
+            The centroid of the profile, and the associated uncertainty.
+        """
+        if x_range is not None and (isinstance(x_range, list) or
+                                    isinstance(x_range, tuple)):
+            mask = (self.dispersion >= x_range[0]) & \
+                   (self.dispersion <= x_range[1])
+        elif x_0 is not None:
+            mask = self._get_line_mask(x_0)
+        else:
+            mask = (self.dispersion >= self.dispersion[0]) & \
+                   (self.dispersion <= self.dispersion[1])
+
+        disp = self.dispersion[mask]
+        flux = self.data[mask]
+        uncert = self.uncertainty[mask]
+
+        cent = np.trapz(disp * flux, disp) / np.trapz(flux, disp)
+
+        return unp.nominal_values(cent), unp.std_devs(cent)
+
+    def equivalent_width(self, x_0=None, x_range=None):
+        """
+        Return the centroid for Voigt profile near the given wavelength.
+
+        Parameters
+        ----------
+        x_0 : float, optional
+            Wavelength new the given profile from which to calculate the
+            centroid.
+        x_range : list-like, optional
+            A list or tuple of size 2 which define the start and end
+            wavelengths demarcating the range of interest.
+        line_name : string, optional
+            This will trigger a look-up of the `x_0` value in the provided ion
+            table.
+
+        Returns
+        -------
+        float, float
+            The equivalent width of the profile, and the associated
+            uncertainty.
+        """
+        if x_range is not None and (isinstance(x_range, list) or
+                                    isinstance(x_range, tuple)):
+            mask = (self.dispersion >= x_range[0]) & \
+                   (self.dispersion <= x_range[1])
+        elif x_0 is not None:
+            mask = self._get_line_mask(x_0)
+        else:
+            mask = (self.dispersion >= self.dispersion[0]) & \
+                   (self.dispersion <= self.dispersion[1])
+
+        disp = self.dispersion[mask]
+        flux = self.data[mask]
+        uncert = self.uncertainty[mask]
+
+        # Compose the uncertainty array
+        uflux = unp.uarray(flux, uncert)
+
+        # Continuum is always assumed to be 1.0
+        avg_cont = 1.0
+
+        # Average dispersion in the line region.
+        avg_dx = np.mean(disp[1:] - disp[:-1])
+
+        # Calculate equivalent width
+        ew = ((avg_cont - uflux) * (avg_dx / avg_cont)).sum()
+
+        return ew.nominal_value, ew.std_dev
