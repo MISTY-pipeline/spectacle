@@ -69,7 +69,20 @@ class AbsorptionMeta(type):
 
         abs_mod = np.sum(mod_list)
 
-        mod = type('Absorption1D', (abs_mod.__class__, ), {})
+        def call(self, dispersion, uncertainty=None, dispersion_unit=None,
+                 *args, **kwargs):
+            from ..core.spectra import Spectrum1D
+
+            lines = abs_mod._submodels
+
+            flux = super(abs_mod.__class__, self).__call__(dispersion,
+                                                           *args, **kwargs)
+            spectrum = Spectrum1D(flux, dispersion=dispersion,
+                                  dispersion_unit=dispersion_unit, lines=lines)
+
+            return spectrum
+
+        mod = type('Absorption1D', (abs_mod.__class__, ), {'__call__': call})
 
         return mod()
 
@@ -96,13 +109,10 @@ class Absorption1D(Fittable1DModel):
             <http://docs.astropy.org/en/stable/modeling/index.html#
             module-astropy.modeling.functional_models>`_ for options.
 
-            .. note:: Continuum classes instanciated by string reference will
+            .. note:: Continuum classes instantiating by string reference will
                       be initialized with default parameters.
         """
         super(Absorption1D, self).__init__(*args, **kwargs)
-
-    def evaluate(self, *args, **kwargs):
-        super(Absorption1D, self).evaluate(*args, **kwargs)
 
     def get_range_mask(self, dispersion, name=None):
         """

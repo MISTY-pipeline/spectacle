@@ -34,7 +34,7 @@ class Spectrum1D(NDDataRef):
         self._lsfs = []
         self._noise = []
         self._remat = None
-        self._lines = lines if lines is not None else {}
+        self._lines = lines if lines is not None else []
         self._tau = tau
 
         super(Spectrum1D, self).__init__(data, uncertainty=uncertainty, *args,
@@ -280,7 +280,9 @@ class Spectrum1D(NDDataRef):
 
     def _get_line_mask(self, x_0):
         # TODO: try applying a smoothing kernel before calculating bounds
-        ind_left, ind_right = find_bounds(self.dispersion, self.data, x_0, 1.0,
+        y = savgol_filter(self.data, 49, 3)
+
+        ind_left, ind_right = find_bounds(self.dispersion, y, x_0, 1.0,
                                           cap=True)
         x1, x2 = self.dispersion[ind_left], self.dispersion[ind_right]
 
@@ -292,8 +294,8 @@ class Spectrum1D(NDDataRef):
     def line_mask(self):
         mask_list = []
 
-        for lambda_0 in self._lines.values():
-            mask_list.append(self._get_line_mask(lambda_0))
+        for prof in self._lines:
+            mask_list.append(self._get_line_mask(prof.lambda_0))
 
         if len(mask_list) == 0:
             line_mask = np.zeros(shape=self.dispersion.shape, dtype=bool)

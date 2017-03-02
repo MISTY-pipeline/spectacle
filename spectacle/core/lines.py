@@ -14,6 +14,10 @@ class Line(Voigt1D):
     def __init__(self, name, v_doppler, column_density, lambda_0=None,
                  f_value=None, gamma=None, delta_v=None, delta_lambda=None,
                  tied=None):
+        if f_value is None:
+            ind = find_nearest(line_registry['wave'], lambda_0)
+            f_value = line_registry['osc_str'][ind]
+
         super(Line, self).__init__(lambda_0=lambda_0,
                                    f_value=f_value,
                                    gamma=gamma or 0,
