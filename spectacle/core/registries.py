@@ -33,6 +33,12 @@ class LineRegistry:
     def read(self, path, format='ascii.ecsv'):
         self._line_list = self.parse(path, format=format)
 
+    def find(self, name):
+        name = name.lower().replace(" ", "")
+
+        return next((line for line in self._line_list
+                     if name in line['name'].lower()), None)
+
     def add_ion(self, name, wave, osc_str, gamma):
         self._line_list.add_row([name, wave, osc_str, gamma])
 
@@ -55,8 +61,8 @@ class LineRegistry:
         indices = list(set(indices))
 
         if len(indices) > 0:
-            logging.warn("More than one ion with name {} found, proceeding to "
-                         "remove only {}".format(
+            logging.warning("More than one ion with name {} found, proceeding to "
+                            "remove only {}".format(
                 name, self._line_list['wave'][indices[0]]))
 
         self._line_list.remove_row(indices[0])

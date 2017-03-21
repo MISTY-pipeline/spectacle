@@ -3,25 +3,38 @@ import numpy as np
 import uncertainties.unumpy as unp
 
 
-def _format_arrays(a, v, use_tau=False):
+def _format_arrays(a, v, use_tau=False, use_vel=False):
     # Extract only the parts of the spectrum with data in it
     a_region_mask = a.line_mask
     v_region_mask = v.line_mask
     # a_region_mask = np.ones(a.data.shape, dtype=bool)
     # v_region_mask = np.ones(v.data.shape, dtype=bool)
+    mask = (a_region_mask | v_region_mask)
 
-    # Clip the spectra to the same range
-    if a.dispersion[0] > v.dispersion[0]:
-        min_mask = (v.dispersion >= a.dispersion[0])
+    if use_vel:
+        a_disp = a.velocity(mask=mask)
+        v_disp = v.velocity(mask=mask)
+
+        vel_disp = np.linspace(a_disp[0], a_disp[-1], len(a_disp))
+
+        a = a.resample(vel_disp, use_vel=True)
+        v = v.resample(vel_disp, use_vel=True)
     else:
-        min_mask = (a.dispersion >= v.dispersion[0])
+        a_disp = a.dispersion[mask]
+        v_disp = v.dispersion[mask]
 
-    if a.dispersion[-1] < v.dispersion[-1]:
-        max_mask = (v.dispersion <= a.dispersion[-1])
-    else:
-        max_mask = (a.dispersion <= v.dispersion[-1])
+        # Clip the spectra to the same range
+        if a_disp[0] > v_disp[0]:
+            min_mask = (v_disp >= a_disp[0])
+        else:
+            min_mask = (a_disp >= v_disp[0])
 
-    mask = (min_mask & max_mask) & (a_region_mask | v_region_mask)
+        if a_disp[-1] < v_disp[-1]:
+            max_mask = (v_disp <= a_disp[-1])
+        else:
+            max_mask = (a_disp <= v_disp[-1])
+
+        mask = (min_mask & max_mask) & (a_region_mask | v_region_mask)
 
     # Compose the uncertainty arrays
     if use_tau:
@@ -31,8 +44,8 @@ def _format_arrays(a, v, use_tau=False):
         al, vl = unp.uarray(a.data[mask], a.uncertainty[mask]), \
                  unp.uarray(v.data[mask], v.uncertainty[mask])
 
-    d_al = a.dispersion[1] - a.dispersion[0]
-    d_vl = v.dispersion[1] - v.dispersion[0]
+    d_al = a_disp[1] - a_disp[0]
+    d_vl = v_disp[1] - v_disp[0]
 
     # If the two spectra are not the same dimension, resample to lower
     # resolution
@@ -40,20 +53,21 @@ def _format_arrays(a, v, use_tau=False):
         logging.warning("Dispersions have different deltas: {} and {}. "
                         "Resampling to smallest delta.".format(d_al, d_vl))
 
-    if d_al > d_vl:
-        a = a.resample(v.dispersion)
+    # if d_al > d_vl:
+    #     a = a.resample(v_disp)
+    #
+    #     if use_tau:
+    #         al = unp.uarray(a.tau[mask], a.tau_uncertainty[mask])
+    #     else:
+    #         al = unp.uarray(a.data[mask], a.uncertainty[mask])
+    # elif d_vl > d_al:
+    #     v = v.resample(a_disp)
+    #
+    #     if use_tau:
+    #         vl = unp.uarray(v.tau[mask], v.tau_uncertainty[mask])
+    #     else:
+    #         vl = unp.uarray(v.data[mask], v.uncertainty[mask])
 
-        if use_tau:
-            al = unp.uarray(a.tau[mask], a.tau_uncertainty[mask])
-        else:
-            al = unp.uarray(a.data[mask], a.uncertainty[mask])
-    elif d_vl > d_al:
-        v = v.resample(a.dispersion)
-
-        if use_tau:
-            vl = unp.uarray(v.tau[mask], v.tau_uncertainty[mask])
-        else:
-            vl = unp.uarray(v.data[mask], v.uncertainty[mask])
 
     return al, vl, mask
 
@@ -143,7 +157,7 @@ def cross_correlate(a, v, use_tau=False):
     return mat, mask
 
 
-def correlate(a, v, mode='true', use_tau=False):
+def correlate(a, v, mode='true', use_tau=False, use_vel=False):
     """
     Correlation function described by Molly Peeples.
 
@@ -164,7 +178,7 @@ def correlate(a, v, mode='true', use_tau=False):
      ret : ndarray
         An array describing the correlation at every position.
     """
-    al, vl, mask = _format_arrays(a, v, use_tau=use_tau)
+    al, vl, mask = _format_arrays(a, v, use_tau=use_tau, use_vel=use_vel)
 
     if mode == 'true':
         # ret = (al * vl) / (np.linalg.norm(unp.nominal_values(al)) *

@@ -2,7 +2,7 @@ import numpy as np
 import logging
 
 
-def resample(orig_lamb, fin_lamb, **kwargs):
+def resample(orig_lamb, fin_lamb, force=None, **kwargs):
     """
     Abstraction function to decide whether to use uniform or non-uniform
     resampling functions.
@@ -24,8 +24,9 @@ def resample(orig_lamb, fin_lamb, **kwargs):
     orig_space = orig_lamb[1:] - orig_lamb[:-1]
     fin_space = fin_lamb[1:] - fin_lamb[:-1]
 
-    if np.all(orig_space == orig_space[0]) and \
-       np.all(fin_space == fin_space[0]):
+    if (force is not None and force == 'uniform') or \
+            (np.all(orig_space == orig_space[0]) and
+                 np.all(fin_space == fin_space[0])):
         logging.info("Re-sampling: original and final grids are uniform.")
         mat = _uniform_matrix(orig_lamb, fin_lamb)
     else:

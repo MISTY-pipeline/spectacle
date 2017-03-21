@@ -73,7 +73,7 @@ class AbsorptionMeta(type):
                  *args, **kwargs):
             from ..core.spectra import Spectrum1D
 
-            lines = abs_mod._submodels
+            lines = abs_mod._submodels[1:]
 
             flux = super(abs_mod.__class__, self).__call__(dispersion,
                                                            *args, **kwargs)

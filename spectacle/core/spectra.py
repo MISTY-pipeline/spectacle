@@ -22,15 +22,18 @@ class Spectrum1D(NDDataRef):
     """
     def __init__(self, data, dispersion=None, uncertainty=None,
                  dispersion_unit=None, lines=None, tau=None, *args, **kwargs):
+        data = np.array(data)
+
         if dispersion is None:
-            self._dispersion = np.linspace(0, 2000, len(data))
+            self._dispersion = np.linspace(0, 2000, data.size)
         else:
             self._dispersion = dispersion
 
         if uncertainty is None:
-            uncertainty = StdDevUncertainty(np.zeros(len(data)))
+            uncertainty = StdDevUncertainty(np.zeros(data.size))
 
         self._dispersion_unit = dispersion_unit
+        self._velocity = None
         self._lsfs = []
         self._noise = []
         self._remat = None
@@ -39,6 +42,18 @@ class Spectrum1D(NDDataRef):
 
         super(Spectrum1D, self).__init__(data, uncertainty=uncertainty, *args,
                                          **kwargs)
+
+    def __add__(self, other):
+        return self.data + other
+
+    def __sub__(self, other):
+        return self.data - other
+
+    def __mul__(self, other):
+        return self.data * other
+
+    def __divmod__(self, other):
+        return self.data / other
 
     @classmethod
     def formats(cls):
@@ -165,7 +180,7 @@ class Spectrum1D(NDDataRef):
     def dispersion_unit(self, value):
         self._dispersion_unit = value
 
-    def velocity(self, x_0=None, mask=None):
+    def velocity(self, x_0=None, mask=None, bins=None):
         """
         Calculates the velocity values of the dispersion axis.
 
@@ -186,12 +201,15 @@ class Spectrum1D(NDDataRef):
         mask = mask if mask is not None else np.ones(
             shape=self.dispersion.shape, dtype=bool)
 
-        center = x_0 or self.dispersion[0]
+        center = x_0 or self._lines[0].lambda_0
         center = center * u.Angstrom
-        dispersion = self.dispersion[mask] * u.Angstrom
+        dispersion = self._dispersion[mask] * u.Angstrom
 
-        velocity = ((dispersion - center) /
-                    dispersion * c.c.cgs).to("km/s").value
+        ln_lambda = np.log(dispersion.value) - np.log(center.value)
+        velocity = ((c.c.cgs * ln_lambda)).to('km/s').value
+
+        if self._remat is not None:
+            velocity = np.dot(self._remat, velocity)
 
         return velocity
 
@@ -250,7 +268,8 @@ class Spectrum1D(NDDataRef):
                        "dispersion": self.dispersion,
                        "unit": self.unit, "wcs": self.wcs,
                        "uncertainty": self.uncertainty,
-                       "mask": self.mask, "meta": self.meta}
+                       "mask": self.mask, "meta": self.meta,
+                       "lines": self.lines}
 
         self_kwargs.update(kwargs)
 
@@ -266,12 +285,12 @@ class Spectrum1D(NDDataRef):
 
             return noise
 
-    def resample(self, dispersion, copy=True, **kwargs):
-        remat = resample(self.dispersion, dispersion, **kwargs)
+    def resample(self, dispersion, copy=False, use_vel=False, **kwargs):
+        remat = resample(self.dispersion if not use_vel else self.velocity(),
+                         dispersion, **kwargs)
 
         if copy:
             new_spec = self.copy()
-            new_spec._remat = remat
         else:
             self._remat = remat
             new_spec = self
@@ -383,25 +402,6 @@ class Spectrum1D(NDDataRef):
             len(line_list)))
 
         return list(line_list.values())
-
-    def optical_depth(self):
-        """
-        Return the optical depth at some wavelength.
-
-        Parameters
-        ----------
-        x_0 : float
-            Line center from which to calculate tau.
-
-        Returns
-        -------
-        tau : float
-            The value of the optical depth at the given wavelength.
-        """
-        flux = unp.uarray(self.data, self.uncertainty)
-        tau = unp.log(1.0/flux)
-
-        return unp.nominal_values(tau), unp.std_devs(tau)
 
     def centroid(self, x_0=None, x_range=None):
         """

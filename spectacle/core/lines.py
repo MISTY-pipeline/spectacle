@@ -15,6 +15,10 @@ class Line(Voigt1D):
                  f_value=None, gamma=None, delta_v=None, delta_lambda=None,
                  tied=None):
         if f_value is None:
+            if lambda_0 is None:
+                lind = np.min(np.where(line_registry['name'] == name))
+                lambda_0 = line_registry['wave'][lind]
+
             ind = find_nearest(line_registry['wave'], lambda_0)
             f_value = line_registry['osc_str'][ind]
 

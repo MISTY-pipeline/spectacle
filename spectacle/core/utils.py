@@ -1,4 +1,5 @@
 import numpy as np
+import logging
 
 
 def find_nearest(array, value, side="left"):
@@ -25,7 +26,8 @@ def find_bounds(dispersion, data, center, value, cap=False):
 
     try:
         ind = np.where((creg[:, 0] <= cind) & (creg[:, 1] >= cind))[0][0]
-    except IndexError:
+    except IndexError as e:
+        logging.error(e)
         return 0, len(data) - 1
 
     left_ind, right_ind = creg[ind]
@@ -36,7 +38,7 @@ def find_bounds(dispersion, data, center, value, cap=False):
 def _get_absorption_regions(data):
     # This makes the assumption that the continuum has been normalized to 1
     cont = np.ones(data.shape)
-    mask = ~np.isclose(data, cont, rtol=1e-2, atol=1e-5)
+    mask = ~np.isclose(cont, data, rtol=1e-2, atol=1e-5)
 
     creg = contiguous_regions(mask)
 
