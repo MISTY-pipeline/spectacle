@@ -25,8 +25,8 @@ def resample(orig_lamb, fin_lamb, force=None, **kwargs):
     fin_space = fin_lamb[1:] - fin_lamb[:-1]
 
     if (force is not None and force == 'uniform') or \
-            (np.all(orig_space == orig_space[0]) and
-                 np.all(fin_space == fin_space[0])):
+            (np.allclose(orig_space, orig_space[0]) and
+                 np.allclose(fin_space, fin_space[0])):
         logging.info("Re-sampling: original and final grids are uniform.")
         mat = _uniform_matrix(orig_lamb, fin_lamb)
     else:

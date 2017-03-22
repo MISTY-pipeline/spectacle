@@ -14,13 +14,22 @@ class Line(Voigt1D):
     def __init__(self, name, v_doppler, column_density, lambda_0=None,
                  f_value=None, gamma=None, delta_v=None, delta_lambda=None,
                  tied=None):
-        if f_value is None:
-            if lambda_0 is None:
-                lind = np.min(np.where(line_registry['name'] == name))
-                lambda_0 = line_registry['wave'][lind]
+        if lambda_0 is None:
+            if name not in line_registry['name']:
+                logging.error("No ion named {} in line registry.".format(name))
+                return
 
+            lind = np.min(np.where(line_registry['name'] == name))
+            lambda_0 = line_registry['wave'][lind]
+
+        if f_value is None:
             ind = find_nearest(line_registry['wave'], lambda_0)
             f_value = line_registry['osc_str'][ind]
+
+        if gamma is None:
+            ind = find_nearest(line_registry['wave'], lambda_0)
+            gamma = line_registry['gamma'][ind]
+            tied = {'gamma': lambda cmod, mod=self: _tie_gamma(cmod, mod)}
 
         super(Line, self).__init__(lambda_0=lambda_0,
                                    f_value=f_value,
@@ -29,12 +38,8 @@ class Line(Voigt1D):
                                    column_density=column_density,
                                    delta_v=delta_v,
                                    delta_lambda=delta_lambda,
-                                   name=name)
-
-        # If gamma has not been explicitly defined, tie it to lambda
-        if tied is not None:
-            if 'gamma' in tied:
-                self.gamma.tied = lambda cmod, mod=self: _tie_gamma(cmod, mod)
+                                   name=name,
+                                   tied=tied)
 
     @property
     def fwhm(self):
@@ -70,5 +75,7 @@ def _tie_gamma(compound_model, model):
 
     ind = find_nearest(line_registry['wave'], lambda_val)
     gamma_val = line_registry['gamma'][ind]
+
+    print("Gamma is ", gamma_val)
 
     return gamma_val

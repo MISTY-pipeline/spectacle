@@ -2,6 +2,7 @@ from spectacle.core.spectra import Spectrum1D
 import numpy as np
 from astropy.nddata import StdDevUncertainty
 from astropy.units import Unit
+import os
 
 
 class TestSpectrum1D:
@@ -41,4 +42,22 @@ class TestSpectrum1D:
         assert spec.dispersion_unit.name == "Angstrom"
 
     def test_create_from_file(self):
-        pass
+        from astropy.io import fits
+
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+
+        hdulist = fits.open(os.path.join(path, "test_data.fits"))
+
+        # The misty file reader returns a list of spectra
+        specs = Spectrum1D.read(os.path.join(path, "test_data.fits"),
+                                format='misty')
+
+        assert all(isinstance(spec, Spectrum1D) for spec in specs)
+        assert specs[0].data == hdulist[2].data['flux']
+
+    def test_velocity(self):
+        data = np.random.sample(100)
+
+        spec = Spectrum1D(data)
+
+        assert spec.velocity(50)[50] == 0

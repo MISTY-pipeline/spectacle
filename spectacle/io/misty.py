@@ -43,10 +43,11 @@ def misty_reader(file_path):
     meta = dict()
 
     meta['primary'] = dict(hdulist[0].header)
+    meta['parameters'] = dict(hdulist[1].data)
 
     spec_list = []
 
-    for i in range(1, len(hdulist)):
+    for i in range(2, len(hdulist)):
         ext_hdr = hdulist[i].header
         meta[hdulist[0].header['LINE_{}'.format(i)]] = dict(ext_hdr)
 

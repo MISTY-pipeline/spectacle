@@ -241,7 +241,7 @@ class Spectrum1D(NDDataRef):
     @property
     def tau(self):
         if self._tau is None:
-            tau = unp.log(1.0 / unp.uarray(self.data, self.uncertainty))
+            tau = unp.log(unp.uarray(self.data, self.uncertainty) ** -1)
 
             return unp.nominal_values(tau)
 
@@ -264,12 +264,12 @@ class Spectrum1D(NDDataRef):
         values. Takes all the arguments a Spectrum1D expects, arguments that
         are not included use this instance's values.
         """
-        self_kwargs = {"data": self.data,
-                       "dispersion": self.dispersion,
+        self_kwargs = {"data": np.copy(self.data),
+                       "dispersion": np.copy(self.dispersion),
                        "unit": self.unit, "wcs": self.wcs,
-                       "uncertainty": self.uncertainty,
-                       "mask": self.mask, "meta": self.meta,
-                       "lines": self.lines}
+                       "uncertainty": np.copy(self.uncertainty),
+                       "mask": np.copy(self.mask), "meta": self.meta,
+                       "lines": [x.copy() for x in self.lines]}
 
         self_kwargs.update(kwargs)
 
@@ -286,14 +286,15 @@ class Spectrum1D(NDDataRef):
             return noise
 
     def resample(self, dispersion, copy=False, use_vel=False, **kwargs):
-        remat = resample(self.dispersion if not use_vel else self.velocity(),
+        remat = resample(self._dispersion if not use_vel else self.velocity(),
                          dispersion, **kwargs)
 
         if copy:
             new_spec = self.copy()
         else:
-            self._remat = remat
             new_spec = self
+
+        new_spec._remat = remat
 
         return new_spec
 
@@ -303,6 +304,7 @@ class Spectrum1D(NDDataRef):
 
         ind_left, ind_right = find_bounds(self.dispersion, y, x_0, 1.0,
                                           cap=True)
+
         x1, x2 = self.dispersion[ind_left], self.dispersion[ind_right]
 
         mask = (self.dispersion >= x1) & (self.dispersion <= x2)

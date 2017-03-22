@@ -25,14 +25,14 @@ def _format_arrays(a, v, use_tau=False, use_vel=False):
 
         # Clip the spectra to the same range
         if a_disp[0] > v_disp[0]:
-            min_mask = (v_disp >= a_disp[0])
+            min_mask = (v.dispersion >= a_disp[0])
         else:
-            min_mask = (a_disp >= v_disp[0])
+            min_mask = (a.dispersion >= v_disp[0])
 
         if a_disp[-1] < v_disp[-1]:
-            max_mask = (v_disp <= a_disp[-1])
+            max_mask = (v.dispersion <= a_disp[-1])
         else:
-            max_mask = (a_disp <= v_disp[-1])
+            max_mask = (a.dispersion <= v_disp[-1])
 
         mask = (min_mask & max_mask) & (a_region_mask | v_region_mask)
 

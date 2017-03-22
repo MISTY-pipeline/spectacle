@@ -32,7 +32,7 @@ def find_bounds(dispersion, data, center, value, cap=False):
 
     left_ind, right_ind = creg[ind]
 
-    return left_ind, right_ind
+    return left_ind - 1, right_ind - 1
 
 
 def _get_absorption_regions(data):
