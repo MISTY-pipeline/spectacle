@@ -39,7 +39,7 @@ class Line(Voigt1D):
                                    delta_v=delta_v,
                                    delta_lambda=delta_lambda,
                                    name=name,
-                                   tied=tied)
+                                   tied=tied or {})
 
     @property
     def fwhm(self):

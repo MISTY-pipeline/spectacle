@@ -1,7 +1,5 @@
-from astropy.io import registry as io_registry
+import sys
 import os
-import importlib.machinery as mach
-import importlib.util as util
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -23,8 +21,17 @@ def load_user():
         if not file.endswith("py"):
             continue
 
-        spec = util.spec_from_file_location(file[:-3], os.path.join(path, file))
-        mod = util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+        try:
+            import importlib.util as util
+
+            spec = util.spec_from_file_location(file[:-3],
+                                                os.path.join(path, file))
+            mod = util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+        except ImportError:
+            from importlib import import_module
+
+            sys.path.insert(0, path)
+            import_module(file[:-3])
 
 load_user()
