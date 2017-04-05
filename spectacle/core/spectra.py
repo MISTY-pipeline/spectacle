@@ -2,6 +2,7 @@ from .utils import find_nearest, find_bounds
 from ..analysis.resample import resample
 from .registries import line_registry
 from .lines import Line
+from ..modeling.fitting import LevMarFitter
 
 import numpy as np
 from astropy import constants as c
@@ -404,6 +405,25 @@ class Spectrum1D(NDDataRef):
             len(line_list)))
 
         return list(line_list.values())
+
+    def continuum(self, x_range=None):
+        if x_range is not None:
+            mask = np.zeros(self.data.shape, dtype=bool)
+            mask[(self.dispersion >= x_range[0]) &
+                 (self.dispersion <= x_range[1])] = True
+        else:
+            mask = None
+
+        cont = LevMarFitter.find_continuum(self, mask=mask)
+
+        return cont
+
+    def apparent_optical_depth(self, x_range=None):
+        cont = self.continuum(x_range=x_range)
+        flux = unp.uarray(self.data, self.uncertainty)
+        aod = unp.log(cont/self.data)
+
+        return aod
 
     def centroid(self, x_0=None, x_range=None):
         """

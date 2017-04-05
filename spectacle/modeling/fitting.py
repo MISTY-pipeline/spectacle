@@ -43,21 +43,28 @@ class Fitter1D:
     def __call__(self, *args, **kwargs):
         raise NotImplementedError
 
-    def _find_continuum(self, spectrum, mode='LinearLSQFitter'):
-        data_med = np.median(spectrum.data)
+    @staticmethod
+    def find_continuum(spectrum, mask=None, mode='LinearLSQFitter'):
+        if mask is None:
+            mask = np.ones(spectrum.data.shape, dtype=bool)
+
+        data_med = np.median(spectrum.data[mask])
         cont = models.Linear1D(slope=0.0, intercept=data_med)
 
         fitter = getattr(fitting, mode)()
 
         # We only want to use weights if there is an appreciable difference
         # between the median and the continuum
-        diff = np.abs(data_med - spectrum.data)
-        weights = diff ** -3 if np.sum(diff) > np.min(spectrum.data) else None
+        diff = np.abs(data_med - spectrum.data[mask])
+        weights = diff ** -3 if np.sum(diff) > np.min(spectrum.data[mask]) \
+                             else None
 
-        cont_fit = fitter(cont, spectrum.dispersion, spectrum.data,
+        cont_fit = fitter(cont, spectrum.dispersion[mask], spectrum.data[mask],
                           weights=weights)
 
-        return cont_fit
+        cont = cont_fit(spectrum.dispersion)
+
+        return cont
 
     @property
     def model(self):
