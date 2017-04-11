@@ -11,9 +11,9 @@ class Line(Voigt1D):
     """
     Data class encapsulating the absorption line feature.
     """
-    def __init__(self, name, v_doppler, column_density, lambda_0=None,
-                 f_value=None, gamma=None, delta_v=None, delta_lambda=None,
-                 tied=None):
+    def __init__(self, name, v_doppler=None, column_density=None,
+                 lambda_0=None, f_value=None, gamma=None, delta_v=None,
+                 delta_lambda=None, tied=None):
         if lambda_0 is None:
             if name not in line_registry['name']:
                 logging.error("No ion named {} in line registry.".format(name))
@@ -30,6 +30,12 @@ class Line(Voigt1D):
             ind = find_nearest(line_registry['wave'], lambda_0)
             gamma = line_registry['gamma'][ind]
             tied = {'gamma': lambda cmod, mod=self: _tie_gamma(cmod, mod)}
+
+        if v_doppler is None:
+            v_doppler = 1e7
+
+        if column_density is None:
+            column_density = 10**14.66
 
         super(Line, self).__init__(lambda_0=lambda_0,
                                    f_value=f_value,
