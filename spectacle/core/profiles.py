@@ -40,20 +40,29 @@ class TauProfile:
                  n_lambda=12000, dlambda=0.01):
         charge_proton = u.Quantity(4.8032056e-10, 'esu')
         tau_factor = ((np.sqrt(np.pi) * charge_proton ** 2 /
-                       (u.M_e.cgs * c.c.cgs))).cgs.value
+                       (u.M_e.cgs * c.c.cgs))).cgs
+
+        # Make the input parameters quantities so we can keep track
+        # of units
+        x = x * u.Unit('Angstrom')
+        lambda_0 = lambda_0 * u.Unit('Angstrom')
+        v_doppler = v_doppler * u.Unit('cm/s')
+        column_density = 10 **  column_density * u.Unit('1/cm2')
+        delta_v = delta_v * u.Unit('cm/s')
+        delta_lambda = delta_lambda * u.Unit('Angstrom')
 
         lambda_bins = x
 
         # shift lambda_0 by delta_v
         if delta_v is not None:
-            lam1 = lambda_0 * (1 + delta_v / c.c.cgs.value)
+            lam1 = lambda_0 * (1 + delta_v / c.c.cgs)
         elif delta_lambda is not None:
             lam1 = lambda_0 + delta_lambda
         else:
             lam1 = lambda_0
 
         # conversions
-        nudop = 1e8 * v_doppler / lam1  # doppler width in Hz
+        nudop = (v_doppler / lam1).to('Hz')  # doppler width in Hz
 
         # create wavelength
         if lambda_bins is None:
@@ -63,20 +72,20 @@ class TauProfile:
 
         # tau_0
         tau_X = tau_factor * column_density * f_value / v_doppler
-        tau0 = tau_X * lambda_0 * 1e-8
+        tau0 = (tau_X * lambda_0).decompose()
 
         # dimensionless frequency offset in units of doppler freq
-        x = c.c.cgs.value / v_doppler * (lam1 / lambda_bins - 1.0)
+        x = c.c.cgs / v_doppler * (lam1 / lambda_bins - 1.0)
         a = gamma / (4.0 * np.pi * nudop)  # damping parameter
         phi = self.voigt(a, x)  # line profile
         tau_phi = tau0 * phi  # profile scaled with tau0
 
-        self.lambda_bins = lambda_bins
-        self.tau_phi = tau_phi
+        self._lambda_bins = lambda_bins.value
+        self._tau_phi = tau_phi.decompose().value
 
     @property
     def optical_depth(self):
-        return self.tau_phi
+        return self._tau_phi
 
     @classmethod
     def voigt(cls, a, u):

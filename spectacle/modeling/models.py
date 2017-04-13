@@ -14,13 +14,13 @@ class Voigt1D(Fittable1DModel):
     Implements a Voigt profile (convolution of Cauchy-Lorentz and Gaussian
     distribution).
     """
-    lambda_0 = Parameter()
-    f_value = Parameter(min=0, max=1.0)
-    gamma = Parameter(min=0)
-    v_doppler = Parameter()
-    column_density = Parameter(min=1e10, max=1e30)
-    delta_v = Parameter(default=0)
-    delta_lambda = Parameter(default=0)
+    lambda_0 = Parameter(min=0)
+    f_value = Parameter(min=1e-4, max=2.0)
+    gamma = Parameter(min=100000)
+    v_doppler = Parameter(default=1e7)
+    column_density = Parameter(default=14, min=0)
+    delta_v = Parameter(default=0, fixed=True)
+    delta_lambda = Parameter(default=0, fixed=True)
 
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
@@ -60,7 +60,7 @@ class AbsorptionMeta(type):
                 raise AttributeError("Unknown continuum type {}.".format(
                     type(continuum)))
         else:
-            continuum = Linear1D(slope=0, intercept=1)
+            continuum = Linear1D(slope=0, intercept=1, fixed={'slope': True, 'intercept': True})
             mod_list.append(continuum)
 
         if lines is not None:
