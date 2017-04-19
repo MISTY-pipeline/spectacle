@@ -31,6 +31,9 @@ class Line(Voigt1D):
             gamma = line_registry['gamma'][ind]
             tied = {'gamma': lambda cmod, mod=self: _tie_gamma(cmod, mod)}
 
+            logging.warning("Gamma is being tied to values within your ion"
+                            "lookup table.")
+
         super(Line, self).__init__(lambda_0=lambda_0,
                                    f_value=f_value,
                                    gamma=gamma or 0,

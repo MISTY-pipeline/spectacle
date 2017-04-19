@@ -47,7 +47,7 @@ class TauProfile:
         x = x * u.Unit('Angstrom')
         lambda_0 = lambda_0 * u.Unit('Angstrom')
         v_doppler = v_doppler * u.Unit('cm/s')
-        column_density = 10 **  column_density * u.Unit('1/cm2')
+        column_density = 10 ** column_density * u.Unit('1/cm2')
         delta_v = delta_v * u.Unit('cm/s')
         delta_lambda = delta_lambda * u.Unit('Angstrom')
 

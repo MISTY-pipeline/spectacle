@@ -15,10 +15,10 @@ class Voigt1D(Fittable1DModel):
     distribution).
     """
     lambda_0 = Parameter(min=0)
-    f_value = Parameter(min=1e-4, max=2.0)
-    gamma = Parameter(min=100000)
-    v_doppler = Parameter(default=1e7)
-    column_density = Parameter(default=14, min=0)
+    f_value = Parameter(min=1e-4, max=2.0, fixed=True)
+    gamma = Parameter(fixed=True)
+    v_doppler = Parameter(default=1e5)
+    column_density = Parameter(default=13)
     delta_v = Parameter(default=0, fixed=True)
     delta_lambda = Parameter(default=0, fixed=True)
 
@@ -51,7 +51,7 @@ class AbsorptionMeta(type):
         mod_list = []
 
         if continuum is not None:
-            if isinstance(continuum, Fittable1DModel):
+            if issubclass(continuum.__class__, Fittable1DModel):
                 mod_list.append(continuum)
             elif isinstance(continuum, six.string_types):
                 continuum = getattr(models, continuum, 'Linear1D')
@@ -60,12 +60,16 @@ class AbsorptionMeta(type):
                 raise AttributeError("Unknown continuum type {}.".format(
                     type(continuum)))
         else:
-            continuum = Linear1D(slope=0, intercept=1, fixed={'slope': True, 'intercept': True})
+            continuum = Linear1D(slope=0, intercept=1,
+                                 fixed={'slope': True, 'intercept': True}
+                                 )
             mod_list.append(continuum)
 
         if lines is not None:
             if isinstance(lines, list):
                 mod_list += lines
+            elif issubclass(lines, Fittable1DModel):
+                mod_list.append(lines)
 
         abs_mod = np.sum(mod_list)
 

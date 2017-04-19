@@ -395,8 +395,7 @@ class Spectrum1D(NDDataRef):
                 strict))
 
             mod = Line(lambda_0=self.dispersion[ind], f_value=f_value,
-                       gamma=gamma_val, v_doppler=1e6, column_density=10**14,
-                       name=nearest_name)
+                       gamma=gamma_val, name=nearest_name)
 
             if mod is not None:
                 line_list[nearest_name] = mod

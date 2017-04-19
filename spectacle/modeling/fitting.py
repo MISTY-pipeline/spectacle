@@ -5,7 +5,7 @@ import six
 from astropy.modeling import fitting, models
 from astropy.modeling.fitting import LevMarLSQFitter
 from astropy.table import Table
-from scipy import optimize
+from scipy import optimize, stats
 
 from ..modeling.models import Absorption1D
 from ..core.utils import find_nearest
@@ -71,13 +71,79 @@ class Fitter1D:
         return self._model
 
 
+class DynamicLevMarFitter(LevMarLSQFitter):
+    def __init__(self, *args, **kwargs):
+        super(DynamicLevMarFitter, self).__init__(*args, **kwargs)
+
+        self._chisq = 100
+        self._p_value = 0
+
+    @property
+    def chisq(self):
+        return self._chisq
+
+    @property
+    def p_value(self):
+        return self._p_value
+
+    def __call__(self,  model, x, y, *args, **kwargs):
+        fit_mod = super(DynamicLevMarFitter, self).__call__(model, x, y, *args,
+                                                            **kwargs)
+        ddof = len(list(
+            filter(lambda x: x == False,
+                   fit_mod.fixed.values())))
+
+        res = stats.chisquare(f_obs=fit_mod(x).data,
+                              f_exp=y,
+                              ddof=ddof)
+
+        self._chisq, self._p_value = res
+
+        # Perform a chi2 test, only when the model and the data are within a
+        # certain confidence interval do we accept the number of lines. Other-
+        # wise, we will keep adding lines, to a limit.
+        while self._chisq > 0.1 and \
+                        len(fit_mod._submodels) < len(model._submodels) + 10:
+            new_line = model[-1].copy()
+            # Jitter lambda
+            new_line.lambda_0 += np.random.sample() * 0.1
+
+            fit_line_list = [x.copy() for x in model]
+
+            new_mod = Absorption1D(lines=fit_line_list[1:] + [new_line],
+                                   continuum=model[0].copy())
+
+            fit_new_mod = super(DynamicLevMarFitter, self).__call__(new_mod,
+                                                                    x, y,
+                                                                    *args,
+                                                                    **kwargs)
+
+            res = stats.chisquare(f_obs=fit_new_mod(x).data,
+                                  f_exp=y,
+                                  ddof=ddof)
+
+            chisq, p = res
+
+            if chisq < self._chisq:
+                logging.info("Adding new line to improve fit.")
+                fit_mod = fit_new_mod
+                self._chisq, self._p_value = res
+            else:
+                logging.info("Chisq did not improve, halting iteration.")
+                break
+        else:
+            logging.info("Reached sufficient chisq or submodel limit.")
+
+        return fit_mod
+
+
 class LevMarFitter(Fitter1D):
     def __call__(self, model, x, y, err=None):
         # Create fitter instance
-        fitter = LevMarCurveFitFitter()
-        # fitter = LevMarLSQFitter()
+        # fitter = LevMarCurveFitFitter()
+        fitter = LevMarLSQFitter()
 
-        model_fit = fitter(model.model,
+        model_fit = fitter(model,
                            x, #spectrum.dispersion,
                            y, #spectrum.data,
                            err, #sigma=spectrum.uncertainty,
