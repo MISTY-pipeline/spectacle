@@ -303,7 +303,7 @@ class Spectrum1D(NDDataRef):
         # TODO: try applying a smoothing kernel before calculating bounds
         # y = savgol_filter(self.data, 49, 3)
 
-        ind_left, ind_right = find_bounds(self.dispersion, y, x_0, 1.0,
+        ind_left, ind_right = find_bounds(self.dispersion, self.data, x_0, 1.0,
                                           cap=True)
 
         x1, x2 = self.dispersion[ind_left], self.dispersion[ind_right]
