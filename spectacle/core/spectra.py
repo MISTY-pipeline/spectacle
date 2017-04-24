@@ -301,7 +301,7 @@ class Spectrum1D(NDDataRef):
 
     def _get_line_mask(self, x_0):
         # TODO: try applying a smoothing kernel before calculating bounds
-        y = savgol_filter(self.data, 49, 3)
+        # y = savgol_filter(self.data, 49, 3)
 
         ind_left, ind_right = find_bounds(self.dispersion, y, x_0, 1.0,
                                           cap=True)
