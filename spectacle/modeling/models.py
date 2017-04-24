@@ -61,7 +61,7 @@ class AbsorptionMeta(type):
                     type(continuum)))
         else:
             continuum = Linear1D(slope=0, intercept=1,
-                                 fixed={'slope': True, 'intercept': True}
+                                 # fixed={'slope': True, 'intercept': True}
                                  )
             mod_list.append(continuum)
 
