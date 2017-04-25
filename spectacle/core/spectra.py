@@ -496,7 +496,7 @@ class Spectrum1D(NDDataRef):
             mask = self._get_line_mask(x_0)
         else:
             mask = (self.dispersion >= self.dispersion[0]) & \
-                   (self.dispersion <= self.dispersion[1])
+                   (self.dispersion <= self.dispersion[-1])
 
         disp = self.dispersion[mask]
         flux = self.data[mask]
