@@ -3,7 +3,7 @@ import abc
 import numpy as np
 import six
 from astropy.modeling import fitting, models
-from astropy.modeling.fitting import LevMarLSQFitter
+from astropy.modeling.fitting import LevMarLSQFitter, Fitter, SLSQPLSQFitter
 from astropy.table import Table
 from scipy import optimize, stats
 
@@ -12,63 +12,6 @@ from ..core.utils import find_nearest
 from ..core.registries import line_registry
 
 import logging
-
-
-@six.add_metaclass(abc.ABCMeta)
-class Fitter1D:
-    """
-    Base fitter class for routines that run on the
-    :class:`spectacle.core.spectra.Spectrum1D` object.
-    """
-    def __init__(self):
-        """
-        The fitter class is responsible for finding absorption features using
-        a basic peak finding utility. This is done only if the fitting routine
-        is not supplied with a pre-made model object which contains user-
-        supplied lines.
-
-        Parameters
-        ----------
-        threshold : float
-            Normalized threshold. Only the peaks with amplitude higher than the
-            threshold will be detected.
-        min_dist :
-            The minimum distance between detected peaks.
-        """
-        self.fit_info = None
-        self._model = None
-        self._indices = []
-
-    @abc.abstractmethod
-    def __call__(self, *args, **kwargs):
-        raise NotImplementedError
-
-    @staticmethod
-    def find_continuum(spectrum, mask=None, mode='LinearLSQFitter'):
-        if mask is None:
-            mask = np.ones(spectrum.data.shape, dtype=bool)
-
-        data_med = np.median(spectrum.data[mask])
-        cont = models.Linear1D(slope=0.0, intercept=data_med)
-
-        fitter = getattr(fitting, mode)()
-
-        # We only want to use weights if there is an appreciable difference
-        # between the median and the continuum
-        diff = np.abs(data_med - spectrum.data[mask])
-        weights = diff ** -3 if np.sum(diff) > np.min(spectrum.data[mask]) \
-                             else None
-
-        cont_fit = fitter(cont, spectrum.dispersion[mask], spectrum.data[mask],
-                          weights=weights)
-
-        cont = cont_fit(spectrum.dispersion)
-
-        return cont
-
-    @property
-    def model(self):
-        return self._model
 
 
 class DynamicLevMarFitter(LevMarLSQFitter):
@@ -137,7 +80,7 @@ class DynamicLevMarFitter(LevMarLSQFitter):
         return fit_mod
 
 
-class LevMarFitter(Fitter1D):
+class LevMarFitter(Fitter):
     def __call__(self, model, x, y, err=None):
         # Create fitter instance
         # fitter = LevMarCurveFitFitter()
