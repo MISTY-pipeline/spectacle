@@ -16,29 +16,39 @@ def find_nearest(array, value, side="left"):
     return idx
 
 
-def find_bounds(dispersion, data, center, value, cap=False):
-    if cap:
+def find_bounds(dispersion, data, center, continuum=None, cap_value=None):
+    if cap_value is not None:
         data = np.array(data)
-        data[data > value] = value
+        data[data > cap_value] = cap_value
+
+    if continuum is None:
+        continuum = np.ones(dispersion.shape)
 
     cind = find_nearest(dispersion, center)
-    creg = _get_absorption_regions(data)
+    creg = _get_absorption_regions(data, continuum=continuum)
 
     try:
-        ind = np.where((creg[:, 0] <= cind) & (creg[:, 1] >= cind))[0][0]
+        # Find the center point of all the regions
+        avg_list = list(map(lambda i: int(i[0] + (i[1] - i[0]) * 0.5),
+                            creg[:, :]))
+        cind = avg_list[find_nearest(avg_list, cind)]
+
+        # For the closest center to the provided lambda_0 value, see if there
+        # is an identified region for it
+        ind = np.where((creg[:, 0] <= cind) & (creg[:, 1] >= cind))
+        ind = ind[0][0]
     except IndexError as e:
         logging.error(e)
         return 0, len(data) - 1
 
     left_ind, right_ind = creg[ind]
 
-    return left_ind - 1, right_ind - 1
+    return left_ind, right_ind - 1
 
 
-def _get_absorption_regions(data):
+def _get_absorption_regions(data, continuum):
     # This makes the assumption that the continuum has been normalized to 1
-    cont = np.ones(data.shape)
-    mask = ~np.isclose(cont, data, rtol=1e-2, atol=1e-5)
+    mask = ~np.isclose(continuum, data, rtol=1e-2, atol=1e-5)
 
     creg = contiguous_regions(mask)
 
