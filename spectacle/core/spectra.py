@@ -2,7 +2,6 @@ from .utils import find_nearest, find_bounds
 from ..analysis.resample import resample
 from .registries import line_registry
 from .lines import Line
-from ..modeling.fitting import LevMarFitter
 
 import numpy as np
 from astropy import constants as c
@@ -22,7 +21,8 @@ class Spectrum1D(NDDataRef):
     A spectrum container object for real or synthetic spectral data.
     """
     def __init__(self, data, dispersion=None, uncertainty=None,
-                 dispersion_unit=None, lines=None, tau=None, *args, **kwargs):
+                 dispersion_unit=None, lines=None, continuum=None, tau=None,
+                 *args, **kwargs):
         data = np.array(data)
 
         if dispersion is None:
@@ -39,6 +39,8 @@ class Spectrum1D(NDDataRef):
         self._noise = []
         self._remat = None
         self._lines = lines if lines is not None else []
+        self._continuum = continuum if continuum is not None \
+            else np.ones(self._dispersion.shape)
         self._tau = tau
 
         super(Spectrum1D, self).__init__(data, uncertainty=uncertainty, *args,
@@ -259,6 +261,10 @@ class Spectrum1D(NDDataRef):
     def lines(self):
         return self._lines
 
+    @property
+    def continuum(self):
+        return self._continuum
+
     def copy(self, deep_copy=True, **kwargs):
         """
         Create a new `Spectrum1D` object using current property
@@ -299,16 +305,22 @@ class Spectrum1D(NDDataRef):
 
         return new_spec
 
-    def _get_line_mask(self, x_0):
+    def _get_line_mask(self, x_0, continuum=None):
         # TODO: try applying a smoothing kernel before calculating bounds
         # y = savgol_filter(self.data, 49, 3)
 
-        ind_left, ind_right = find_bounds(self.dispersion, self.data, x_0, 1.0,
-                                          cap=True)
+        ind_left, ind_right = find_bounds(self.dispersion, self.data, x_0,
+                                          continuum=continuum, cap_value=1.0)
 
         x1, x2 = self.dispersion[ind_left], self.dispersion[ind_right]
 
         mask = (self.dispersion >= x1) & (self.dispersion <= x2)
+
+        if not any(mask):
+            mask = (self.dispersion >= self.dispersion[0]) & \
+                   (self.dispersion <= self.dispersion[-1])
+            logging.warning("No reasonable bounds could be found for x_0={}, "
+                            "defaulting to entire spectrum.".format(x_0))
 
         return mask
 
@@ -356,7 +368,6 @@ class Spectrum1D(NDDataRef):
             min_dist=min_dist)
 
         if strict:
-            print("Using strict line associations.")
             # Find the indices of the ion table that correspond with the found
             # indices in the peak search
             tab_indexes = np.array(list(set(
@@ -404,18 +415,6 @@ class Spectrum1D(NDDataRef):
             len(line_list)))
 
         return list(line_list.values())
-
-    def continuum(self, x_range=None):
-        if x_range is not None:
-            mask = np.zeros(self.data.shape, dtype=bool)
-            mask[(self.dispersion >= x_range[0]) &
-                 (self.dispersion <= x_range[1])] = True
-        else:
-            mask = None
-
-        cont = LevMarFitter.find_continuum(self, mask=mask)
-
-        return cont
 
     def apparent_optical_depth(self, x_range=None):
         cont = self.continuum(x_range=x_range)
@@ -493,7 +492,7 @@ class Spectrum1D(NDDataRef):
             mask = (self.dispersion >= x_range[0]) & \
                    (self.dispersion <= x_range[1])
         elif x_0 is not None:
-            mask = self._get_line_mask(x_0)
+            mask = self._get_line_mask(x_0, continuum=self.continuum)
         else:
             mask = (self.dispersion >= self.dispersion[0]) & \
                    (self.dispersion <= self.dispersion[-1])
