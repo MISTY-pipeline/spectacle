@@ -6,15 +6,80 @@ from astropy.modeling import fitting, models
 from astropy.modeling.fitting import LevMarLSQFitter, Fitter, SLSQPLSQFitter
 from astropy.table import Table
 from scipy import optimize, stats
+import peakutils
 
-from ..modeling.models import Absorption1D
-from ..core.utils import find_nearest
+from ..core.spectra import Spectrum1D
+from ..modeling.models import Absorption1D, Voigt1D
+from ..core.utils import find_nearest, find_bounds
 from ..core.registries import line_registry
 
 import logging
 
 
-class DynamicLevMarFitter(LevMarLSQFitter):
+class LevMarFitter(LevMarLSQFitter):
+    def __init__(self, *args, **kwargs):
+        super(LevMarFitter, self).__init__(*args, **kwargs)
+
+    @staticmethod
+    def _find_local_peaks(model, x, y):
+        lind, rind = find_bounds(x, y, model.lambda_0)
+        ledge, redge = x[lind], x[rind]
+        mask = (x > ledge) & (x < redge)
+
+        minds = peakutils.indexes(1 - y[mask])
+        rinds = list(map(lambda i: find_nearest(y, y[mask][i]), minds))
+        peaks = list(map(lambda i: x[i], rinds))
+
+        return peaks, ledge, redge
+
+    @staticmethod
+    def initialize(model, x, y):
+        """
+        Attempt to analytically determine a best initial guess for each line
+        in the model.
+        """
+        peaks, ledge, redge = LevMarFitter._find_local_peaks(model, x, y)
+        flambda_0 = peaks[find_nearest(peaks, model.lambda_0)]
+
+        # if ledge < model.lambda_0 < redge:
+        # edge_dist = min(abs(flambda_0 - ledge),
+        #                 abs(flambda_0 - redge))
+        # ledge, redge = flambda_0 - edge_dist, flambda_0 + edge_dist
+
+        # else:
+        #     flambda_0 = ledge + np.abs(redge - ledge) * 0.5
+
+
+        # Calculate the eq
+        temp_spec = Spectrum1D(y, dispersion=x)
+        ew, _ = temp_spec.equivalent_width(x_range=(ledge, redge))
+
+        # Guess the column density
+        # N = ew * 10 / model.f_value
+        # print("N", N)
+
+        # Guess doppler
+        b_ratio = (redge - ledge) / (ew)
+
+        # Override the initial guesses on the models
+        model.lambda_0 = flambda_0
+        model.v_doppler = model.v_doppler * b_ratio
+
+        # self._initialized = True
+
+    def __call__(self,  model, x, y, initialize=True, *args, **kwargs):
+        if initialize:
+            if hasattr(model, '_submodels'):
+                for mod in model:
+                    if isinstance(mod, Voigt1D):
+                        self.initialize(mod, x, y)
+            else:
+                if isinstance(model, Voigt1D):
+                    self.initialize(model, x, y)
+
+        return super(LevMarFitter, self).__call__(model, x, y, *args, **kwargs)
+
+class DynamicLevMarFitter(LevMarFitter):
     def __init__(self, *args, **kwargs):
         super(DynamicLevMarFitter, self).__init__(*args, **kwargs)
 
@@ -47,19 +112,22 @@ class DynamicLevMarFitter(LevMarLSQFitter):
         # wise, we will keep adding lines, to a limit.
         while self._chisq > 0.1 and \
                         len(fit_mod._submodels) < len(model._submodels) + 10:
-            new_line = model[-1].copy()
-            # Jitter lambda
-            new_line.lambda_0 += np.random.sample() * 0.1
+            # Find the greatest residuals
+            resids = np.abs(y - fit_mod(x).data)
+            diff_max = x[np.argmax(resids)]
 
-            fit_line_list = [x.copy() for x in model]
+            # Set the new lambda of the added line to the position of greatest
+            # residuals
+            new_line = model[-1].copy()
+            new_line.lambda_0 = diff_max
+
+            fit_line_list = [x for x in fit_mod]
 
             new_mod = Absorption1D(lines=fit_line_list[1:] + [new_line],
-                                   continuum=model[0].copy())
+                                   continuum=fit_mod[0])
 
-            fit_new_mod = super(DynamicLevMarFitter, self).__call__(new_mod,
-                                                                    x, y,
-                                                                    *args,
-                                                                    **kwargs)
+            fit_new_mod = super(DynamicLevMarFitter, self).__call__(
+                new_mod, x, y, initialize=True, *args, **kwargs)
 
             res = stats.chisquare(f_obs=fit_new_mod(x).data,
                                   f_exp=y,
@@ -78,48 +146,6 @@ class DynamicLevMarFitter(LevMarLSQFitter):
             logging.info("Reached sufficient chisq or submodel limit.")
 
         return fit_mod
-
-
-class LevMarFitter(Fitter):
-    def __call__(self, model, x, y, err=None):
-        # Create fitter instance
-        # fitter = LevMarCurveFitFitter()
-        fitter = LevMarLSQFitter()
-
-        model_fit = fitter(model,
-                           x, #spectrum.dispersion,
-                           y, #spectrum.data,
-                           err, #sigma=spectrum.uncertainty,
-                           maxiter=min(2000, 100 * len(model.model.submodel_names))
-                           )
-
-        # Grab the covariance matrix
-        param_cov = fitter.fit_info['param_cov']
-
-        if param_cov is None:
-            param_cov = np.zeros(len(model_fit.param_names))
-
-        # This is not robust. The covariance matrix does not include
-        # constrained parameters, so we must insert some value for the
-        # variance to make sure the number of parameters match.
-        for i, val in enumerate(model_fit.param_names):
-            if model_fit.tied.get(val) or model_fit.fixed.get(val):
-                param_cov = np.insert(param_cov, i, 0)
-
-        # Update fit info
-        self.fit_info = Table([model_fit.param_names,
-                               model.model.parameters,
-                               model_fit.parameters,
-                               param_cov],
-                              names=("Parameter", "Original Value",
-                                     "Fitted Value", "Uncertainty"))
-
-        # Create new model instance with fitted params
-        new_model = model.copy(from_model=model_fit)
-
-        # self._model = model_fit
-
-        return new_model, model_fit
 
 
 @six.add_metaclass(fitting._FitterMeta)
