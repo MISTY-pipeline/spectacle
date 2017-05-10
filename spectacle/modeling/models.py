@@ -17,10 +17,10 @@ class Voigt1D(Fittable1DModel):
     lambda_0 = Parameter(min=0, max=1e20)
     f_value = Parameter(fixed=True, min=1e-4, max=2.0)
     gamma = Parameter(fixed=True, min=0, max=1e20)
-    v_doppler = Parameter(default=1e5, min=1e-20, max=1e20)
+    v_doppler = Parameter(default=1e5, min=0, max=1e20)
     column_density = Parameter(default=13, min=0, max=25)
-    delta_v = Parameter(default=0, fixed=True, min=1e-20, max=1e20)
-    delta_lambda = Parameter(default=0, fixed=True, min=1e-20, max=1e20)
+    delta_v = Parameter(default=0, fixed=True, min=-1e20, max=1e20)
+    delta_lambda = Parameter(default=0, fixed=True, min=0, max=1e20)
 
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
@@ -79,12 +79,14 @@ class AbsorptionMeta(type):
                  *args, **kwargs):
             from ..core.spectra import Spectrum1D
 
-            lines = abs_mod._submodels[1:]
+            mods = [x for x in abs_mod]
+            cont, lines = mods[0], mods[1:]
 
             flux = super(abs_mod.__class__, self).__call__(dispersion,
                                                            *args, **kwargs)
             spectrum = Spectrum1D(flux, dispersion=dispersion,
-                                  dispersion_unit=dispersion_unit, lines=lines)
+                                  dispersion_unit=dispersion_unit, lines=lines,
+                                  continuum=cont(dispersion))
 
             return spectrum
 
