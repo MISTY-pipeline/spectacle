@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import uncertainties.unumpy as unp
+from scipy import stats
 
 
 def _format_arrays(a, v, use_tau=False, use_vel=False):
@@ -197,3 +198,12 @@ def correlate(a, v, mode='true', use_tau=False, use_vel=False):
         raise NameError("No such mode: {}".format(mode))
 
     return unp.nominal_values(ret), unp.std_devs(ret), mask
+
+
+def anderson_darling(a, v, use_tau=False, use_vel=False, *args, **kwargs):
+    al, vl, mask = _format_arrays(a, v, use_tau=use_tau, use_vel=use_vel)
+
+    a2, crit, p = stats.anderson_ksamp([al, vl], *args, **kwargs)
+
+    return a2, crit, p
+
