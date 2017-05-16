@@ -79,11 +79,14 @@ class AbsorptionMeta(type):
                  *args, **kwargs):
             from ..core.spectra import Spectrum1D
 
-            mods = [x for x in abs_mod]
-            cont, lines = mods[0], mods[1:]
+            if hasattr(abs_mod, '_submodels'):
+                mods = [x for x in abs_mod]
+                cont, lines = mods[0], mods[1:]
+            else:
+                cont, lines = abs_mod, []
 
-            flux = super(abs_mod.__class__, self).__call__(dispersion,
-                                                           *args, **kwargs)
+
+            flux = abs_mod(dispersion, *args, **kwargs)
             spectrum = Spectrum1D(flux, dispersion=dispersion,
                                   dispersion_unit=dispersion_unit, lines=lines,
                                   continuum=cont(dispersion))
