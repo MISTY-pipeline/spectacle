@@ -48,18 +48,13 @@ class TauProfile:
         lambda_0 = lambda_0 * u.Unit('Angstrom')
         v_doppler = v_doppler * u.Unit('cm/s')
         column_density = 10 ** column_density * u.Unit('1/cm2')
-        delta_v = delta_v * u.Unit('cm/s')
-        delta_lambda = delta_lambda * u.Unit('Angstrom')
+        delta_v = (delta_v or 0) * u.Unit('cm/s')
+        delta_lambda = (delta_lambda or 0) * u.Unit('Angstrom')
 
         lambda_bins = x
 
         # shift lambda_0 by delta_v
-        if delta_v is not None:
-            lam1 = lambda_0 * (1 + delta_v / c.c.cgs)
-        elif delta_lambda is not None:
-            lam1 = lambda_0 + delta_lambda
-        else:
-            lam1 = lambda_0
+        lam1 = lambda_0 * (1 + delta_v / c.c.cgs) + delta_lambda
 
         # conversions
         nudop = (v_doppler / lam1).to('Hz')  # doppler width in Hz
