@@ -338,7 +338,7 @@ class Spectrum1D(NDDataRef):
 
         return line_mask
 
-    def find_lines(self, threshold=0.7, min_dist=100, strict=False):
+    def find_lines(self, threshold=1.0, min_dist=10, strict=False):
         """
         Simple peak finder.
 
@@ -397,7 +397,7 @@ class Spectrum1D(NDDataRef):
             if nearest_name in line_list:
                 nearest_name = "{}_{}".format(
                     nearest_name,
-                    len([k for k in line_list if k == nearest_name]))
+                    len([k for k in line_list if nearest_name in k]))
 
             logging.info("Found {} ({}) at {}. Strict is {}.".format(
                 nearest_name,

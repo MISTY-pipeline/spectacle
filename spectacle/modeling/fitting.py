@@ -39,7 +39,8 @@ class LevMarFitter(LevMarLSQFitter):
         in the model.
         """
         peaks, ledge, redge = LevMarFitter._find_local_peaks(model, x, y)
-        flambda_0 = peaks[find_nearest(peaks, model.lambda_0)]
+        lam_ind = find_nearest(peaks, model.lambda_0)
+        flambda_0 = peaks[lam_ind]
 
         # if ledge < model.lambda_0 < redge:
         # edge_dist = min(abs(flambda_0 - ledge),
@@ -64,10 +65,11 @@ class LevMarFitter(LevMarLSQFitter):
         # Override the initial guesses on the models
         model.lambda_0 = flambda_0
         model.v_doppler = model.v_doppler * b_ratio
+        # model.column_density = model.column_density * (2 - y[lam_ind])
 
         # self._initialized = True
 
-    def __call__(self,  model, x, y, initialize=True, *args, **kwargs):
+    def __call__(self, model, x, y, initialize=True, *args, **kwargs):
         if initialize:
             if hasattr(model, '_submodels'):
                 for mod in model:
@@ -94,58 +96,97 @@ class DynamicLevMarFitter(LevMarFitter):
     def p_value(self):
         return self._p_value
 
-    def __call__(self,  model, x, y, *args, **kwargs):
-        fit_mod = super(DynamicLevMarFitter, self).__call__(model, x, y, *args,
-                                                            **kwargs)
+    @staticmethod
+    def red_chi2(mod, x, y):
         ddof = len(list(
             filter(lambda x: x == False,
-                   fit_mod.fixed.values())))
+                   mod.fixed.values())))
 
-        res = stats.chisquare(f_obs=fit_mod(x).data,
+        res = stats.chisquare(f_obs=mod(x).data,
                               f_exp=y,
                               ddof=ddof)
 
-        self._chisq, self._p_value = res
+        return res
 
-        # Perform a chi2 test, only when the model and the data are within a
-        # certain confidence interval do we accept the number of lines. Other-
-        # wise, we will keep adding lines, to a limit.
-        while self._chisq > 0.1 and \
-                        len(fit_mod._submodels) < len(model._submodels) + 10:
-            # Find the greatest residuals
-            resids = np.abs(y - fit_mod(x).data)
-            diff_max = x[np.argmax(resids)]
+    def __call__(self, model, x, y, *args, **kwargs):
+        def _compose_model(threshold=1.0, min_dist=10):
+            spectrum = Spectrum1D(y, dispersion=x)
+            lines = spectrum.find_lines(threshold=threshold,
+                                        min_dist=min_dist)
+            model = Absorption1D(lines=lines)
 
-            # Set the new lambda of the added line to the position of greatest
-            # residuals
-            new_line = model[-1].copy()
-            new_line.lambda_0 = diff_max
+            return model
 
-            fit_line_list = [x for x in fit_mod]
+        threshold = 1.0
+        fin_mod = _compose_model(threshold)
+        self._chisq, self._p_value = self.red_chi2(fin_mod, x, y)
 
-            new_mod = Absorption1D(lines=fit_line_list[1:] + [new_line],
-                                   continuum=fit_mod[0])
+        while self._chisq > 0.1 and threshold > 0.1:
+            model = _compose_model(threshold)
 
-            fit_new_mod = super(DynamicLevMarFitter, self).__call__(
-                new_mod, x, y, initialize=True, *args, **kwargs)
+            fit_mod = super(DynamicLevMarFitter, self).__call__(
+                model, x, y, *args, **kwargs)
 
-            res = stats.chisquare(f_obs=fit_new_mod(x).data,
-                                  f_exp=y,
-                                  ddof=ddof)
+            chisq, p = self.red_chi2(fit_mod, x, y)
 
-            chisq, p = res
-
-            if chisq < self._chisq:
-                logging.info("Adding new line to improve fit.")
-                fit_mod = fit_new_mod
-                self._chisq, self._p_value = res
+            if chisq <= self._chisq:
+                logging.info("Adding new line to improve fit. (threshold={}, "
+                             "red_chisq={}/{}).".format(threshold, chisq, self._chisq))
+                fin_mod = fit_mod
+                self._chisq, self._p_value = chisq, p
             else:
-                logging.info("Chisq did not improve, halting iteration.")
+                logging.info("For threshold={}, chisq did not improve."
+                             "(red_chi2={}/{}).".format(threshold, chisq, self._chisq))
                 break
+            threshold -= 0.2
         else:
             logging.info("Reached sufficient chisq or submodel limit.")
 
-        return fit_mod
+        return fin_mod
+
+    # def __oldcall__(self,  model, x, y, *args, **kwargs):
+    #     fit_mod = super(DynamicLevMarFitter, self).__call__(model, x, y, *args,
+    #                                                         **kwargs)
+    #
+    #     self._chisq, self._p_value = self.red_chi2(fit_mod, x, y)
+    #
+    #     # Perform a chi2 test, only when the model and the data are within a
+    #     # certain confidence interval do we accept the number of lines. Other-
+    #     # wise, we will keep adding lines, to a limit.
+    #     while self._chisq > 0.1 and \
+    #                     len(fit_mod._submodels) < len(model._submodels) + 10:
+    #         # Find the greatest residuals
+    #         resids = np.abs(y - fit_mod(x).data)
+    #         diff_max = x[np.argmax(resids)]
+    #
+    #         # Set the new lambda of the added line to the position of greatest
+    #         # residuals
+    #         new_line = model[-1].copy()
+    #         new_line.lambda_0 = diff_max
+    #
+    #         fit_line_list = [x for x in fit_mod]
+    #
+    #         new_mod = Absorption1D(lines=fit_line_list[1:] + [new_line],
+    #                                continuum=fit_mod[0])
+    #
+    #         fit_new_mod = super(DynamicLevMarFitter, self).__call__(
+    #             new_mod, x, y, initialize=True, *args, **kwargs)
+    #
+    #         res = self.red_chi2(fit_new_mod, x, y)
+    #
+    #         chisq, p = res
+    #
+    #         if chisq < self._chisq:
+    #             logging.info("Adding new line to improve fit.")
+    #             fit_mod = fit_new_mod
+    #             self._chisq, self._p_value = res
+    #         else:
+    #             logging.info("Chisq did not improve, halting iteration.")
+    #             break
+    #     else:
+    #         logging.info("Reached sufficient chisq or submodel limit.")
+    #
+    #     return fit_mod
 
 
 @six.add_metaclass(fitting._FitterMeta)
