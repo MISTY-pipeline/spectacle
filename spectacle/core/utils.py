@@ -33,6 +33,12 @@ def find_bounds(dispersion, data, center, continuum=None, cap_value=None,
         # Find the center point of all the regions
         avg_list = list(map(lambda i: int(i[0] + (i[1] - i[0]) * 0.5),
                             creg[:, :]))
+
+        if len(avg_list) == 0:
+            logging.error("No absorption regions identified; defaulting to "
+                          "entire bounds of spectrum.")
+            return 0, len(data) - 1
+
         cind = avg_list[find_nearest(avg_list, cind)]
 
         # For the closest center to the provided lambda_0 value, see if there
@@ -44,6 +50,10 @@ def find_bounds(dispersion, data, center, continuum=None, cap_value=None,
         return 0, len(data) - 1
 
     left_ind, right_ind = creg[ind]
+
+    if (right_ind - left_ind) <= 1:
+        logging.error("Improper boundaries found; defaulting to entire range.")
+        return 0, len(data) -1
 
     return left_ind, right_ind - 1
 
