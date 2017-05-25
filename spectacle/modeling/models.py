@@ -85,9 +85,8 @@ class AbsorptionMeta(type):
             else:
                 cont, lines = abs_mod, []
 
-
             flux = abs_mod(dispersion, *args, **kwargs)
-            spectrum = Spectrum1D(flux, dispersion=dispersion,
+            spectrum = Spectrum1D(flux.data, dispersion=dispersion,
                                   dispersion_unit=dispersion_unit, lines=lines,
                                   continuum=cont(dispersion))
 
