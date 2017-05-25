@@ -71,7 +71,9 @@ class Line(Voigt1D):
 
 def _tie_gamma(compound_model, model):
     # Find the index of the original model in the compound model
-    mod_ind = compound_model._submodels.index(model)
+    mod = next((x for x in compound_model._submodels[1:]
+                if _compare_models(x, model)), None)
+    mod_ind = compound_model._submodels.index(mod)
 
     # The auto-generated name of the parameter in the compound model
     param_name = "lambda_0_{}".format(mod_ind)
@@ -80,6 +82,14 @@ def _tie_gamma(compound_model, model):
     ind = find_nearest(line_registry['wave'], lambda_val)
     gamma_val = line_registry['gamma'][ind]
 
-    print("Gamma is ", gamma_val)
-
     return gamma_val
+
+def _compare_models(mod1, mod2):
+    """
+    Check to see if two models are functionally equivalent.
+    """
+    attrs = ['lambda_0', 'f_value', 'gamma', 'column_density', 'v_doppler',
+             'delta_v', 'delta_lambda']
+
+    return all([getattr(mod1, attr).value == getattr(mod2, attr).value
+                for attr in attrs])
