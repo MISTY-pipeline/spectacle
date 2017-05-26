@@ -31,8 +31,8 @@ class Line(Voigt1D):
             gamma = line_registry['gamma'][ind]
             tied = {'gamma': lambda cmod, mod=self: _tie_gamma(cmod, mod)}
 
-            logging.warning("Gamma is being tied to values within your ion"
-                            "lookup table.")
+            logging.info("Gamma is being tied to values within your ion"
+                         "lookup table.")
 
         super(Line, self).__init__(lambda_0=lambda_0,
                                    f_value=f_value,
@@ -73,7 +73,8 @@ def _tie_gamma(compound_model, model):
     # Find the index of the original model in the compound model
     mod = next((x for x in compound_model._submodels[1:]
                 if _compare_models(x, model)), None)
-    mod_ind = compound_model._submodels.index(mod)
+
+    mod_ind = [x for x in compound_model._submodels].index(mod)
 
     # The auto-generated name of the parameter in the compound model
     param_name = "lambda_0_{}".format(mod_ind)
