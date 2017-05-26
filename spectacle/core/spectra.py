@@ -338,7 +338,8 @@ class Spectrum1D(NDDataRef):
 
         return line_mask
 
-    def find_lines(self, threshold=1.0, min_dist=10, strict=False):
+    def find_lines(self, threshold=1.0, min_dist=10, strict=False,
+                   interpolate=False):
         """
         Simple peak finder.
 
@@ -366,6 +367,10 @@ class Spectrum1D(NDDataRef):
             y,
             thres=threshold, # np.std(inv_flux) * self.noise/np.max(inv_flux),
             min_dist=min_dist)
+
+        if interpolate:
+            indexes = peakutils.interpolate(self.dispersion, y, ind=indexes)
+            indexes = [find_nearest(self.dispersion, x) for x in indexes]
 
         if strict:
             # Find the indices of the ion table that correspond with the found
