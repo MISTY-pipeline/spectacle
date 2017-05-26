@@ -29,8 +29,6 @@ class PosteriorFitter(OptimizerFitter):
     def ln_likelihood(params, model, x, y, yerr):
         _fitter_to_model_params(model, params)
 
-        print(".", end=" ")
-
         y_mod = model(x).data
 
         # inv_sigma2 = 1.0 / (yerr ** 2 + y_mod ** 2 * np.exp(2))
@@ -59,14 +57,14 @@ class PosteriorFitter(OptimizerFitter):
             return 0.0
         return -np.inf
 
-    @staticmethod
-    def objective_function(params, model, x, y, yerr):
-        lp = PosteriorFitter.ln_prior(params, model)
+    @classmethod
+    def objective_function(cls, params, model, x, y, yerr):
+        lp = cls.ln_prior(params, model)
 
         if not np.isfinite(lp):
             return -np.inf
 
-        return PosteriorFitter.ln_likelihood(params, model, x, y, yerr)
+        return cls.ln_likelihood(params, model, x, y, yerr)
 
     def __call__(self, model, x, y, yerr=None, *args, **kwargs):
         model_copy = _validate_model(model, self.supported_constraints)
