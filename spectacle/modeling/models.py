@@ -61,7 +61,7 @@ class AbsorptionMeta(type):
                     type(continuum)))
         else:
             continuum = Linear1D(slope=0, intercept=1,
-                                 # fixed={'slope': True, 'intercept': True}
+                                 # fixed={'slope': True, 'intercept': True},
                                  bounds={'slope': (-100, 100),
                                          'intercept': (0, 2)}
                                  )
@@ -85,7 +85,8 @@ class AbsorptionMeta(type):
             else:
                 cont, lines = abs_mod, []
 
-            flux = abs_mod(dispersion, *args, **kwargs)
+            flux = super(abs_mod.__class__, self).__call__(dispersion,
+                                                           *args, **kwargs)
             spectrum = Spectrum1D(flux.data, dispersion=dispersion,
                                   dispersion_unit=dispersion_unit, lines=lines,
                                   continuum=cont(dispersion))
