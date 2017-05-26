@@ -21,9 +21,15 @@ class LevMarFitter(LevMarLSQFitter):
         super(LevMarFitter, self).__init__(*args, **kwargs)
 
     @staticmethod
-    def _find_local_peaks(model, x, y):
+    def _find_local_edges(model, x, y):
         lind, rind = find_bounds(x, y, model.lambda_0)
         ledge, redge = x[lind], x[rind]
+
+        return ledge, redge
+
+    @classmethod
+    def _find_local_peaks(cls, model, x, y):
+        ledge, redge = cls._find_local_edges(model, x, y)
         mask = (x > ledge) & (x < redge)
 
         minds = peakutils.indexes(1 - y[mask])
@@ -32,24 +38,20 @@ class LevMarFitter(LevMarLSQFitter):
 
         return peaks, ledge, redge
 
-    @staticmethod
-    def initialize(model, x, y):
+    @classmethod
+    def initialize(cls, model, x, y, find_peaks):
         """
         Attempt to analytically determine a best initial guess for each line
         in the model.
         """
-        peaks, ledge, redge = LevMarFitter._find_local_peaks(model, x, y)
-        lam_ind = find_nearest(peaks, model.lambda_0)
-        flambda_0 = peaks[lam_ind]
+        if find_peaks:
+            peaks, ledge, redge = cls._find_local_peaks(model, x, y)
+            lam_ind = find_nearest(peaks, model.lambda_0)
+            flambda_0 = peaks[lam_ind]
 
-        # if ledge < model.lambda_0 < redge:
-        # edge_dist = min(abs(flambda_0 - ledge),
-        #                 abs(flambda_0 - redge))
-        # ledge, redge = flambda_0 - edge_dist, flambda_0 + edge_dist
-
-        # else:
-        #     flambda_0 = ledge + np.abs(redge - ledge) * 0.5
-
+            model.lambda_0 = flambda_0
+        else:
+            ledge, redge = cls._find_local_edges(model, x, y)
 
         # Calculate the eq
         temp_spec = Spectrum1D(y, dispersion=x)
@@ -60,26 +62,26 @@ class LevMarFitter(LevMarLSQFitter):
         # print("N", N)
 
         # Guess doppler
-        b_ratio = (redge - ledge) / (ew)
+        b_ratio = (redge - ledge) / ew
 
         # Override the initial guesses on the models
-        model.lambda_0 = flambda_0
         model.v_doppler = model.v_doppler * b_ratio
+        model.lambda_0.bounds = (ledge, redge)
         # model.column_density = model.column_density * (2 - y[lam_ind])
 
-        # self._initialized = True
-
-    def __call__(self, model, x, y, initialize=True, *args, **kwargs):
+    def __call__(self, model, x, y, initialize=True, find_peaks=True, *args,
+                 **kwargs):
         if initialize:
             if hasattr(model, '_submodels'):
                 for mod in model:
                     if isinstance(mod, Voigt1D):
-                        self.initialize(mod, x, y)
+                        self.initialize(mod, x, y, find_peaks=find_peaks)
             else:
                 if isinstance(model, Voigt1D):
-                    self.initialize(model, x, y)
+                    self.initialize(model, x, y, find_peaks=find_peaks)
 
         return super(LevMarFitter, self).__call__(model, x, y, *args, **kwargs)
+
 
 class DynamicLevMarFitter(LevMarFitter):
     def __init__(self, *args, **kwargs):
@@ -109,84 +111,64 @@ class DynamicLevMarFitter(LevMarFitter):
         return res
 
     def __call__(self, model, x, y, *args, **kwargs):
-        def _compose_model(threshold=1.0, min_dist=10):
-            spectrum = Spectrum1D(y, dispersion=x)
-            lines = spectrum.find_lines(threshold=threshold,
-                                        min_dist=min_dist)
-            model = Absorption1D(lines=lines)
+        # Estimate the signal-to-noise of the spectrum
+        ddof = len(list(
+            filter(lambda p: p == False,
+                   model.fixed.values())))
 
-            return model
+        sn = stats.signaltonoise(y, ddof=ddof)
+        logging.info("Signal-to-noise ratio: {}".format(sn))
 
-        threshold = 1.0
-        fin_mod = _compose_model(threshold)
-        self._chisq, self._p_value = self.red_chi2(fin_mod, x, y)
+        # Compose spectrum object
+        spectrum = Spectrum1D(y, dispersion=x)
+        lines = spectrum.find_lines(threshold=1/sn, min_dist=10,
+                                    interpolate=True)
 
-        while self._chisq > 0.1 and threshold > 0.1:
-            model = _compose_model(threshold)
+        # Create model object, and fit it
+        model = Absorption1D(lines=lines)
 
-            fit_mod = super(DynamicLevMarFitter, self).__call__(
-                model, x, y, *args, **kwargs)
+        fit_mod = super(DynamicLevMarFitter, self).__call__(
+            model, x, y, find_peaks=False, *args, **kwargs)
 
-            chisq, p = self.red_chi2(fit_mod, x, y)
+        return fit_mod
 
-            if chisq <= self._chisq:
-                logging.info("Adding new line to improve fit. (threshold={}, "
-                             "red_chisq={}/{}).".format(threshold, chisq, self._chisq))
-                fin_mod = fit_mod
-                self._chisq, self._p_value = chisq, p
-            else:
-                logging.info("For threshold={}, chisq did not improve."
-                             "(red_chi2={}/{}).".format(threshold, chisq, self._chisq))
-                break
-            threshold -= 0.2
-        else:
-            logging.info("Reached sufficient chisq or submodel limit.")
-
-        return fin_mod
-
-    # def __oldcall__(self,  model, x, y, *args, **kwargs):
-    #     fit_mod = super(DynamicLevMarFitter, self).__call__(model, x, y, *args,
-    #                                                         **kwargs)
+    # def __call__(self, model, x, y, *args, **kwargs):
+    #     def _compose_model(threshold=1.0, min_dist=10):
+    #         spectrum = Spectrum1D(y, dispersion=x)
+    #         lines = spectrum.find_lines(threshold=threshold,
+    #                                     min_dist=min_dist)
+    #         model = Absorption1D(lines=lines)
     #
-    #     self._chisq, self._p_value = self.red_chi2(fit_mod, x, y)
+    #         return model
     #
-    #     # Perform a chi2 test, only when the model and the data are within a
-    #     # certain confidence interval do we accept the number of lines. Other-
-    #     # wise, we will keep adding lines, to a limit.
-    #     while self._chisq > 0.1 and \
-    #                     len(fit_mod._submodels) < len(model._submodels) + 10:
-    #         # Find the greatest residuals
-    #         resids = np.abs(y - fit_mod(x).data)
-    #         diff_max = x[np.argmax(resids)]
+    #     threshold = 1.0
+    #     fin_mod = _compose_model(threshold)
+    #     self._chisq, self._p_value = self.red_chi2(fin_mod, x, y)
     #
-    #         # Set the new lambda of the added line to the position of greatest
-    #         # residuals
-    #         new_line = model[-1].copy()
-    #         new_line.lambda_0 = diff_max
+    #     while self._chisq > 0.1 and threshold > 0.1:
+    #         model = _compose_model(threshold)
     #
-    #         fit_line_list = [x for x in fit_mod]
+    #         fit_mod = super(DynamicLevMarFitter, self).__call__(
+    #             model, x, y, *args, **kwargs)
     #
-    #         new_mod = Absorption1D(lines=fit_line_list[1:] + [new_line],
-    #                                continuum=fit_mod[0])
+    #         chisq, p = self.red_chi2(fit_mod, x, y)
     #
-    #         fit_new_mod = super(DynamicLevMarFitter, self).__call__(
-    #             new_mod, x, y, initialize=True, *args, **kwargs)
-    #
-    #         res = self.red_chi2(fit_new_mod, x, y)
-    #
-    #         chisq, p = res
-    #
-    #         if chisq < self._chisq:
-    #             logging.info("Adding new line to improve fit.")
-    #             fit_mod = fit_new_mod
-    #             self._chisq, self._p_value = res
+    #         if chisq <= self._chisq:
+    #             logging.info("Adding new line to improve fit. (threshold={}, "
+    #                          "red_chisq={}/{}).".format(threshold, chisq,
+    #                                                     self._chisq))
+    #             fin_mod = fit_mod
+    #             self._chisq, self._p_value = chisq, p
     #         else:
-    #             logging.info("Chisq did not improve, halting iteration.")
+    #             logging.info("For threshold={}, chisq did not improve."
+    #                          "(red_chi2={}/{}).".format(threshold, chisq,
+    #                                                     self._chisq))
     #             break
+    #         threshold -= 0.2
     #     else:
     #         logging.info("Reached sufficient chisq or submodel limit.")
     #
-    #     return fit_mod
+    #     return fin_mod
 
 
 @six.add_metaclass(fitting._FitterMeta)
