@@ -39,46 +39,37 @@ class LevMarFitter(LevMarLSQFitter):
         return peaks, ledge, redge
 
     @classmethod
-    def initialize(cls, model, x, y, find_peaks):
+    def initialize(cls, model, x, y):
         """
         Attempt to analytically determine a best initial guess for each line
         in the model.
         """
-        if find_peaks:
-            peaks, ledge, redge = cls._find_local_peaks(model, x, y)
-            lam_ind = find_nearest(peaks, model.lambda_0)
-            flambda_0 = peaks[lam_ind]
-
-            model.lambda_0 = flambda_0
-        else:
-            ledge, redge = cls._find_local_edges(model, x, y)
+        peaks, ledge, redge = cls._find_local_peaks(model, x, y)
 
         # Calculate the eq
         temp_spec = Spectrum1D(y, dispersion=x)
         ew, _ = temp_spec.equivalent_width(x_range=(ledge, redge))
 
         # Guess the column density
-        # N = ew * 10 / model.f_value
+        # N = ew * 50 / model.f_value
         # print("N", N)
 
         # Guess doppler
-        b_ratio = (redge - ledge) / ew
+        b_ratio = (redge - ledge) / len(peaks) / ew
 
         # Override the initial guesses on the models
         model.v_doppler = model.v_doppler * b_ratio
         model.lambda_0.bounds = (ledge, redge)
-        # model.column_density = model.column_density * (2 - y[lam_ind])
 
-    def __call__(self, model, x, y, initialize=True, find_peaks=True, *args,
-                 **kwargs):
+    def __call__(self, model, x, y, initialize=True, *args, **kwargs):
         if initialize:
             if hasattr(model, '_submodels'):
-                for mod in model:
+                for i, mod in enumerate(model):
                     if isinstance(mod, Voigt1D):
-                        self.initialize(mod, x, y, find_peaks=find_peaks)
+                        self.initialize(mod, x, y)
             else:
                 if isinstance(model, Voigt1D):
-                    self.initialize(model, x, y, find_peaks=find_peaks)
+                    self.initialize(model, x, y)
 
         return super(LevMarFitter, self).__call__(model, x, y, *args, **kwargs)
 
@@ -110,7 +101,7 @@ class DynamicLevMarFitter(LevMarFitter):
 
         return res
 
-    def __call__(self, model, x, y, *args, **kwargs):
+    def __call__(self, model, x, y, strict=False, *args, **kwargs):
         # Estimate the signal-to-noise of the spectrum
         ddof = len(list(
             filter(lambda p: p == False,
@@ -121,14 +112,18 @@ class DynamicLevMarFitter(LevMarFitter):
 
         # Compose spectrum object
         spectrum = Spectrum1D(y, dispersion=x)
-        lines = spectrum.find_lines(threshold=1/sn, min_dist=10,
-                                    interpolate=True)
+        lines = spectrum.find_lines(threshold=0.02/sn, min_dist=10,
+                                    interpolate=True, strict=strict)
+
+        # TODO: there is currently no way to pass in fixed/tied information
+        # from the original model to the generated model composed of the
+        # results of the find_lines method
 
         # Create model object, and fit it
         model = Absorption1D(lines=lines)
 
         fit_mod = super(DynamicLevMarFitter, self).__call__(
-            model, x, y, find_peaks=False, *args, **kwargs)
+            model, x, y, *args, **kwargs)
 
         return fit_mod
 
