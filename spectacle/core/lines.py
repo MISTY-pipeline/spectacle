@@ -4,7 +4,7 @@ from ..core.utils import find_nearest
 
 import numpy as np
 import logging
-from uncertainties import unumpy as unp
+from astropy import constants as c
 
 
 class Line(Voigt1D):
@@ -14,6 +14,11 @@ class Line(Voigt1D):
     def __init__(self, name, v_doppler=None, column_density=None,
                  lambda_0=None, f_value=None, gamma=None, delta_v=None,
                  delta_lambda=None, tied=None, fixed=None):
+        lambda_val = lambda_0 * (1 + (delta_v or 0) / c.c.cgs.value) + \
+                     (delta_lambda or 0)
+        tied = tied or {}
+        fixed = fixed or {}
+
         if lambda_0 is None:
             if name not in line_registry['name']:
                 logging.error("No ion named {} in line registry.".format(name))
@@ -22,17 +27,23 @@ class Line(Voigt1D):
             lind = np.min(np.where(line_registry['name'] == name))
             lambda_0 = line_registry['wave'][lind]
 
+        if tied is None:
+            if f_value is None and not fixed.get('f_value', True):
+                tied.update({
+                    'f_value': lambda cmod, mod=self:
+                        _tie_nearest(cmod, mod, line_registry['osc_str'])})
+
+            if gamma is None and not fixed.get('f_value', True):
+                tied.update({'gamma': lambda cmod, mod=self:
+                        _tie_nearest(cmod, mod, line_registry['gamma'])})
+
         if f_value is None:
-            ind = find_nearest(line_registry['wave'], lambda_0)
+            ind = find_nearest(line_registry['wave'], lambda_val)
             f_value = line_registry['osc_str'][ind]
 
         if gamma is None:
-            ind = find_nearest(line_registry['wave'], lambda_0)
+            ind = find_nearest(line_registry['wave'], lambda_val)
             gamma = line_registry['gamma'][ind]
-            tied = {'gamma': lambda cmod, mod=self: _tie_gamma(cmod, mod)}
-
-            logging.info("Gamma is being tied to values within your ion"
-                         "lookup table.")
 
         super(Line, self).__init__(lambda_0=lambda_0,
                                    f_value=f_value,
@@ -42,8 +53,8 @@ class Line(Voigt1D):
                                    delta_v=delta_v,
                                    delta_lambda=delta_lambda,
                                    name=name,
-                                   tied=tied or {},
-                                   fixed=fixed or {})
+                                   tied=tied,
+                                   fixed=fixed)
 
     @property
     def fwhm(self):
@@ -69,21 +80,21 @@ class Line(Voigt1D):
         return fwhm
 
 
-def _tie_gamma(compound_model, model):
-    # Find the index of the original model in the compound model
-    mod = next((x for x in compound_model._submodels[1:]
-                if _compare_models(x, model)), None)
-
-    mod_ind = [x for x in compound_model._submodels].index(mod)
-
+def _tie_nearest(compound_model, model, column):
     # The auto-generated name of the parameter in the compound model
-    param_name = "lambda_0_{}".format(mod_ind)
-    lambda_val = getattr(compound_model, param_name).value
+    # param_name = "lambda_0_{}".format(mod_ind)
+    lambda_val = model.lambda_0.value
+    delta_v = model.delta_v.value
+    delta_lambda = model.delta_lambda.value
+
+    # Incorporate shifts of the lambda value
+    lambda_val = lambda_val * (1 + delta_v / c.c.cgs.value) + delta_lambda
 
     ind = find_nearest(line_registry['wave'], lambda_val)
-    gamma_val = line_registry['gamma'][ind]
+    val = column[ind]
 
-    return gamma_val
+    return val
+
 
 def _compare_models(mod1, mod2):
     """
