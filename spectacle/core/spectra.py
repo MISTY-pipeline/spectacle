@@ -339,7 +339,7 @@ class Spectrum1D(NDDataRef):
         return line_mask
 
     def find_lines(self, threshold=1.0, min_dist=10, strict=False,
-                   interpolate=False):
+                   interpolate=False, defaults=None):
         """
         Simple peak finder.
 
@@ -357,8 +357,7 @@ class Spectrum1D(NDDataRef):
             An array of indices providing the peak locations in the original
             spectrum object.
         """
-        continuum = np.median(self.data)
-        inv_flux = 1 - self.data
+        inv_flux = self.continuum - self.data
 
         # Filter with SG
         y = savgol_filter(inv_flux, 49, 3)
@@ -410,8 +409,8 @@ class Spectrum1D(NDDataRef):
                 self.dispersion[ind],
                 strict))
 
-            mod = Line(lambda_0=self.dispersion[ind], f_value=f_value,
-                       gamma=gamma_val, name=nearest_name)
+            mod = Line(lambda_0=self.dispersion[ind], name=nearest_name,
+                       **(defaults or {}))
 
             if mod is not None:
                 line_list[nearest_name] = mod
