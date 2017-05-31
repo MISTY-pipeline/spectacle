@@ -14,13 +14,13 @@ class Voigt1D(Fittable1DModel):
     Implements a Voigt profile (convolution of Cauchy-Lorentz and Gaussian
     distribution).
     """
-    lambda_0 = Parameter(min=0, max=1e20)
-    f_value = Parameter(fixed=True, min=1e-4, max=2.0)
-    gamma = Parameter(fixed=True, min=0, max=1e20)
-    v_doppler = Parameter(default=1e5, min=0, max=1e20)
+    lambda_0 = Parameter(fixed=True, min=0)
+    f_value = Parameter(fixed=True, min=0, max=2.0)
+    gamma = Parameter(fixed=True, min=0)
+    v_doppler = Parameter(default=1e5, min=0)
     column_density = Parameter(default=13, min=0, max=25)
-    delta_v = Parameter(default=0, fixed=True, min=-1e20, max=1e20)
-    delta_lambda = Parameter(default=0, fixed=True, min=0, max=1e20)
+    delta_v = Parameter(default=0, fixed=True)
+    delta_lambda = Parameter(default=0, fixed=False)
 
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):

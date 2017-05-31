@@ -390,6 +390,9 @@ class Spectrum1D(NDDataRef):
 
         # Add a new line to the empty spectrum object for each found line
         for ind in indexes:
+            kwargs = {}
+            kwargs.update(defaults)
+
             il = find_nearest(line_registry['wave'],
                               self.dispersion[ind])
 
@@ -409,8 +412,15 @@ class Spectrum1D(NDDataRef):
                 self.dispersion[ind],
                 strict))
 
-            mod = Line(lambda_0=self.dispersion[ind], name=nearest_name,
-                       **(defaults or {}))
+            # If lambda0 is provided, then we only care about the shift, not
+            # the value of the line centroid
+            if defaults.get('lambda_0') is not None:
+                kwargs.update({'delta_lambda': self.dispersion[ind] -
+                                               defaults['lambda_0']})
+
+            kwargs.setdefault('lambda_0', self.dispersion[ind])
+
+            mod = Line(name=nearest_name, **kwargs)
 
             if mod is not None:
                 line_list[nearest_name] = mod
