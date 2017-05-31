@@ -339,7 +339,7 @@ class Spectrum1D(NDDataRef):
         return line_mask
 
     def find_lines(self, threshold=1.0, min_dist=10, strict=False,
-                   interpolate=False, defaults=None):
+                   interpolate=False, smooth=True, defaults=None):
         """
         Simple peak finder.
 
@@ -360,7 +360,7 @@ class Spectrum1D(NDDataRef):
         inv_flux = self.continuum - self.data
 
         # Filter with SG
-        y = savgol_filter(inv_flux, 49, 3)
+        y = savgol_filter(inv_flux, 49, 3) if smooth else inv_flux
 
         indexes = peakutils.indexes(
             y,
