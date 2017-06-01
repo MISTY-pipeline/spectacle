@@ -107,7 +107,40 @@ class DynamicLevMarFitter(LevMarFitter):
 
         self._chisq, self._p_value = self.chi2(fit_mod, x, y)
 
-        while self._chisq > 0.1 and len(fit_mod._submodels) < 10:
+        # First try reducing the number of lines
+        while self._chisq > 0.1:
+            fit_sub_mods = [x.copy() for x in fit_mod]
+            fit_sub_mods = fit_sub_mods[:-1] if len(fit_sub_mods) > 1 \
+                                             else fit_sub_mods
+
+            mod = Absorption1D(lines=fit_sub_mods[1:],
+                               continuum=fit_sub_mods[0])
+
+            temp_fit_mod = super(DynamicLevMarFitter, self).__call__(
+                mod, x, y, *args, **kwargs)
+
+            chisq, p = self.chi2(temp_fit_mod, x, y)
+
+            if chisq <= self._chisq:
+                logging.info(
+                    "Fit improved by removing line at {}:"
+                    "\n\tChi squared: {} -> {}.".format(
+                        fit_mod[-1].lambda_0.value + fit_mod[-1].delta_lambda.value,
+                        self._chisq, chisq))
+
+                self._chisq, self._p_value = chisq, p
+                fit_mod = temp_fit_mod
+            else:
+                logging.info(
+                    "Fit did not improve by removing line:"
+                    "\n\tChi squared: {} -> {}.".format(
+                        self._chisq, chisq))
+                break
+        else:
+            logging.info("Fit result is below chi squared of 0.1.")
+
+        # Then try adding lines
+        while self._chisq > 0.1:
             diff_ind = np.argmax(np.abs(y - fit_mod(x).data))
 
             new_line = fit_mod[1].copy()
@@ -124,17 +157,21 @@ class DynamicLevMarFitter(LevMarFitter):
 
             if chisq <= self._chisq:
                 logging.info(
-                    "Fit improved with addition of line at {}:\n\tChi squared: {} -> {}.".format(
-                        new_line.lambda_0.value + new_line.delta_lambda,
+                    "Fit improved with addition of line at {}:"
+                    "\n\tChi squared: {} -> {}.".format(
+                        new_line.lambda_0.value + new_line.delta_lambda.value,
                         self._chisq, chisq))
 
                 self._chisq, self._p_value = chisq, p
                 fit_mod = temp_fit_mod
             else:
-                logging.info("Fit did not improve:\n\tChi squared: {} -> {}.".format(
-                    self._chisq, chisq
-                ))
+                logging.info(
+                    "Fit did not improve with additional line:"
+                    "\n\tChi squared: {} -> {}.".format(
+                        self._chisq, chisq))
                 break
+        else:
+            logging.info("Fit result is below chi squared of 0.1")
 
         return fit_mod
 
