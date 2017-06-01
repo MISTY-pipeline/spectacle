@@ -90,7 +90,7 @@ class DynamicLevMarFitter(LevMarFitter):
         return self._p_value
 
     @staticmethod
-    def red_chi2(mod, x, y):
+    def chi2(mod, x, y):
         ddof = len(list(
             filter(lambda x: x == False,
                    mod.fixed.values())))
@@ -101,69 +101,42 @@ class DynamicLevMarFitter(LevMarFitter):
 
         return res
 
-    def __call__(self, model, x, y, strict=False, *args, **kwargs):
-        # Estimate the signal-to-noise of the spectrum
-        ddof = len(list(
-            filter(lambda p: p == False,
-                   model.fixed.values())))
-
-        sn = stats.signaltonoise(y, ddof=ddof)
-        logging.info("Signal-to-noise ratio: {}".format(sn))
-
-        # Compose spectrum object
-        spectrum = Spectrum1D(y, dispersion=x)
-        lines = spectrum.find_lines(threshold=0.02/sn, min_dist=10,
-                                    interpolate=True, strict=strict)
-
-        # TODO: there is currently no way to pass in fixed/tied information
-        # from the original model to the generated model composed of the
-        # results of the find_lines method
-
-        # Create model object, and fit it
-        model = Absorption1D(lines=lines)
-
+    def __call__(self, model, x, y, *args, **kwargs):
         fit_mod = super(DynamicLevMarFitter, self).__call__(
             model, x, y, *args, **kwargs)
 
-        return fit_mod
+        self._chisq, self._p_value = self.chi2(fit_mod, x, y)
 
-    # def __call__(self, model, x, y, *args, **kwargs):
-    #     def _compose_model(threshold=1.0, min_dist=10):
-    #         spectrum = Spectrum1D(y, dispersion=x)
-    #         lines = spectrum.find_lines(threshold=threshold,
-    #                                     min_dist=min_dist)
-    #         model = Absorption1D(lines=lines)
-    #
-    #         return model
-    #
-    #     threshold = 1.0
-    #     fin_mod = _compose_model(threshold)
-    #     self._chisq, self._p_value = self.red_chi2(fin_mod, x, y)
-    #
-    #     while self._chisq > 0.1 and threshold > 0.1:
-    #         model = _compose_model(threshold)
-    #
-    #         fit_mod = super(DynamicLevMarFitter, self).__call__(
-    #             model, x, y, *args, **kwargs)
-    #
-    #         chisq, p = self.red_chi2(fit_mod, x, y)
-    #
-    #         if chisq <= self._chisq:
-    #             logging.info("Adding new line to improve fit. (threshold={}, "
-    #                          "red_chisq={}/{}).".format(threshold, chisq,
-    #                                                     self._chisq))
-    #             fin_mod = fit_mod
-    #             self._chisq, self._p_value = chisq, p
-    #         else:
-    #             logging.info("For threshold={}, chisq did not improve."
-    #                          "(red_chi2={}/{}).".format(threshold, chisq,
-    #                                                     self._chisq))
-    #             break
-    #         threshold -= 0.2
-    #     else:
-    #         logging.info("Reached sufficient chisq or submodel limit.")
-    #
-    #     return fin_mod
+        while self._chisq > 0.1 and len(fit_mod._submodels) < 10:
+            diff_ind = np.argmax(np.abs(y - fit_mod(x).data))
+
+            new_line = fit_mod[1].copy()
+            new_line.delta_lambda = x[diff_ind] - fit_mod[1].lambda_0
+
+            fit_sub_mods = [x.copy() for x in fit_mod] + [new_line]
+            mod = Absorption1D(lines=fit_sub_mods[1:],
+                               continuum=fit_sub_mods[0])
+
+            temp_fit_mod = super(DynamicLevMarFitter, self).__call__(
+                mod, x, y, *args, **kwargs)
+
+            chisq, p = self.chi2(temp_fit_mod, x, y)
+
+            if chisq <= self._chisq:
+                logging.info(
+                    "Fit improved with addition of line at {}:\n\tChi squared: {} -> {}.".format(
+                        new_line.lambda_0.value + new_line.delta_lambda,
+                        self._chisq, chisq))
+
+                self._chisq, self._p_value = chisq, p
+                fit_mod = temp_fit_mod
+            else:
+                logging.info("Fit did not improve:\n\tChi squared: {} -> {}.".format(
+                    self._chisq, chisq
+                ))
+                break
+
+        return fit_mod
 
 
 @six.add_metaclass(fitting._FitterMeta)
