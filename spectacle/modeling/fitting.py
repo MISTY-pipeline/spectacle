@@ -95,6 +95,10 @@ class DynamicLevMarFitter(LevMarFitter):
             filter(lambda x: x == False,
                    mod.fixed.values())))
 
+        mod_y = mod(x).data
+        mod_y[mod_y==0] = 1e-10
+        y[y==0] = 1e-10
+
         res = stats.chisquare(f_obs=mod(x).data,
                               f_exp=y,
                               ddof=ddof)
@@ -137,7 +141,8 @@ class DynamicLevMarFitter(LevMarFitter):
                         self._chisq, chisq))
                 break
         else:
-            logging.info("Fit result is below chi squared of 0.1.")
+            logging.info("Fit result is below chi squared of 0.1 ({}).".format(
+                self._chisq))
 
         # Then try adding lines
         while self._chisq > 0.1:
@@ -171,7 +176,8 @@ class DynamicLevMarFitter(LevMarFitter):
                         self._chisq, chisq))
                 break
         else:
-            logging.info("Fit result is below chi squared of 0.1")
+            logging.info("Fit result is below chi squared of 0.1 ({}).".format(
+                self._chisq))
 
         return fit_mod
 
