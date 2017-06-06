@@ -51,9 +51,9 @@ def find_bounds(dispersion, data, center, continuum=None, cap_value=None,
 
     left_ind, right_ind = creg[ind]
 
-    if (right_ind - left_ind) <= 1:
+    if (right_ind - 1 - left_ind) <= 1:
         logging.error("Improper boundaries found; defaulting to entire range.")
-        return 0, len(data) -1
+        return 0, len(data) - 1
 
     return left_ind, right_ind - 1
 
