@@ -357,6 +357,7 @@ class Spectrum1D(NDDataRef):
             An array of indices providing the peak locations in the original
             spectrum object.
         """
+        defaults = defaults or {}
         inv_flux = self.continuum - self.data
 
         # Filter with SG
