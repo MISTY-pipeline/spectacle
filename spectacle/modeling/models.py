@@ -87,7 +87,8 @@ class AbsorptionMeta(type):
 
             flux = super(abs_mod.__class__, self).__call__(dispersion,
                                                            *args, **kwargs)
-            spectrum = Spectrum1D(flux.data, dispersion=dispersion,
+
+            spectrum = Spectrum1D(flux, dispersion=dispersion,
                                   dispersion_unit=dispersion_unit, lines=lines,
                                   continuum=cont(dispersion))
 

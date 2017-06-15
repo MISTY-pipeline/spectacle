@@ -113,7 +113,7 @@ class DynamicLevMarFitter(LevMarFitter):
 
         # First try reducing the number of lines
         while self._chisq > 0.1:
-            fit_sub_mods = [x.copy() for x in fit_mod]
+            fit_sub_mods = [fm.copy() for fm in fit_mod]
             fit_sub_mods = fit_sub_mods[:-1] if len(fit_sub_mods) > 1 \
                                              else fit_sub_mods
 
@@ -151,7 +151,7 @@ class DynamicLevMarFitter(LevMarFitter):
             new_line = fit_mod[1].copy()
             new_line.delta_lambda = x[diff_ind] - fit_mod[1].lambda_0
 
-            fit_sub_mods = [x.copy() for x in fit_mod] + [new_line]
+            fit_sub_mods = [fm.copy() for fm in fit_mod] + [new_line]
             mod = Absorption1D(lines=fit_sub_mods[1:],
                                continuum=fit_sub_mods[0])
 
