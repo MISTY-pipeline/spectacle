@@ -54,14 +54,14 @@ class TauProfile:
         lambda_bins = x
 
         # shift lambda_0 by delta_v
-        lam1 = lambda_0 * (1 + delta_v / c.c.cgs) + delta_lambda
+        self._shifted_lambda = lambda_0 * (1 + delta_v / c.c.cgs) + delta_lambda
 
         # conversions
-        nudop = (v_doppler / lam1).to('Hz')  # doppler width in Hz
+        nudop = (v_doppler / self._shifted_lambda).to('Hz')  # doppler width in Hz
 
         # create wavelength
         if lambda_bins is None:
-            lambda_bins = lam1 + \
+            lambda_bins = self._shifted_lambda + \
                           np.arange(n_lambda, dtype=np.float) * dlambda - \
                           n_lambda * dlambda / 2  # wavelength vector (angstroms)
 
@@ -70,7 +70,7 @@ class TauProfile:
         tau0 = (tau_X * lambda_0).decompose()
 
         # dimensionless frequency offset in units of doppler freq
-        x = c.c.cgs / v_doppler * (lam1 / lambda_bins - 1.0)
+        x = c.c.cgs / v_doppler * (self._shifted_lambda / lambda_bins - 1.0)
         a = gamma / (4.0 * np.pi * nudop)  # damping parameter
         phi = self.voigt(a, x)  # line profile
         tau_phi = tau0 * phi  # profile scaled with tau0
@@ -88,3 +88,7 @@ class TauProfile:
         y = np.asarray(a).astype(np.float64)
 
         return special.wofz(x + 1j * y).real
+
+    @property
+    def shifted_lambda(self):
+        return self._shifted_lambda

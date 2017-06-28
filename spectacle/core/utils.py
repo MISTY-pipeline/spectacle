@@ -55,7 +55,7 @@ def find_bounds(dispersion, data, center, continuum=None, cap_value=None,
         logging.error("Improper boundaries found; defaulting to entire range.")
         return 0, len(data) - 1
 
-    return left_ind, right_ind - 1
+    return left_ind, right_ind
 
 
 def _get_absorption_regions(data, continuum, rel_tol, abs_tol):
