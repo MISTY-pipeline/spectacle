@@ -14,8 +14,6 @@ class Line(Voigt1D):
     def __init__(self, name, v_doppler=None, column_density=None,
                  lambda_0=None, f_value=None, gamma=None, delta_v=None,
                  delta_lambda=None, tied=None, fixed=None):
-        lambda_val = lambda_0 * (1 + (delta_v or 0) / c.c.cgs.value) + \
-                     (delta_lambda or 0)
         tied = tied or {}
         fixed = fixed or {}
 
@@ -37,12 +35,15 @@ class Line(Voigt1D):
                 tied.update({'gamma': lambda cmod, mod=self:
                         _tie_nearest(cmod, mod, line_registry['gamma'])})
 
+        self._shifted_lambda = lambda_0 * (1 + (delta_v or 0) /
+                                           c.c.cgs.value) + (delta_lambda or 0)
+
         if f_value is None:
-            ind = find_nearest(line_registry['wave'], lambda_val)
+            ind = find_nearest(line_registry['wave'], self._shifted_lambda)
             f_value = line_registry['osc_str'][ind]
 
         if gamma is None:
-            ind = find_nearest(line_registry['wave'], lambda_val)
+            ind = find_nearest(line_registry['wave'], self._shifted_lambda)
             gamma = line_registry['gamma'][ind]
 
         super(Line, self).__init__(lambda_0=lambda_0,
@@ -55,6 +56,10 @@ class Line(Voigt1D):
                                    name=name,
                                    tied=tied,
                                    fixed=fixed)
+
+    @property
+    def shifted_lambda(self):
+        return self._shifted_lambda
 
     @property
     def fwhm(self):
