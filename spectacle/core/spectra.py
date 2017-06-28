@@ -328,8 +328,8 @@ class Spectrum1D(NDDataRef):
     def line_mask(self):
         mask_list = []
 
-        for prof in self._lines:
-            mask_list.append(self._get_line_mask(prof.lambda_0))
+        for line in self._lines:
+            mask_list.append(self._get_line_mask(line.shifted_lambda))
 
         if len(mask_list) == 0:
             line_mask = np.zeros(shape=self.dispersion.shape, dtype=bool)
