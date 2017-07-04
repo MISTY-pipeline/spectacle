@@ -2,40 +2,42 @@ import logging
 import numpy as np
 import uncertainties.unumpy as unp
 from scipy import stats
+from functools import wraps
+from ..analysis.resample import resample
 
 
-def _format_arrays(a, v, use_tau=False, use_vel=False):
+def _format_arrays(a, v, use_tau=False, masking=True, resamp_bins=False):
     # Extract only the parts of the spectrum with data in it
-    a_region_mask = a.line_mask
-    v_region_mask = v.line_mask
+    a_mask = a.line_mask
+    v_mask = v.line_mask
+
     # a_region_mask = np.ones(a.data.shape, dtype=bool)
     # v_region_mask = np.ones(v.data.shape, dtype=bool)
-    mask = (a_region_mask | v_region_mask)
+    mask = (a_mask | v_mask)
 
-    if use_vel:
-        a_disp = a.velocity(mask=mask)
-        v_disp = v.velocity(mask=mask)
+    # Apply masks
+    al = a.data[a_mask]
+    vl = v.data[v_mask]
 
-        vel_disp = np.linspace(a_disp[0], a_disp[-1], len(a_disp))
+    al_disp = a.dispersion[a_mask]
+    vl_disp = v.dispersion[v_mask]
 
-        a = a.resample(vel_disp, use_vel=True)
-        v = v.resample(vel_disp, use_vel=True)
-    else:
-        a_disp = a.dispersion[mask]
-        v_disp = v.dispersion[mask]
+    # Check for consistency
+    d_al = a.dispersion[1] - a.dispersion[0]
+    d_vl = v.dispersion[1] - v.dispersion[0]
 
-        # Clip the spectra to the same range
-        if a_disp[0] > v_disp[0]:
-            min_mask = (v.dispersion >= a_disp[0])
-        else:
-            min_mask = (a.dispersion >= v_disp[0])
+    # If the two spectra are not the same dimension, resample to lower
+    # resolution
+    if d_al != d_vl:
+        logging.warning("Dispersions have different deltas: {} and {}. "
+                        "Resampling to smallest delta.".format(d_al, d_vl))
 
-        if a_disp[-1] < v_disp[-1]:
-            max_mask = (v.dispersion <= a_disp[-1])
-        else:
-            max_mask = (a.dispersion <= v_disp[-1])
+    if d_al > d_vl:
+        a = resample(v.dispersion)
+    elif d_vl > d_al:
+        v = v.resample(v.dispersion)
 
-        mask = (min_mask & max_mask) & (a_region_mask | v_region_mask)
+    mask = None if not masking else mask
 
     # Compose the uncertainty arrays
     if use_tau:
@@ -45,35 +47,42 @@ def _format_arrays(a, v, use_tau=False, use_vel=False):
         al, vl = unp.uarray(a.data[mask], a.uncertainty[mask]), \
                  unp.uarray(v.data[mask], v.uncertainty[mask])
 
-    d_al = a_disp[1] - a_disp[0]
-    d_vl = v_disp[1] - v_disp[0]
-
-    # If the two spectra are not the same dimension, resample to lower
-    # resolution
-    if d_al != d_vl:
-        logging.warning("Dispersions have different deltas: {} and {}. "
-                        "Resampling to smallest delta.".format(d_al, d_vl))
-
-    # if d_al > d_vl:
-    #     a = a.resample(v_disp)
-    #
-    #     if use_tau:
-    #         al = unp.uarray(a.tau[mask], a.tau_uncertainty[mask])
-    #     else:
-    #         al = unp.uarray(a.data[mask], a.uncertainty[mask])
-    # elif d_vl > d_al:
-    #     v = v.resample(a_disp)
-    #
-    #     if use_tau:
-    #         vl = unp.uarray(v.tau[mask], v.tau_uncertainty[mask])
-    #     else:
-    #         vl = unp.uarray(v.data[mask], v.uncertainty[mask])
-
+    if resamp_bins:
+        if al.size > vl.size:
+            remat = resample(vl_disp,
+                             np.linspace(vl_disp[0], vl_disp[-1], al.size))
+            vl = np.dot(remat, vl)
+        elif vl.size > al.size:
+            remat = resample(al_disp,
+                             np.linspace(al_disp[0], al_disp[-1], vl.size))
+            al = np.dot(remat, al)
 
     return al, vl, mask
 
 
-def npcorrelate(a, v, mode='valid', normalize=False, use_tau=False):
+
+def metric(strip=True):
+    def decorator(func):
+        @wraps(func)
+        def func_wrapper(a, v, use_tau=False, masking=True, *args, **kwargs):
+            al, vl, mask = _format_arrays(a, v, use_tau=use_tau,
+                                          masking=masking)
+
+            if strip:
+                al, vl = unp.nominal_values(al), unp.nominal_values(vl)
+
+                return func(al, vl, *args, **kwargs), np.zeros(al.shape), mask
+
+            res = func(al, vl, *args, **kwargs)
+
+            return unp.nominal_values(res), unp.std_devs(res), mask
+
+        return func_wrapper
+    return decorator
+
+
+@metric()
+def npcorrelate(a, v, mode='valid', normalize=False):
     """
     Returns the 1d cross-correlation of two input arrays.
 
@@ -91,17 +100,14 @@ def npcorrelate(a, v, mode='valid', normalize=False, use_tau=False):
     <returned value> : float
         The (normalized) correlation.
     """
-    al, vl, mask = _format_arrays(a, v, use_tau=use_tau)
-
     if normalize:
-        al = (al - al.mean()) / (al.std_dev() * al.size)
-        vl = (vl - vl.mean()) / vl.std_dev()
+        a = (a - a.mean()) / (np.std(a) * a.size)
+        v = (a - a.mean()) / np.std(a)
 
-    ret = np.correlate(al, vl, mode)
-
-    return unp.nominal_values(ret), unp.std_devs(ret), mask
+    return np.sum(np.correlate(a, v, mode))
 
 
+@metric(strip=False)
 def autocorrelate(a, use_tau=False):
     """
     Implementation of the correlation function in Peeples et al. 2010.
@@ -116,25 +122,11 @@ def autocorrelate(a, use_tau=False):
     ret : float
         Value representing the correlation.
     """
-    if use_tau:
-        af = unp.uarray(a.tau, a.tau_uncertainty)
-    else:
-        af = unp.uarray(a.data, a.uncertainty)
-
-    # fin = unp.uarray(np.zeros(a.flux.size), np.zeros(a.flux.size))
-    #
-    # for dv in range(fin.size):
-    #     for i in range(fin.size):
-    #         fin[dv] += af[dv] * af[i]
-
-    ret = (af[:-1] * af[1:]).mean() / af.mean() ** 2
-
-    # ret = np.mean(fin, axis=0)/(np.mean(fin, axis=0) ** 2)
-
-    return unp.nominal_values(ret), unp.std_devs(ret)
+    return (a[:-1] * a[1:]).mean() / a.mean() ** 2
 
 
-def cross_correlate(a, v, use_tau=False):
+@metric(strip=True)
+def cross_correlate(a, v):
     """
     Calculates the Pearson product-moment correlation. Returns the
     normalized covariance matrix.
@@ -151,14 +143,11 @@ def cross_correlate(a, v, use_tau=False):
     mat : ndarray
         The correlation coefficient matrix of the variables.
     """
-    al, vl, mask = _format_arrays(a, v, use_tau=use_tau)
-
-    mat = np.corrcoef(unp.nominal_values(al), unp.nominal_values(vl))[0, 1]
-
-    return mat, mask
+    return np.corrcoef(a, v)[0, 1]
 
 
-def correlate(a, v, mode='true', use_tau=False, use_vel=False):
+@metric(strip=False)
+def correlate(a, v, mode='true'):
     """
     Correlation function described by Molly Peeples.
 
@@ -179,31 +168,37 @@ def correlate(a, v, mode='true', use_tau=False, use_vel=False):
      ret : ndarray
         An array describing the correlation at every position.
     """
-    al, vl, mask = _format_arrays(a, v, use_tau=use_tau, use_vel=use_vel)
-
     if mode == 'true':
-        # ret = (al * vl) / (np.linalg.norm(unp.nominal_values(al)) *
-        #                    np.linalg.norm(unp.nominal_values(vl)))
-        ret = (al * vl) / (unp.sqrt((al ** 2).sum()) *
-                           unp.sqrt((vl ** 2).sum()))
+        return np.sum((a * v) / (unp.sqrt((a ** 2).sum()) *
+                                 unp.sqrt((v ** 2).sum())))
     elif mode == 'full':
-        sh_vl = np.random.permutation(vl)
-        sh_al = np.random.permutation(al)
-        ret = (al - vl) ** 2 / (sh_al * sh_vl)
+        sh_vl = np.random.permutation(v)
+        sh_al = np.random.permutation(a)
+        return (a - v) ** 2 / (sh_al * sh_vl)
     elif mode == 'lite':
-        sh_vl = np.random.permutation(vl)
-        sh_al = np.random.permutation(al)
-        ret = (al * vl) / (sh_al * sh_vl)
+        sh_vl = np.random.permutation(v)
+        sh_al = np.random.permutation(a)
+        return (a * v) / (sh_al * sh_vl)
     else:
         raise NameError("No such mode: {}".format(mode))
 
-    return unp.nominal_values(ret), unp.std_devs(ret), mask
+
+@metric()
+def anderson_darling(a, v, *args, **kwargs):
+    a2, crit, p = stats.anderson_ksamp([a, v], *args, **kwargs)
+
+    return a2
 
 
-def anderson_darling(a, v, use_tau=False, use_vel=False, *args, **kwargs):
-    al, vl, mask = _format_arrays(a, v, use_tau=use_tau, use_vel=use_vel)
+@metric()
+def kendalls_tau(a, v, *args, **kwargs):
+    corr, p = stats.kendalltau(a, v, *args, **kwargs)
 
-    a2, crit, p = stats.anderson_ksamp([al, vl], *args, **kwargs)
+    return corr
 
-    return a2, crit, p
 
+@metric()
+def kolmogorov_smirnov(a, v, *args, **kwargs):
+    corr, p = stats.ks_2samp(a, v)
+
+    return corr
