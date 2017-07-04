@@ -27,10 +27,10 @@ def resample(orig_lamb, fin_lamb, force=None, **kwargs):
     if (force is not None and force == 'uniform') or \
             (np.allclose(orig_space, orig_space[0]) and
                  np.allclose(fin_space, fin_space[0])):
-        logging.info("Re-sampling: original and final grids are uniform.")
+        # logging.info("Re-sampling: original and final grids are uniform.")
         mat = _uniform_matrix(orig_lamb, fin_lamb)
     else:
-        logging.info("Re-sampling: original and final grids are non-uniform.")
+        # logging.info("Re-sampling: original and final grids are non-uniform.")
         mat = _nonuniform_matrix(orig_lamb, fin_lamb, **kwargs)
 
     return mat

@@ -35,7 +35,7 @@ def find_bounds(dispersion, data, center, continuum=None, cap_value=None,
                             creg[:, :]))
 
         if len(avg_list) == 0:
-            logging.error("No absorption regions identified; defaulting to "
+            logging.warning("No absorption regions identified; defaulting to "
                           "entire bounds of spectrum.")
             return 0, len(data) - 1
 

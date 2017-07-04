@@ -31,7 +31,7 @@ class Spectrum1D(NDDataRef):
             self._dispersion = dispersion
 
         if uncertainty is None:
-            uncertainty = StdDevUncertainty(np.zeros(data.size))
+            uncertainty = StdDevUncertainty(np.ones(data.size))
 
         self._dispersion_unit = dispersion_unit
         self._velocity = None
@@ -42,6 +42,7 @@ class Spectrum1D(NDDataRef):
         self._continuum = continuum if continuum is not None \
             else np.ones(self._dispersion.shape)
         self._tau = tau
+        self._tau_uncertainty = None
 
         super(Spectrum1D, self).__init__(data, uncertainty=uncertainty, *args,
                                          **kwargs)
@@ -244,18 +245,24 @@ class Spectrum1D(NDDataRef):
     @property
     def tau(self):
         if self._tau is None:
-            tau = unp.log(unp.uarray(self.data, self.uncertainty) ** -1)
-
-            return unp.nominal_values(tau)
+            # tau = -unp.log(unp.uarray(self.data, self.uncertainty))
+            # self._tau = unp.nominal_values(tau)
+            # self._tau_uncertainty = unp.std_devs(tau)
+            self._tau = -np.log(self.data)
+            self._tau_uncertainty = -np.log(self.uncertainty)
 
         return self._tau
 
     @property
     def tau_uncertainty(self):
-        if self._tau is None:
-            tau = unp.log(1.0 / unp.uarray(self.data, self.uncertainty))
+        if self._tau_uncertainty is None:
+            # tau = -unp.log(unp.uarray(self.data, self.uncertainty))
+            # self._tau = unp.nominal_values(tau)
+            # self._tau_uncertainty = unp.std_devs(tau)
+            self._tau = -np.log(self.data)
+            self._tau_uncertainty = -np.log(self.uncertainty)
 
-            return unp.std_devs(tau)
+        return self._tau_uncertainty
 
     @property
     def lines(self):
