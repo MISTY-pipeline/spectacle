@@ -125,7 +125,7 @@ class DynamicLevMarFitter(LevMarFitter):
 
             chisq, p = self.chi2(temp_fit_mod, x, y)
 
-            if chisq <= self._chisq:
+            if chisq <= self._chisq and np.abs(chisq - self._chisq) >= 0.1:
                 logging.info(
                     "Fit improved by removing line at {}:"
                     "\n\tChi squared: {} -> {}.".format(
@@ -160,7 +160,7 @@ class DynamicLevMarFitter(LevMarFitter):
 
             chisq, p = self.chi2(temp_fit_mod, x, y)
 
-            if chisq <= self._chisq:
+            if chisq <= self._chisq and np.abs(chisq - self._chisq) >= 0.1:
                 logging.info(
                     "Fit improved with addition of line at {}:"
                     "\n\tChi squared: {} -> {}.".format(

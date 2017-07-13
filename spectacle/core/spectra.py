@@ -427,8 +427,9 @@ class Spectrum1D(NDDataRef):
                                                defaults['lambda_0']})
 
             kwargs.setdefault('lambda_0', self.dispersion[ind])
+            kwargs.setdefault('name', nearest_name)
 
-            mod = Line(name=nearest_name, **kwargs)
+            mod = Line(**kwargs)
 
             if mod is not None:
                 line_list[nearest_name] = mod
