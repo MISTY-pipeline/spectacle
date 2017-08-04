@@ -414,19 +414,24 @@ class Spectrum1D(NDDataRef):
                     nearest_name,
                     len([k for k in line_list if nearest_name in k]))
 
-            logging.info("Found {} ({}) at {}. Strict is {}.".format(
-                nearest_name,
-                nearest_wave,
-                self.dispersion[ind],
-                strict))
+            # logging.info("Found {} ({}) at {}. Strict is {}.".format(
+            #     nearest_name,
+            #     nearest_wave,
+            #     self.dispersion[ind],
+            #     strict))
 
             # If lambda0 is provided, then we only care about the shift, not
             # the value of the line centroid
-            if defaults.get('lambda_0') is not None:
-                kwargs.update({'delta_lambda': self.dispersion[ind] -
-                                               defaults['lambda_0']})
 
-            kwargs.setdefault('lambda_0', self.dispersion[ind])
+            if defaults.get('lambda_0') is not None:
+                # kwargs.update({'delta_lambda': self.dispersion[ind] -
+                #                                defaults['lambda_0']})
+                kwargs.update({'delta_v': (self.dispersion[ind]/defaults.get('lambda_0') - 1) * c.c.cgs.value})
+
+            # If not lambda was given, calculate it but take into consideration
+            # shifts available
+            deshifted_lambda_0 = (self.dispersion[ind] - defaults.get('delta_lambda', 0)) / (1 + defaults.get('delta_v', 0)/c.c.cgs.value)
+            kwargs.setdefault('lambda_0', deshifted_lambda_0)
             kwargs.setdefault('name', nearest_name)
 
             mod = Line(**kwargs)
