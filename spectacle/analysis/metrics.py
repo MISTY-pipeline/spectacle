@@ -22,6 +22,11 @@ def _format_arrays(a, v, use_tau=False, masking=True, resamp_bins=False):
     al_disp = a.dispersion[a_mask]
     vl_disp = v.dispersion[v_mask]
 
+    # min_val = al_disp[0] if al_disp[a_mask][0] < vl_disp[0] else vl_disp[0]
+    # max_val = al_disp[-1] if al_disp[-1] < vl_disp[-1] else vl_disp[-1]
+
+    masker = lambda x: x[mask]
+
     # Check for consistency
     d_al = a.dispersion[1] - a.dispersion[0]
     d_vl = v.dispersion[1] - v.dispersion[0]
@@ -33,19 +38,19 @@ def _format_arrays(a, v, use_tau=False, masking=True, resamp_bins=False):
                         "Resampling to smallest delta.".format(d_al, d_vl))
 
     if d_al > d_vl:
-        a = resample(v.dispersion)
+        a = a.resample(v.dispersion)
     elif d_vl > d_al:
-        v = v.resample(v.dispersion)
+        v = v.resample(a.dispersion)
 
     mask = None if not masking else mask
 
     # Compose the uncertainty arrays
     if use_tau:
-        al, vl = unp.uarray(a.tau[mask], a.tau_uncertainty[mask]), \
-                 unp.uarray(v.tau[mask], v.tau_uncertainty[mask])
+        al, vl = unp.uarray(masker(a.tau), masker(a.tau_uncertainty)), \
+                 unp.uarray(masker(v.tau), masker(v.tau_uncertainty))
     else:
-        al, vl = unp.uarray(a.data[mask], a.uncertainty[mask]), \
-                 unp.uarray(v.data[mask], v.uncertainty[mask])
+        al, vl = unp.uarray(masker(a.data), masker(a.uncertainty)), \
+                 unp.uarray(masker(v.data), masker(v.uncertainty))
 
     if resamp_bins:
         if al.size > vl.size:
@@ -102,7 +107,7 @@ def npcorrelate(a, v, mode='valid', normalize=False):
     """
     if normalize:
         a = (a - a.mean()) / (np.std(a) * a.size)
-        v = (a - a.mean()) / np.std(a)
+        v = (v - v.mean()) / np.std(v)
 
     return np.sum(np.correlate(a, v, mode))
 
