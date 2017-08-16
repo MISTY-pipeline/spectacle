@@ -1,7 +1,8 @@
 import numpy as np
 
+from astropy.modeling import models
 from astropy.modeling.models import RedshiftScaleFactor, Linear1D, Scale
-from astropy.modeling.core import _CompoundModel
+from astropy.modeling.core import _CompoundModel, Fittable1DModel
 
 from .models import (TauProfile, WavelengthConvert, VelocityConvert,
                      FluxConvert, FluxDecrementConvert)
@@ -12,28 +13,40 @@ class SpectrumModelNotImplemented(Exception): pass
 class IncompleteLineInformation(Exception): pass
 
 
-class Spectrum1D:
+class Spectrum1D(Fittable1DModel):
     def __init__(self, *args, **kwargs):
-        self._redshift = 0
-        self._continuum = None
-        self._lines = []
+        super(Spectrum1D, self).__init__(*args, **kwargs)
+        self._redshift_model = RedshiftScaleFactor(0)
+        self._continuum_model = Linear1D(0, 1)
+        self._line_model = None
 
-    def _line_model(self):
-        return np.sum(self._lines)
+    def copy(self):
+        new_spectrum = Spectrum1D()
+        new_spectrum._redshift_model = self._redshift_model.copy()
+        new_spectrum._continuum_model = self._continuum_model.copy()
+
+        if self._line_model is not None:
+            new_spectrum._line_model = self._line_model.copy()
+
+        return new_spectrum
 
     def _change_base(self, base):
-        self.__class__ = type('Spectrum1D', (Spectrum1D, type(base)),
-                              base.__dict__)
+        new_spectrum = self.copy()
+
+        new_spectrum.__class__ = type('Spectrum1D', (Spectrum1D, type(base)),
+                                      base.__dict__)
+
+        return new_spectrum
+
+    def set_redshift(self, value):
+        self._redshift_model = RedshiftScaleFactor(value).inverse
 
         return self
 
-    @property
-    def redshift(self):
-        return self._redshift
+    def set_continuum(self, model='Linear1D', *args, **kwargs):
+        self._continum_model = getattr(models, model)(*args, **kwargs)
 
-    @redshift.setter
-    def redshift(self, value):
-        self._redshift = max(0, value)
+        return self
 
     @property
     def tau(self):
@@ -90,12 +103,13 @@ class Spectrum1D:
                               delta_v=delta_v, delta_lambda=delta_lambda,
                               name=name, *args, **kwargs)
 
-        self._lines.append(tau_prof)
+        self._line_model = tau_prof if self._line_model is None else self._line_model + tau_prof
 
         return self
 
-    def add_lines(self, lines):
-        self._lines += lines
+    def line_mask(self, x):
+        masks = [line.mask(x) for line in self._lines]
 
-        return self
+        return np.logical_or.reduce(masks)
+
 
