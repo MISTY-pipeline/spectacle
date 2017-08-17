@@ -1,11 +1,13 @@
 from astropy.modeling import Fittable1DModel, Parameter
-from astropy.modeling.core import _ModelMeta
-from astropy.modeling.models import Linear1D, RedshiftScaleFactor
+from astropy.modeling.models import Voigt1D
 import astropy.units as u
 from astropy.constants import c
 import numpy as np
 from scipy import special
-import six
+from astropy.convolution import convolve, Gaussian1DKernel
+from astropy.modeling.fitting import LevMarLSQFitter
+from scipy.integrate import quad
+import peakutils
 
 
 class TauProfile(Fittable1DModel):
@@ -53,8 +55,13 @@ class TauProfile(Fittable1DModel):
     delta_v = Parameter(default=0, fixed=False)
     delta_lambda = Parameter(default=0, fixed=True)
 
-    @classmethod
-    def evaluate(cls, x, lambda_0, f_value, gamma, v_doppler, column_density,
+    def __init__(self, *args, **kwargs):
+        super(TauProfile, self).__init__(*args, **kwargs)
+        self._fwhm = None
+        self._dv90 = None
+        self._shifted_lambda = None
+
+    def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
         charge_proton = u.Quantity(4.8032056e-10, 'esu')
         tau_factor = ((np.sqrt(np.pi) * charge_proton ** 2 /
@@ -71,6 +78,7 @@ class TauProfile(Fittable1DModel):
 
         # shift lambda_0 by delta_v
         shifted_lambda = lambda_0 * (1 + delta_v / c.cgs) + delta_lambda
+        self._shifted_lambda = shifted_lambda
 
         # conversions
         nudop = (v_doppler / shifted_lambda).to('Hz')  # doppler width in Hz
@@ -82,7 +90,7 @@ class TauProfile(Fittable1DModel):
         # dimensionless frequency offset in units of doppler freq
         x = c.cgs / v_doppler * (shifted_lambda / lambda_bins - 1.0)
         a = gamma / (4.0 * np.pi * nudop)  # damping parameter
-        phi = cls.voigt(a, x)  # line profile
+        phi = self.voigt(a, x)  # line profile
         tau_phi = tau0 * phi  # profile scaled with tau0
         tau_phi = tau_phi.decompose().value
 
@@ -98,6 +106,63 @@ class TauProfile(Fittable1DModel):
     @staticmethod
     def fit_deriv(x, x_0, b, gamma, f):
         return [0, 0, 0, 0]
+
+    def fwhm(self, x, velocity=True):
+        shifted_lambda = self._shifted_lambda.value if not velocity \
+            else VelocityConvert(center=self.lambda_0)(self._shifted_lambda.value)
+
+        mod = ExtendedVoigt1D(x_0=shifted_lambda)
+        fitter = LevMarLSQFitter()
+
+        fit_mod = fitter(mod, x, self(x) if not velocity else (
+            VelocityConvert(center=self.lambda_0) | self())(x))
+        fwhm = fit_mod.fwhm
+
+        return fwhm
+
+    def dv90(self, x):
+        tau_tot = quad(self, x[0], x[-1])
+
+        fwhm = self.fwhm(x)
+
+        mn = (np.abs(x - (self.lambda_0 - fwhm))).argmin()
+        mx = (np.abs(x - (self.lambda_0 + fwhm))).argmin()
+
+        tau_fwhm = quad(self, x[mn], x[mx])
+
+        while tau_fwhm[0]/tau_tot[0] > 0.9:
+            print(tau_fwhm[0]/tau_tot[0])
+            mn += 1
+            mx -= 1
+            tau_fwhm = quad(self, x[mn], x[mx])
+
+        return tau_fwhm, tawhm[0]/tau_tot[0]
+
+    def mask(self, x):
+        fwhm = self.fwhm(x)
+        mask = (x >= (self.lambda_0 - fwhm)) & (x <= (self.lambda_0 - fwhm))
+
+        return mask
+
+
+class ExtendedVoigt1D(Voigt1D):
+    @property
+    def fwhm(self):
+        """
+        Calculates an approximation of the FWHM.
+
+        The approximation is accurate to
+        about 0.03% (see http://en.wikipedia.org/wiki/Voigt_profile).
+
+        Returns
+        -------
+        fwhm : float
+            The estimate of the FWHM
+        """
+        fwhm = 0.5346 * self.fwhm_L + np.sqrt(0.2166 * (self.fwhm_L ** 2.)
+                                              + self.fwhm_G ** 2.)
+
+        return fwhm
 
 
 class VelocityConvert(Fittable1DModel):
@@ -148,8 +213,6 @@ class WavelengthConvert(Fittable1DModel):
     inputs = ('x',)
     outputs = ('x',)
 
-    center = Parameter(default=0, fixed=True)
-
     @staticmethod
     def evaluate(x, center):
         vel = x * u.Unit('km/s')
@@ -174,3 +237,30 @@ class FluxDecrementConvert(Fittable1DModel):
     @staticmethod
     def evaluate(y):
         return 1- np.exp(-y) - 1
+
+
+class LSFKernel1D(Fittable1DModel):
+    inputs = ('y',)
+    outputs = ('y',)
+
+    @staticmethod
+    def evaluate(self, y, *args, **kwargs):
+        pass
+
+
+class LineFinder(Fittable1DModel):
+    inputs = ('x', 'y')
+    outputs = ('y',)
+
+    theshold = Parameter(default=0.5)
+    min_distance = Parameter(default=30, min=0)
+
+    @staticmethod
+    def evaluate(self, x, y, model, threshold, min_distance):
+        indexes = peakutils.indexes(y, thres=threshold, min_dist=min_distance)
+        peaks_x = peakutils.interpolate(x, y, ind=indexes)
+
+        for peak in peaks_x:
+            model.add_line(lambda_0=peak)
+
+        return model(x)
