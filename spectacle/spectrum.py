@@ -1,6 +1,8 @@
 import numpy as np
 
-from astropy.modeling import models
+import astropy.units as u
+
+from astropy.modeling import models, Parameter
 from astropy.modeling.models import RedshiftScaleFactor, Linear1D, Scale
 from astropy.modeling.core import _CompoundModel, Fittable1DModel
 
@@ -14,6 +16,8 @@ class IncompleteLineInformation(Exception): pass
 
 
 class Spectrum1D(Fittable1DModel):
+    num_lines = Parameter(default=0)
+
     def __init__(self, *args, **kwargs):
         super(Spectrum1D, self).__init__(*args, **kwargs)
         self._redshift_model = RedshiftScaleFactor(0)
@@ -45,6 +49,24 @@ class Spectrum1D(Fittable1DModel):
 
     def set_continuum(self, model='Linear1D', *args, **kwargs):
         self._continum_model = getattr(models, model)(*args, **kwargs)
+
+        return self
+
+    def add_line(self, lambda_0=None, gamma=None, f_value=None,
+                 column_density=None, v_doppler=None, delta_v=None,
+                 delta_lambda=None, name=None, *args, **kwargs):
+
+        if lambda_0 is None and name is None:
+            raise IncompleteLineInformation(
+                "Not enough information to construction absorption line "
+                "profile. Please provide at least a name or centroid.")
+
+        tau_prof = TauProfile(lambda_0=lambda_0, column_density=column_density,
+                              v_doppler=v_doppler, gamma=gamma, f_value=f_value,
+                              delta_v=delta_v, delta_lambda=delta_lambda,
+                              name=name, *args, **kwargs)
+
+        self._line_model = tau_prof if self._line_model is None else self._line_model + tau_prof
 
         return self
 
@@ -89,23 +111,6 @@ class Spectrum1D(Fittable1DModel):
             raise SpectrumModelNotImplemented(
                 "No spectral axis specified. Please method chain with `tau`, "
                 "`flux`, or `flux_decrement`.")
-
-    def add_line(self, lambda_0=None, gamma=None, f_value=None,
-                 column_density=None, v_doppler=None, delta_v=None,
-                 delta_lambda=None, name=None, *args, **kwargs):
-        if lambda_0 is None and name is None:
-            raise IncompleteLineInformation(
-                "Not enough information to construction absorption line "
-                "profile. Please provide at least a name or centroid.")
-
-        tau_prof = TauProfile(lambda_0=lambda_0, column_density=column_density,
-                              v_doppler=v_doppler, gamma=gamma, f_value=f_value,
-                              delta_v=delta_v, delta_lambda=delta_lambda,
-                              name=name, *args, **kwargs)
-
-        self._line_model = tau_prof if self._line_model is None else self._line_model + tau_prof
-
-        return self
 
     def line_mask(self, x):
         masks = [line.mask(x) for line in self._lines]
