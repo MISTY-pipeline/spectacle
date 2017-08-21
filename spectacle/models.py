@@ -47,13 +47,16 @@ class TauProfile(Fittable1DModel):
     inputs = ('x',)
     outputs = ('y',)
 
-    lambda_0 = Parameter(fixed=True, min=0)
+    input_units = {'x': u.Angstrom}
+    input_units_strict = True
+
+    lambda_0 = Parameter(fixed=True, min=0, unit=u.Angstrom)
     f_value = Parameter(fixed=True, min=0, max=2.0)
     gamma = Parameter(fixed=True, min=0)
-    v_doppler = Parameter(default=1e5, min=0)
-    column_density = Parameter(default=13, min=0, max=25)
-    delta_v = Parameter(default=0, fixed=False)
-    delta_lambda = Parameter(default=0, fixed=True)
+    v_doppler = Parameter(default=1e5, min=0, unit=u.Unit('cm/s'))
+    column_density = Parameter(default=13, min=0, max=25, unit=u.Unit('1/cm2'))
+    delta_v = Parameter(default=0, fixed=False, unit=u.Unit('cm/s'))
+    delta_lambda = Parameter(default=0, fixed=True, unit=u.Angstrom)
 
     def __init__(self, *args, **kwargs):
         super(TauProfile, self).__init__(*args, **kwargs)
@@ -67,15 +70,6 @@ class TauProfile(Fittable1DModel):
         tau_factor = ((np.sqrt(np.pi) * charge_proton ** 2 /
                        (u.M_e.cgs * c.cgs))).cgs
 
-        # Make the input parameters quantities so we can keep track
-        # of units
-        lambda_bins = x * u.Unit('Angstrom')
-        lambda_0 = lambda_0 * u.Unit('Angstrom')
-        v_doppler = v_doppler * u.Unit('cm/s')
-        column_density = column_density * u.Unit('1/cm2')
-        delta_v = (delta_v or 0) * u.Unit('cm/s')
-        delta_lambda = (delta_lambda or 0) * u.Unit('Angstrom')
-
         # shift lambda_0 by delta_v
         shifted_lambda = lambda_0 * (1 + delta_v / c.cgs) + delta_lambda
         self._shifted_lambda = shifted_lambda
@@ -88,7 +82,7 @@ class TauProfile(Fittable1DModel):
         tau0 = (tau_x * lambda_0).decompose()
 
         # dimensionless frequency offset in units of doppler freq
-        x = c.cgs / v_doppler * (shifted_lambda / lambda_bins - 1.0)
+        x = c.cgs / v_doppler * (shifted_lambda / x - 1.0)
         a = gamma / (4.0 * np.pi * nudop)  # damping parameter
         phi = self.voigt(a, x)  # line profile
         tau_phi = tau0 * phi  # profile scaled with tau0
@@ -212,6 +206,8 @@ class WavelengthConvert(Fittable1DModel):
     """
     inputs = ('x',)
     outputs = ('x',)
+
+    center = Parameter(default=0, fixed=True)
 
     @staticmethod
     def evaluate(x, center):
