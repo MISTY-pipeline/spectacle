@@ -1,5 +1,5 @@
 from astropy.modeling import Fittable1DModel, Parameter
-from astropy.modeling.models import Voigt1D
+from astropy.modeling.models import Voigt1D, Linear1D, Scale
 import astropy.units as u
 from astropy.constants import c
 import numpy as np
@@ -101,7 +101,7 @@ class TauProfile(Fittable1DModel):
     def fit_deriv(x, x_0, b, gamma, f):
         return [0, 0, 0, 0]
 
-    def fwhm(self, x, velocity=True):
+    def fwhm(self, x):
         shifted_lambda = self._shifted_lambda.value if not velocity \
             else VelocityConvert(center=self.lambda_0)(self._shifted_lambda.value)
 
@@ -130,7 +130,7 @@ class TauProfile(Fittable1DModel):
             mx -= 1
             tau_fwhm = quad(self, x[mn], x[mx])
 
-        return tau_fwhm, tawhm[0]/tau_tot[0]
+        return tau_fwhm, fwhm[0]/tau_tot[0]
 
     def mask(self, x):
         fwhm = self.fwhm(x)
@@ -157,6 +157,19 @@ class ExtendedVoigt1D(Voigt1D):
                                               + self.fwhm_G ** 2.)
 
         return fwhm
+
+
+class SmartScale(Scale):
+    @staticmethod
+    def evaluate(x, factor):
+        """One dimensional Scale model function"""
+        if isinstance(factor, u.Quantity):
+            return_unit = factor.unit
+            factor = factor.value
+        if isinstance(x, u.Quantity):
+            return (x.value * factor)
+        else:
+            return factor * x
 
 
 class VelocityConvert(Fittable1DModel):

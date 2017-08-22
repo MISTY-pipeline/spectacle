@@ -3,11 +3,13 @@ import numpy as np
 import astropy.units as u
 
 from astropy.modeling import models, Parameter
-from astropy.modeling.models import RedshiftScaleFactor, Linear1D, Scale
-from astropy.modeling.core import _CompoundModel, Fittable1DModel
+from astropy.modeling.models import RedshiftScaleFactor, Linear1D
+from astropy.modeling.core import Fittable1DModel
+
+from collections import OrderedDict
 
 from .models import (TauProfile, WavelengthConvert, VelocityConvert,
-                     FluxConvert, FluxDecrementConvert)
+                     FluxConvert, FluxDecrementConvert, SmartScale)
 
 
 class SpectrumModelNotImplemented(Exception): pass
@@ -24,7 +26,7 @@ class SpectrumModel(Fittable1DModel):
     def __init__(self, *args, **kwargs):
         super(SpectrumModel, self).__init__(*args, **kwargs)
         self._redshift_model = RedshiftScaleFactor(0).inverse
-        self._continuum_model = Linear1D(0, 1)
+        self._continuum_model = Linear1D(0 * u.Unit('1/Angstrom'), 1)
         self._line_model = None
 
     @property
@@ -41,6 +43,9 @@ class SpectrumModel(Fittable1DModel):
 
     def evaluate(self, x, center, *args, **kwargs):
         return x.to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
+
+    def _parameter_units_for_data_units(self, input_units, output_units):
+        return OrderedDict([('center', u.Angstrom)])
 
     def copy(self):
         new_spectrum = super(SpectrumModel, self).copy()
@@ -59,8 +64,7 @@ class SpectrumModel(Fittable1DModel):
         # Astrop does not currently support adding these attributes to the
         # compound model automatically.
         setattr(new_spectrum, "input_units_strict", True)
-        setattr(new_spectrum, "input_units_equivalencies",
-                self.input_units_equivalencies)
+        setattr(new_spectrum, "input_units_equivalencies", self.input_units_equivalencies)
         setattr(new_spectrum, "input_units", self.input_units)
 
         return new_spectrum
@@ -96,25 +100,25 @@ class SpectrumModel(Fittable1DModel):
     def tau(self):
         new_compound = (self._redshift_model
                         | self._line_model
-                        | Scale(1. / (1 + self._redshift_model.z.value)))
+                        | SmartScale(1. / (1 + self._redshift_model.z)))
 
         return self._change_base(new_compound)
 
     @property
     def flux(self):
         new_compound = (self._redshift_model
-                        | (self._continum_model
+                        | (self._continuum_model
                            + (self._line_model | FluxConvert()))
-                        | Scale(1. / (1 + self._redshift_model.z.value)))
+                        | SmartScale(1. / (1 + self._redshift_model.z)))
 
         return self._change_base(new_compound)
 
     @property
     def flux_decrement(self):
         new_compound = (self._redshift_model
-                        | (self._continum_model
+                        | (self._continuum_model
                            + (self._line_model | FluxDecrementConvert()))
-                        | Scale(1. / (1 + self._redshift_model.z.value)))
+                        | SmartScale(1. / (1 + self._redshift_model.z)))
 
         return self._change_base(new_compound)
 
