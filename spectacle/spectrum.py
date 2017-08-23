@@ -8,8 +8,8 @@ from astropy.modeling.core import Fittable1DModel
 
 from collections import OrderedDict
 
-from .models import (TauProfile, WavelengthConvert, VelocityConvert,
-                     FluxConvert, FluxDecrementConvert, SmartScale)
+from .models import (TauProfile, DispersionConvert,
+                     FluxConvert, FluxDecrementConvert, SmartScale, Masker)
 
 
 class SpectrumModelNotImplemented(Exception): pass
@@ -17,38 +17,27 @@ class SpectrumModelNotImplemented(Exception): pass
 class IncompleteLineInformation(Exception): pass
 
 
-class SpectrumModel(Fittable1DModel):
-    outputs = ('x',)
-    input_units_strict = True
+class SpectrumModel:
+    def __init__(self, center):
+        self._center = u.Quantity(center, 'Angstrom')
 
-    center = Parameter(default=0, fixed=True, unit=u.Angstrom)
-
-    def __init__(self, *args, **kwargs):
-        super(SpectrumModel, self).__init__(*args, **kwargs)
         self._redshift_model = RedshiftScaleFactor(0).inverse
         self._continuum_model = Linear1D(0 * u.Unit('1/Angstrom'), 1)
         self._line_model = None
 
-    @property
-    def input_units_equivalencies(self):
-        return {'x': [
-            (u.Unit('km/s'), u.Angstrom,
-             lambda x: WavelengthConvert(self.center.value)(x),
-             lambda x: VelocityConvert(self.center.value)(x))
-        ]}
+        self._compound_model = None
 
-    @property
-    def input_units(self, *args, **kwargs):
-        return {'x': u.Unit('km/s')}
+    def __call__(self, *args, **kwargs):
+        return self._compound_model(*args, **kwargs)
 
-    def evaluate(self, x, center, *args, **kwargs):
-        return x.to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
+    def __repr__(self):
+        return self._compound_model.__repr__()
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
-        return OrderedDict([('center', u.Angstrom)])
+    def __str__(self):
+        return self._compound_model.__str__()
 
     def copy(self):
-        new_spectrum = super(SpectrumModel, self).copy()
+        new_spectrum = SpectrumModel(center=self.center.value * self.center.unit)
         new_spectrum._redshift_model = self._redshift_model.copy()
         new_spectrum._continuum_model = self._continuum_model.copy()
 
@@ -58,16 +47,16 @@ class SpectrumModel(Fittable1DModel):
         return new_spectrum
 
     def _change_base(self, base):
-        new_spectrum = self.copy() | base
-
         # Add the required input validation steps to the compound model, as
         # Astrop does not currently support adding these attributes to the
         # compound model automatically.
-        setattr(new_spectrum, "input_units_strict", True)
-        setattr(new_spectrum, "input_units_equivalencies", self.input_units_equivalencies)
-        setattr(new_spectrum, "input_units", self.input_units)
+        # setattr(base, "input_units_strict", True)
+        # setattr(base, "input_units_equivalencies", self.input_units_equivalencies)
+        # setattr(base, "input_units", self.input_units)
 
-        return new_spectrum
+        self._compound_model = base
+
+        return self
 
     def set_redshift(self, value):
         self._redshift_model = RedshiftScaleFactor(value).inverse
@@ -98,7 +87,8 @@ class SpectrumModel(Fittable1DModel):
 
     @property
     def tau(self):
-        new_compound = (self._redshift_model
+        new_compound = (DispersionConvert(self._center)
+                        | self._redshift_model
                         | self._line_model
                         | SmartScale(1. / (1 + self._redshift_model.z)))
 
@@ -106,7 +96,8 @@ class SpectrumModel(Fittable1DModel):
 
     @property
     def flux(self):
-        new_compound = (self._redshift_model
+        new_compound = (DispersionConvert(self._center)
+                        | self._redshift_model
                         | (self._continuum_model
                            + (self._line_model | FluxConvert()))
                         | SmartScale(1. / (1 + self._redshift_model.z)))
@@ -115,16 +106,24 @@ class SpectrumModel(Fittable1DModel):
 
     @property
     def flux_decrement(self):
-        new_compound = (self._redshift_model
+        new_compound = (DispersionConvert(self._center)
+                        | self._redshift_model
                         | (self._continuum_model
                            + (self._line_model | FluxDecrementConvert()))
                         | SmartScale(1. / (1 + self._redshift_model.z)))
 
         return self._change_base(new_compound)
 
-    def line_mask(self, x):
-        masks = [line.mask(x) for line in self._lines]
+    @property
+    def masked(self):
+        line_models = self._line_model if hasattr(self._line_model, '_submodels') else [self._line_model]
 
-        return np.logical_or.reduce(masks)
+        mask_ranges = [line.mask_range() for line in line_models]
+
+        return self._change_base(Masker(mask_ranges=0) | self._compound_model)
+
+    @property
+    def line_list(self):
+        return self._line_model.__repr__
 
 

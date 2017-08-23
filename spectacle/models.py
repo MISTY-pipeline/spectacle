@@ -8,6 +8,7 @@ from astropy.convolution import convolve, Gaussian1DKernel
 from astropy.modeling.fitting import LevMarLSQFitter
 from scipy.integrate import quad
 import peakutils
+from collections import OrderedDict
 
 
 class TauProfile(Fittable1DModel):
@@ -72,7 +73,6 @@ class TauProfile(Fittable1DModel):
 
         # shift lambda_0 by delta_v
         shifted_lambda = lambda_0 * (1 + delta_v / c.cgs) + delta_lambda
-        self._shifted_lambda = shifted_lambda
 
         # conversions
         nudop = (v_doppler / shifted_lambda).to('Hz')  # doppler width in Hz
@@ -101,15 +101,14 @@ class TauProfile(Fittable1DModel):
     def fit_deriv(x, x_0, b, gamma, f):
         return [0, 0, 0, 0]
 
-    def fwhm(self, x):
-        shifted_lambda = self._shifted_lambda.value if not velocity \
-            else VelocityConvert(center=self.lambda_0)(self._shifted_lambda.value)
-
-        mod = ExtendedVoigt1D(x_0=shifted_lambda)
+    def fwhm(self):
+        mod = ExtendedVoigt1D(x_0=0.0)
         fitter = LevMarLSQFitter()
 
-        fit_mod = fitter(mod, x, self(x) if not velocity else (
-            VelocityConvert(center=self.lambda_0) | self())(x))
+        x = np.linspace(-1000, 1000, 2000) * u.Unit('km/s')
+
+        fit_mod = fitter(mod, x, (WavelengthConvert(center=self.lambda_0)
+                                  | self)(x))
         fwhm = fit_mod.fwhm
 
         return fwhm
@@ -132,11 +131,10 @@ class TauProfile(Fittable1DModel):
 
         return tau_fwhm, fwhm[0]/tau_tot[0]
 
-    def mask(self, x):
-        fwhm = self.fwhm(x)
-        mask = (x >= (self.lambda_0 - fwhm)) & (x <= (self.lambda_0 - fwhm))
+    def mask_range(self):
+        fwhm = self.fwhm() * u.Unit('km/s')
 
-        return mask
+        return (-fwhm, fwhm)
 
 
 class ExtendedVoigt1D(Voigt1D):
@@ -189,15 +187,20 @@ class VelocityConvert(Fittable1DModel):
     """
     inputs = ('x',)
     outputs = ('x',)
+    input_units_strict = True
 
-    center = Parameter(default=0, fixed=True)
+    center = Parameter(default=0, fixed=True, unit=u.Angstrom)
+
+    @property
+    def input_units(self, *args, **kwargs):
+        return {'x': u.Unit('km/s')}
 
     @staticmethod
     def evaluate(x, center):
         # ln_lambda = np.log(x) - np.log(center)
         # vel = (c.cgs * ln_lambda).to('km/s').value
 
-        vel = (c.cgs * ((x - center)/x)).to('km/s').value
+        vel = (c.cgs * ((x - center)/x)).to('km/s')
 
         return vel
 
@@ -219,15 +222,45 @@ class WavelengthConvert(Fittable1DModel):
     """
     inputs = ('x',)
     outputs = ('x',)
+    input_units_strict = True
 
-    center = Parameter(default=0, fixed=True)
+    center = Parameter(default=0, fixed=True, unit=u.Angstrom)
+
+    @property
+    def input_units(self, *args, **kwargs):
+        return {'x': u.Unit('km/s')}
 
     @staticmethod
     def evaluate(x, center):
-        vel = x * u.Unit('km/s')
-        wav = center * (1 + vel / c.cgs).value
+        wav = center * (1 + x / c.cgs)
 
         return wav
+
+
+class DispersionConvert(Fittable1DModel):
+    outputs = ('x',)
+    input_units_strict = True
+
+    center = Parameter(default=0, fixed=True, unit=u.Angstrom)
+
+    @property
+    def input_units(self, *args, **kwargs):
+        return {'x': u.Unit('km/s')}
+
+    @property
+    def input_units_equivalencies(self):
+        return {'x': [
+            (u.Unit('km/s'), u.Angstrom,
+             lambda x: WavelengthConvert(self.center)(x * u.Unit('km/s')),
+             lambda x: VelocityConvert(self.center)(x * u.Angstrom))
+        ]}
+
+    def evaluate(self, x, center, *args, **kwargs):
+        return x.to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
+
+    def _parameter_units_for_data_units(self, input_units, output_units):
+        return OrderedDict([('center', u.Angstrom)])
+
 
 
 class FluxConvert(Fittable1DModel):
@@ -246,6 +279,22 @@ class FluxDecrementConvert(Fittable1DModel):
     @staticmethod
     def evaluate(y):
         return 1- np.exp(-y) - 1
+
+
+class Masker(Fittable1DModel):
+    inputs = ('x',)
+    outputs = ('x',)
+
+    mask_ranges = Parameter(fixed=True)
+
+    @staticmethod
+    def evaluate(x, mask_ranges):
+        # [print(rn) for rn in mask_ranges.value]
+        # masks = [(x >= rn[0]) & (x <= rn[1]) for rn in mask_ranges.value]
+
+        # mask = np.logical_or.reduce(masks)
+
+        return x
 
 
 class LSFKernel1D(Fittable1DModel):
