@@ -2,8 +2,7 @@
 # ---
 # datatype:
 # - {name: name, datatype: str, description: Name of ion}
-# - {name: wave, unit: Angstrom, datatype: float64, description: Wavelength of strongest
-#     component}
+# - {name: wave, unit: Angstrom, datatype: float64, description: Wavelength of strongest component}
 # - {name: osc_str, datatype: float64, description: Oscillator strength}
 # - {name: gamma, datatype: float64, description: Gamma factor}
 name wave osc_str gamma

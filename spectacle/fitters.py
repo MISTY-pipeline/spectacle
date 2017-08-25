@@ -8,10 +8,8 @@ from astropy.table import Table
 from scipy import optimize, stats
 import peakutils
 
-from ..core.spectra import Spectrum1D
-from ..modeling.models import Absorption1D, Voigt1D
-from ..core.utils import find_nearest, find_bounds
-from ..core.registries import line_registry
+from .utils import find_nearest
+from .registries import line_registry
 
 import logging
 

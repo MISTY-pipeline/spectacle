@@ -285,16 +285,17 @@ class Masker(Fittable1DModel):
     inputs = ('x',)
     outputs = ('x',)
 
-    mask_ranges = Parameter(fixed=True)
+    def __init__(self, mask_ranges, *args, **kwargs):
+        super(Masker, self).__init__(*args, **kwargs)
+        self._mask_ranges = mask_ranges
 
-    @staticmethod
-    def evaluate(x, mask_ranges):
+    def evaluate(self, x):
         # [print(rn) for rn in mask_ranges.value]
-        # masks = [(x >= rn[0]) & (x <= rn[1]) for rn in mask_ranges.value]
+        masks = [(x >= rn[0]) & (x <= rn[1]) for rn in self._mask_ranges]
 
-        # mask = np.logical_or.reduce(masks)
+        mask = np.logical_or.reduce(masks)
 
-        return x
+        return x[mask]
 
 
 class LSFKernel1D(Fittable1DModel):
