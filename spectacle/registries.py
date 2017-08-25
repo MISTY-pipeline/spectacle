@@ -1,18 +1,22 @@
 import os
 
 from astropy.table import Table, join
+from astropy.io import registry as io_registry
+
 
 class LineRegistry(Table):
     def __init__(self, *args, **kwargs):
         super(LineRegistry, self).__init__(*args, **kwargs)
 
-        # Import any available line information databases
-        cur_path = os.path.realpath(__file__).split(os.sep)
-        cur_path = os.sep.join(cur_path[:-1])
+    def with_name(self, name):
+        name = name.lower().replace(" ", "")
 
-        for root, dirs, files in os.walk(os.path.join(cur_path, "data")):
-            for name in files:
-                self.read(os.path.join(root, name), format="ascii.ecsv")
+        return next((row for row in self if name == row['name']), None)
 
 
-line_registry = LineRegistry()
+# Import any available line information databases
+cur_path = os.path.realpath(__file__).split(os.sep)
+cur_path = os.sep.join(cur_path[:-1])
+
+line_registry = LineRegistry.read(os.path.join(cur_path, "data", "atoms.ecsv"),
+                                  format="ascii.ecsv")
