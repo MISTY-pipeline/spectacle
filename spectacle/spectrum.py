@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.signal import savgol_filter
 
 import astropy.units as u
 
@@ -7,7 +8,11 @@ from astropy.modeling.models import RedshiftScaleFactor, Linear1D
 from astropy.modeling.core import Fittable1DModel
 
 from collections import OrderedDict
+import logging
+import peakutils
 
+from .utils import find_nearest
+from .registries import line_registry
 from .models import (TauProfile, DispersionConvert,
                      FluxConvert, FluxDecrementConvert, SmartScale, Masker)
 
@@ -48,7 +53,7 @@ class SpectrumModel:
 
     def _change_base(self, base):
         # Add the required input validation steps to the compound model, as
-        # Astrop does not currently support adding these attributes to the
+        # Astropy does not currently support adding these attributes to the
         # compound model automatically.
         # setattr(base, "input_units_strict", True)
         # setattr(base, "input_units_equivalencies", self.input_units_equivalencies)
@@ -85,6 +90,77 @@ class SpectrumModel:
 
         return self
 
+    def from_data(self, threshold=1.0, min_dist=10, strict=False,
+                  interpolate=False, smooth=True, defaults=None):
+        """
+        Simple peak finder.
+
+        Parameters
+        ----------
+        self : :class:`spectacle.core.spectra.Spectrum1D`
+            Original spectrum object.
+        strict : bool
+            If `True`, will require that any found peaks also exist in the
+            provided ions lookup table.
+
+        Returns
+        -------
+        indexes : np.array
+            An array of indices providing the peak locations in the original
+            spectrum object.
+        """
+        defaults = defaults or {}
+        inv_flux = self.continuum - self.data
+
+        # Filter with SG
+        y = savgol_filter(inv_flux, 49, 3) if smooth else inv_flux
+
+        indexes = peakutils.indexes(
+            y,
+            thres=threshold, # np.std(inv_flux) * self.noise/np.max(inv_flux),
+            min_dist=min_dist)
+
+        if interpolate:
+            indexes = peakutils.interpolate(self.dispersion, y, ind=indexes)
+            indexes = [find_nearest(self.dispersion, x) for x in indexes]
+
+        logging.info("Found {} lines.".format(len(indexes)))
+
+        # Add a new line to the empty spectrum object for each found line
+        for ind in indexes:
+            kwargs = {}
+            kwargs.update(defaults)
+
+            shifted_lambda_0 = self.dispersion[ind] * \
+                               (1 + defaults['delta_v'] /
+                                c.cgs) + defaults['delta_lambda']
+
+            il = find_nearest(line_registry['wave'], shifted_lambda_0)
+
+            nearest_wave = line_registry['wave'][il]
+            nearest_name = line_registry['name'][il]
+            f_value = line_registry['osc_str'][il]
+            gamma_val = line_registry['gamma'][il]
+
+            logging.info("Found {} ({}) at {}. Strict is {}.".format(
+                nearest_name,
+                nearest_wave,
+                self.dispersion[ind],
+                strict))
+
+            # If lambda0 is provided, then we only care about the shift, not
+            # the value of the line centroid
+            if defaults.get('lambda_0') is not None:
+                delta_v = ((shifted_lambda_0 - defaults['delta_lambda']) /
+                           defaults['lambda_0'] - 1) * c.cgs
+                kwargs.update({'delta_v': delta_v})
+
+            kwargs.setdefault('lambda_0', self.dispersion[ind])
+
+            self.add_line(**kwargs)
+
+        return self._compound_model
+
     @property
     def tau(self):
         new_compound = (DispersionConvert(self._center)
@@ -120,7 +196,7 @@ class SpectrumModel:
 
         mask_ranges = [line.mask_range() for line in line_models]
 
-        return self._change_base(Masker(mask_ranges=0) | self._compound_model)
+        return self._change_base(Masker(mask_ranges=mask_ranges) | self._compound_model)
 
     @property
     def line_list(self):
