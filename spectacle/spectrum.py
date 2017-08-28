@@ -76,10 +76,23 @@ class SpectrumModel:
     def add_line(self, lambda_0=None, gamma=None, f_value=None,
                  column_density=None, v_doppler=None, delta_v=None,
                  delta_lambda=None, name=None, *args, **kwargs):
-        if lambda_0 is None and name is None:
+        if name is not None:
+            line = line_registry.with_name(name)
+            lambda_0 = line['wave'] * u.Angstrom
+        elif lambda_0 is not None:
+            ind = find_nearest(line_registry['wave'], lambda_0)
+            line = line_registry[ind]
+            name = line['name']
+        else:
             raise IncompleteLineInformation(
                 "Not enough information to construction absorption line "
                 "profile. Please provide at least a name or centroid.")
+
+        if gamma is None:
+            gamma = line['gamma']
+
+        if f_value is None:
+            f_value = line['osc_str']
 
         tau_prof = TauProfile(lambda_0=lambda_0, column_density=column_density,
                               v_doppler=v_doppler, gamma=gamma, f_value=f_value,
@@ -90,8 +103,9 @@ class SpectrumModel:
 
         return self
 
-    def from_data(self, threshold=1.0, min_dist=10, strict=False,
-                  interpolate=False, smooth=True, defaults=None):
+    def from_data(self, dispersion, data, line_list=None, threshold=1.0,
+                  min_dist=10, strict=False, interpolate=False, smooth=True,
+                  defaults=None):
         """
         Simple peak finder.
 
@@ -109,6 +123,9 @@ class SpectrumModel:
             An array of indices providing the peak locations in the original
             spectrum object.
         """
+        # Make sure we can find the lines in the line list
+        line_list = [line_registry.correct(x) for x in line_list]
+
         defaults = defaults or {}
         inv_flux = self.continuum - self.data
 
@@ -131,16 +148,17 @@ class SpectrumModel:
             kwargs = {}
             kwargs.update(defaults)
 
-            shifted_lambda_0 = self.dispersion[ind] * \
-                               (1 + defaults['delta_v'] /
-                                c.cgs) + defaults['delta_lambda']
+            deshifted_lambda_0 = (self.dispersion[ind] - defaults.get('delta_lambda', 0)) / (1 + defaults.get('delta_v', 0) / c.cgs)
 
-            il = find_nearest(line_registry['wave'], shifted_lambda_0)
+            il = find_nearest(line_registry['wave'], deshifted_lambda_0)
 
             nearest_wave = line_registry['wave'][il]
             nearest_name = line_registry['name'][il]
-            f_value = line_registry['osc_str'][il]
-            gamma_val = line_registry['gamma'][il]
+
+            kwargs.setdefault('lambda_0', self.dispersion[ind])
+            kwargs.setdefault('lambda_0', self.dispersion[ind])
+            kwargs.setdefault('f_value', line_registry['osc_str'][il])
+            kwargs.setdefault('gamma_val', line_registry['gamma'][il])
 
             logging.info("Found {} ({}) at {}. Strict is {}.".format(
                 nearest_name,
@@ -151,7 +169,7 @@ class SpectrumModel:
             # If lambda0 is provided, then we only care about the shift, not
             # the value of the line centroid
             if defaults.get('lambda_0') is not None:
-                delta_v = ((shifted_lambda_0 - defaults['delta_lambda']) /
+                delta_v = ((deshifted_lambda_0 - defaults['delta_lambda']) /
                            defaults['lambda_0'] - 1) * c.cgs
                 kwargs.update({'delta_v': delta_v})
 
