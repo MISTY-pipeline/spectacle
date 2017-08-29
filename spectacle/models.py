@@ -9,6 +9,7 @@ from astropy.modeling.fitting import LevMarLSQFitter
 from scipy.integrate import quad
 import peakutils
 from collections import OrderedDict
+from .utils import find_nearest
 
 
 class TauProfile(Fittable1DModel):
@@ -102,10 +103,12 @@ class TauProfile(Fittable1DModel):
         return [0, 0, 0, 0]
 
     def fwhm(self):
-        mod = ExtendedVoigt1D(x_0=0.0)
+        shifted_lambda = self.lambda_0 * (1 + self.delta_v / c.cgs) + self.delta_lambda
+
+        mod = ExtendedVoigt1D(x_0=VelocityConvert(center=self.lambda_0)(shifted_lambda))
         fitter = LevMarLSQFitter()
 
-        x = np.linspace(-1000, 1000, 2000) * u.Unit('km/s')
+        x = np.linspace(-10000, 10000, 1000) * u.Unit('km/s')
 
         fit_mod = fitter(mod, x, (WavelengthConvert(center=self.lambda_0)
                                   | self)(x))
@@ -113,23 +116,36 @@ class TauProfile(Fittable1DModel):
 
         return fwhm
 
-    def dv90(self, x):
-        tau_tot = quad(self, x[0], x[-1])
+    def dv90(self):
+        velocity = np.linspace(-10000, 10000, 1000) * u.Unit('km/s')
 
-        fwhm = self.fwhm(x)
+        def wave_space(val):
+            return WavelengthConvert(center=self.lambda_0)(val)
 
-        mn = (np.abs(x - (self.lambda_0 - fwhm))).argmin()
-        mx = (np.abs(x - (self.lambda_0 + fwhm))).argmin()
+        def vel_space(val):
+            return VelocityConvert(center=self.lambda_0)(val)
 
-        tau_fwhm = quad(self, x[mn], x[mx])
+        shifted_lambda = self.lambda_0 * (1 + self.delta_v / c.cgs) + self.delta_lambda
 
-        while tau_fwhm[0]/tau_tot[0] > 0.9:
-            print(tau_fwhm[0]/tau_tot[0])
-            mn += 1
-            mx -= 1
-            tau_fwhm = quad(self, x[mn], x[mx])
+        cind = find_nearest(velocity.value, vel_space(shifted_lambda).value)
+        mn = mx = cind
 
-        return tau_fwhm, fwhm[0]/tau_tot[0]
+        tau_fwhm = quad(lambda x: self(x * u.Angstrom),
+                        wave_space(velocity[mn]).value,
+                        wave_space(velocity[mx]).value)
+
+        tau_tot = quad(lambda x: self(x * u.Angstrom),
+                       wave_space(velocity[0]).value,
+                       wave_space(velocity[-1]).value)
+
+        while tau_fwhm[0]/tau_tot[0] < 0.9:
+            mn -= 1
+            mx += 1
+            tau_fwhm = quad(lambda x: self(x * u.Angstrom),
+                            wave_space(velocity[mn]).value,
+                            wave_space(velocity[mx]).value)
+
+        return (velocity[mn], velocity[mx])
 
     def mask_range(self):
         fwhm = self.fwhm() * u.Unit('km/s')
@@ -193,7 +209,7 @@ class VelocityConvert(Fittable1DModel):
 
     @property
     def input_units(self, *args, **kwargs):
-        return {'x': u.Unit('km/s')}
+        return {'x': u.Unit('Angstrom')}
 
     @staticmethod
     def evaluate(x, center):
