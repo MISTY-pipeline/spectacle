@@ -2,6 +2,7 @@ import numpy as np
 from scipy.signal import savgol_filter
 
 import astropy.units as u
+from astropy.constants import c
 
 from astropy.modeling import models, Parameter
 from astropy.modeling.models import RedshiftScaleFactor, Linear1D
@@ -23,7 +24,7 @@ class IncompleteLineInformation(Exception): pass
 
 
 class SpectrumModel:
-    def __init__(self, center):
+    def __init__(self, center=0 * u.Angstrom):
         self._center = u.Quantity(center, 'Angstrom')
 
         self._redshift_model = RedshiftScaleFactor(0).inverse
@@ -124,13 +125,18 @@ class SpectrumModel:
             spectrum object.
         """
         # Make sure we can find the lines in the line list
-        line_list = [line_registry.correct(x) for x in line_list]
+        if line_list is not None:
+            line_list = [line_registry.with_name(x) for x in line_list]
+            line_list = line_registry[line_registry['name'] == line_list]
+        else:
+            line_list = line_registry
 
         defaults = defaults or {}
-        inv_flux = self.continuum - self.data
+
+        threshold = np.mean(data)/np.max(data)
 
         # Filter with SG
-        y = savgol_filter(inv_flux, 49, 3) if smooth else inv_flux
+        y = savgol_filter(data, 49, 3) if smooth else data
 
         indexes = peakutils.indexes(
             y,
@@ -138,32 +144,33 @@ class SpectrumModel:
             min_dist=min_dist)
 
         if interpolate:
-            indexes = peakutils.interpolate(self.dispersion, y, ind=indexes)
-            indexes = [find_nearest(self.dispersion, x) for x in indexes]
+            indexes = peakutils.interpolate(dispersion, y, ind=indexes)
+            indexes = [find_nearest(dispersion, x) for x in indexes]
 
-        logging.info("Found {} lines.".format(len(indexes)))
+        logging.warning("Found {} lines.".format(len(indexes)))
 
         # Add a new line to the empty spectrum object for each found line
         for ind in indexes:
             kwargs = {}
             kwargs.update(defaults)
 
-            deshifted_lambda_0 = (self.dispersion[ind] - defaults.get('delta_lambda', 0)) / (1 + defaults.get('delta_v', 0) / c.cgs)
+            deshifted_lambda_0 = (dispersion[ind] - defaults.get('delta_lambda', 0 * u.Angstrom)) / (1 + defaults.get('delta_v', 0 * u.Unit('km/s')) / c.cgs)
 
-            il = find_nearest(line_registry['wave'], deshifted_lambda_0)
+            # Assumes everything in angstrom
+            il = find_nearest(line_list['wave'], deshifted_lambda_0.value)
 
-            nearest_wave = line_registry['wave'][il]
-            nearest_name = line_registry['name'][il]
+            nearest_wave = line_list['wave'][il]
+            nearest_name = line_list['name'][il]
 
-            kwargs.setdefault('lambda_0', self.dispersion[ind])
-            kwargs.setdefault('lambda_0', self.dispersion[ind])
-            kwargs.setdefault('f_value', line_registry['osc_str'][il])
-            kwargs.setdefault('gamma_val', line_registry['gamma'][il])
+            kwargs.setdefault('lambda_0', dispersion[ind])
+            kwargs.setdefault('lambda_0', dispersion[ind])
+            kwargs.setdefault('f_value', line_list['osc_str'][il])
+            kwargs.setdefault('gamma', line_list['gamma'][il])
 
             logging.info("Found {} ({}) at {}. Strict is {}.".format(
                 nearest_name,
                 nearest_wave,
-                self.dispersion[ind],
+                dispersion[ind],
                 strict))
 
             # If lambda0 is provided, then we only care about the shift, not
@@ -173,7 +180,7 @@ class SpectrumModel:
                            defaults['lambda_0'] - 1) * c.cgs
                 kwargs.update({'delta_v': delta_v})
 
-            kwargs.setdefault('lambda_0', self.dispersion[ind])
+            kwargs.setdefault('lambda_0', dispersion[ind])
 
             self.add_line(**kwargs)
 

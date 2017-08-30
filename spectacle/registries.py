@@ -9,15 +9,14 @@ class LineRegistry(Table):
     def __init__(self, *args, **kwargs):
         super(LineRegistry, self).__init__(*args, **kwargs)
 
-        self._corrector = SpellCorrector(list(self['name']))
-
     def with_name(self, name):
         name = self.correct(name)
 
         return next((row for row in self if row['name'] == name), None)
 
     def correct(self, name):
-        correct_name = self._corrector.correction(name)
+        _corrector = SpellCorrector(list(self['name']))
+        correct_name = _corrector.correction(name)
 
         print("Correct name is {} given {}.".format(correct_name, name))
         return correct_name
