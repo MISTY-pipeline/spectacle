@@ -1,4 +1,4 @@
-from astropy.modeling import Fittable1DModel, Parameter
+from astropy.modeling import Fittable1DModel, Parameter, Fittable2DModel
 from astropy.modeling.models import Voigt1D, Linear1D, Scale
 import astropy.units as u
 from astropy.constants import c
@@ -323,19 +323,55 @@ class LSFKernel1D(Fittable1DModel):
         pass
 
 
-class LineFinder(Fittable1DModel):
+class LineFinder(Fittable2DModel):
     inputs = ('x', 'y')
     outputs = ('y',)
+    input_units_strict = True
 
-    theshold = Parameter(default=0.5)
+    threshold = Parameter(default=0.5)
     min_distance = Parameter(default=30, min=0)
+    width = Parameter(default=10, min=0)
+    center = Parameter(default=0, fixed=True, unit=u.Angstrom)
 
-    @staticmethod
-    def evaluate(self, x, y, model, threshold, min_distance):
+    @property
+    def input_units(self, *args, **kwargs):
+        return {'x': u.Unit('km/s')}
+
+    @property
+    def input_units_equivalencies(self):
+        return {'x': [
+            (u.Unit('km/s'), u.Angstrom,
+             lambda x: WavelengthConvert(self.center)(x * u.Unit('km/s')),
+             lambda x: VelocityConvert(self.center)(x * u.Angstrom))
+        ]}
+
+    # def __init__(self, line_list=None, *args, **kwargs):
+    #     super(LineFinder, self).__init__(*args, **kwargs)
+    #     self._model = None
+    #     self._line_list = line_list or []
+
+    def evaluate(self, x, y, threshold, min_distance, width, center):
+        from .spectrum import SpectrumModel
+
+        model = SpectrumModel(center=center)
+
         indexes = peakutils.indexes(y, thres=threshold, min_dist=min_distance)
-        peaks_x = peakutils.interpolate(x, y, ind=indexes)
+        print(x.value)
+        peaks_x = peakutils.interpolate(x.value, y, ind=indexes, width=width)
 
         for peak in peaks_x:
-            model.add_line(lambda_0=peak)
+            peak.to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
+            model.add_line(lambda_0=peak, line_list=self._line_list)
 
-        return model(x)
+        fitter = LevMarLSQFitter()
+        self._model = fitter(model.tau, x, y)
+
+        return self._model(x)
+
+    # def _parameter_units_for_data_units(self, input_units, output_units):
+    #     return OrderedDict([('min_distance', input_units['x']),
+    #                         ('width', input_units['x'])])
+
+    @property
+    def model(self):
+        return self._model

@@ -23,18 +23,18 @@ class SpectrumModelNotImplemented(Exception): pass
 class IncompleteLineInformation(Exception): pass
 
 
-class SpectrumModel:
-    def __init__(self, center=0 * u.Angstrom):
+class SpectrumModel(DispersionConvert | RedshiftScaleFactor | SmartScale):
+    def __init__(self, center=0 * u.Angstrom, z=0):
         self._center = u.Quantity(center, 'Angstrom')
 
-        self._redshift_model = RedshiftScaleFactor(0).inverse
+        self._redshift_model = RedshiftScaleFactor(z).inverse
         self._continuum_model = Linear1D(0 * u.Unit('1/Angstrom'), 1)
         self._line_model = None
 
         self._compound_model = None
 
-    def __call__(self, *args, **kwargs):
-        return self._compound_model(*args, **kwargs)
+    # def __call__(self, x, mask=None, *args, **kwargs):
+    #     return self._compound_model(x, *args, **kwargs)
 
     def __repr__(self):
         return self._compound_model.__repr__()
@@ -59,6 +59,8 @@ class SpectrumModel:
         # setattr(base, "input_units_strict", True)
         # setattr(base, "input_units_equivalencies", self.input_units_equivalencies)
         # setattr(base, "input_units", self.input_units)
+        new_spec_mod = SpectrumModel()
+
 
         self._compound_model = base
 
@@ -76,115 +78,57 @@ class SpectrumModel:
 
     def add_line(self, lambda_0=None, gamma=None, f_value=None,
                  column_density=None, v_doppler=None, delta_v=None,
-                 delta_lambda=None, name=None, *args, **kwargs):
-        if name is not None:
-            line = line_registry.with_name(name)
-            lambda_0 = line['wave'] * u.Angstrom
-        elif lambda_0 is not None:
-            ind = find_nearest(line_registry['wave'], lambda_0)
-            line = line_registry[ind]
-            name = line['name']
-        else:
-            raise IncompleteLineInformation(
-                "Not enough information to construction absorption line "
-                "profile. Please provide at least a name or centroid.")
+                 delta_lambda=None, name=None, line_list=None, tied=None,
+                 fixed=None):
+        tied = tied or {}
+        fixed = fixed or {}
 
-        if gamma is None:
-            gamma = line['gamma']
-
-        if f_value is None:
-            f_value = line['osc_str']
-
-        tau_prof = TauProfile(lambda_0=lambda_0, column_density=column_density,
-                              v_doppler=v_doppler, gamma=gamma, f_value=f_value,
-                              delta_v=delta_v, delta_lambda=delta_lambda,
-                              name=name, *args, **kwargs)
-
-        self._line_model = tau_prof if self._line_model is None else self._line_model + tau_prof
-
-        return self
-
-    def from_data(self, dispersion, data, line_list=None, threshold=1.0,
-                  min_dist=10, strict=False, interpolate=False, smooth=True,
-                  defaults=None):
-        """
-        Simple peak finder.
-
-        Parameters
-        ----------
-        self : :class:`spectacle.core.spectra.Spectrum1D`
-            Original spectrum object.
-        strict : bool
-            If `True`, will require that any found peaks also exist in the
-            provided ions lookup table.
-
-        Returns
-        -------
-        indexes : np.array
-            An array of indices providing the peak locations in the original
-            spectrum object.
-        """
-        # Make sure we can find the lines in the line list
         if line_list is not None:
             line_list = [line_registry.with_name(x) for x in line_list]
             line_list = line_registry[line_registry['name'] == line_list]
         else:
             line_list = line_registry
 
-        defaults = defaults or {}
+        if name is not None:
+            line = line_list.with_name(name)
+            lambda_0 = line['wave'] * u.Angstrom
+        elif lambda_0 is not None:
+            ind = find_nearest(line_list['wave'], lambda_0)
+            line = line_list[ind]
+            name = line['name']
+        else:
+            raise IncompleteLineInformation(
+                "Not enough information to construction absorption line "
+                "profile. Please provide at least a name or centroid.")
 
-        threshold = np.mean(data)/np.max(data)
+        def _tie_nearest(mod, col_name):
+            ind = find_nearest(line_list['wave'], mod.lambda_0)
+            line = line_list[ind]
 
-        # Filter with SG
-        y = savgol_filter(data, 49, 3) if smooth else data
+            return line[col_name]
 
-        indexes = peakutils.indexes(
-            y,
-            thres=threshold, # np.std(inv_flux) * self.noise/np.max(inv_flux),
-            min_dist=min_dist)
+        if gamma is None:
+            gamma = line['gamma']
 
-        if interpolate:
-            indexes = peakutils.interpolate(dispersion, y, ind=indexes)
-            indexes = [find_nearest(dispersion, x) for x in indexes]
+            tied.update({
+                'gamma': lambda cmod, col_name='gamma':
+                    _tie_nearest(cmod, col_name)})
 
-        logging.warning("Found {} lines.".format(len(indexes)))
+        if f_value is None:
+            f_value = line['osc_str']
 
-        # Add a new line to the empty spectrum object for each found line
-        for ind in indexes:
-            kwargs = {}
-            kwargs.update(defaults)
+            tied.update({
+                'f_value': lambda cmod, col_name='osc_str':
+                    _tie_nearest(cmod, col_name)})
 
-            deshifted_lambda_0 = (dispersion[ind] - defaults.get('delta_lambda', 0 * u.Angstrom)) / (1 + defaults.get('delta_v', 0 * u.Unit('km/s')) / c.cgs)
+        tau_prof = TauProfile(lambda_0=lambda_0, column_density=column_density,
+                              v_doppler=v_doppler, gamma=gamma, f_value=f_value,
+                              delta_v=delta_v, delta_lambda=delta_lambda,
+                              name=name, tied=tied, fixed=fixed)
 
-            # Assumes everything in angstrom
-            il = find_nearest(line_list['wave'], deshifted_lambda_0.value)
+        self._line_model = tau_prof if self._line_model is None else self._line_model + tau_prof
 
-            nearest_wave = line_list['wave'][il]
-            nearest_name = line_list['name'][il]
-
-            kwargs.setdefault('lambda_0', dispersion[ind])
-            kwargs.setdefault('lambda_0', dispersion[ind])
-            kwargs.setdefault('f_value', line_list['osc_str'][il])
-            kwargs.setdefault('gamma', line_list['gamma'][il])
-
-            logging.info("Found {} ({}) at {}. Strict is {}.".format(
-                nearest_name,
-                nearest_wave,
-                dispersion[ind],
-                strict))
-
-            # If lambda0 is provided, then we only care about the shift, not
-            # the value of the line centroid
-            if defaults.get('lambda_0') is not None:
-                delta_v = ((deshifted_lambda_0 - defaults['delta_lambda']) /
-                           defaults['lambda_0'] - 1) * c.cgs
-                kwargs.update({'delta_v': delta_v})
-
-            kwargs.setdefault('lambda_0', dispersion[ind])
-
-            self.add_line(**kwargs)
-
-        return self._compound_model
+        return self
 
     @property
     def tau(self):
