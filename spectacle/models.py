@@ -10,6 +10,10 @@ from scipy.integrate import quad
 import peakutils
 from collections import OrderedDict
 from .utils import find_nearest
+from .registries import line_registry
+
+
+class IncompleteLineInformation(Exception): pass
 
 
 class TauProfile(Fittable1DModel):
@@ -53,18 +57,37 @@ class TauProfile(Fittable1DModel):
     input_units_strict = True
 
     lambda_0 = Parameter(fixed=True, min=0, unit=u.Angstrom)
-    f_value = Parameter(fixed=True, min=0, max=2.0)
-    gamma = Parameter(fixed=True, min=0)
+    f_value = Parameter(fixed=True, min=0, max=2.0, default=0)
+    gamma = Parameter(fixed=True, min=0, default=0)
     v_doppler = Parameter(default=1e5, min=0, unit=u.Unit('cm/s'))
     column_density = Parameter(default=13, min=0, max=25, unit=u.Unit('1/cm2'))
     delta_v = Parameter(default=0, fixed=False, unit=u.Unit('cm/s'))
     delta_lambda = Parameter(default=0, fixed=True, unit=u.Angstrom)
 
-    def __init__(self, *args, **kwargs):
-        super(TauProfile, self).__init__(*args, **kwargs)
-        self._fwhm = None
-        self._dv90 = None
-        self._shifted_lambda = None
+    def __init__(self, name=None, lambda_0=None, *args, **kwargs):
+        if name is not None:
+            line = line_registry.with_name(name)
+            lambda_0 = line['wave'] * u.Angstrom
+            name = line['name']
+        elif lambda_0 is not None:
+            ind = find_nearest(line_registry['wave'], lambda_0)
+            line = line_registry[ind]
+            name = line['name']
+        else:
+            raise IncompleteLineInformation(
+                "Not enough information to construction absorption line "
+                "profile. Please provide at least a name or centroid.")
+
+        kwargs.setdefault('f_value', line['osc_str'])
+        kwargs.setdefault('gamma', line['gamma'])
+
+        tied = {'f_value': lambda: line_registry[
+            find_nearest(line_registry['wave'], self.lambda_0)]['osc_str'],
+                'gamma': lambda: line_registry[
+            find_nearest(line_registry['wave'], self.lambda_0)]['gamma']}
+
+        super(TauProfile, self).__init__(name=name, lambda_0=lambda_0,
+                                         tied=tied, *args, **kwargs)
 
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
@@ -345,10 +368,10 @@ class LineFinder(Fittable2DModel):
              lambda x: VelocityConvert(self.center)(x * u.Angstrom))
         ]}
 
-    # def __init__(self, line_list=None, *args, **kwargs):
-    #     super(LineFinder, self).__init__(*args, **kwargs)
-    #     self._model = None
-    #     self._line_list = line_list or []
+    def __init__(self, line_list=None, *args, **kwargs):
+        super(LineFinder, self).__init__(*args, **kwargs)
+        self._model = None
+        self._line_list = line_list
 
     def evaluate(self, x, y, threshold, min_distance, width, center):
         from .spectrum import SpectrumModel
