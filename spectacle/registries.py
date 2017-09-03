@@ -4,6 +4,8 @@ from astropy.table import Table, join
 from astropy.io import registry as io_registry
 from .spell import SpellCorrector
 
+import logging
+
 
 class LineRegistry(Table):
     def __init__(self, *args, **kwargs):
@@ -12,13 +14,17 @@ class LineRegistry(Table):
     def with_name(self, name):
         name = self.correct(name)
 
-        return self[self['name'] == name]
+        return next((row for row in self if row['name'] == name), None)
 
     def correct(self, name):
         _corrector = SpellCorrector(list(self['name']))
         correct_name = _corrector.correction(name)
 
-        print("Correct name is {} given {}.".format(correct_name, name))
+        if correct_name != name:
+            logging.info(
+                "Found line with name '{}' from given name '{}'.".format(
+                    correct_name, name))
+
         return correct_name
 
 

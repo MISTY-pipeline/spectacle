@@ -1,5 +1,5 @@
 from astropy.modeling import Fittable1DModel, Parameter, Fittable2DModel
-from astropy.modeling.models import Voigt1D, Linear1D, Scale
+from astropy.modeling.models import Voigt1D, Linear1D, Scale, RedshiftScaleFactor, Gaussian1D
 import astropy.units as u
 from astropy.constants import c
 import numpy as np
@@ -14,6 +14,8 @@ from .registries import line_registry
 
 
 class IncompleteLineInformation(Exception): pass
+
+class LineNotFound(Exception): pass
 
 
 class TauProfile(Fittable1DModel):
@@ -60,13 +62,17 @@ class TauProfile(Fittable1DModel):
     f_value = Parameter(fixed=True, min=0, max=2.0, default=0)
     gamma = Parameter(fixed=True, min=0, default=0)
     v_doppler = Parameter(default=1e5, min=0, unit=u.Unit('cm/s'))
-    column_density = Parameter(default=13, min=0, max=25, unit=u.Unit('1/cm2'))
+    column_density = Parameter(default=1e13, min=0, max=1e25, unit=u.Unit('1/cm2'))
     delta_v = Parameter(default=0, fixed=False, unit=u.Unit('cm/s'))
     delta_lambda = Parameter(default=0, fixed=True, unit=u.Angstrom)
 
     def __init__(self, name=None, lambda_0=None, *args, **kwargs):
         if name is not None:
             line = line_registry.with_name(name)
+
+            if line is None:
+                raise LineNotFound("No line with name '{}' in current ion table.".format(name))
+
             lambda_0 = line['wave'] * u.Angstrom
             name = line['name']
         elif lambda_0 is not None:
@@ -80,14 +86,13 @@ class TauProfile(Fittable1DModel):
 
         kwargs.setdefault('f_value', line['osc_str'])
         kwargs.setdefault('gamma', line['gamma'])
-
-        tied = {'f_value': lambda: line_registry[
+        kwargs.setdefault('tied', {'f_value': lambda: line_registry[
             find_nearest(line_registry['wave'], self.lambda_0)]['osc_str'],
                 'gamma': lambda: line_registry[
-            find_nearest(line_registry['wave'], self.lambda_0)]['gamma']}
+            find_nearest(line_registry['wave'], self.lambda_0)]['gamma']})
 
         super(TauProfile, self).__init__(name=name, lambda_0=lambda_0,
-                                         tied=tied, *args, **kwargs)
+                                         *args, **kwargs)
 
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
@@ -208,6 +213,9 @@ class SmartScale(Scale):
         else:
             return factor * x
 
+    def _parameter_units_for_data_units(self, input_units, output_units):
+        return OrderedDict([('factor', u.Unit(""))])
+
 
 class VelocityConvert(Fittable1DModel):
     """
@@ -277,6 +285,7 @@ class WavelengthConvert(Fittable1DModel):
 
 
 class DispersionConvert(Fittable1DModel):
+    inputs = ('x',)
     outputs = ('x',)
     input_units_strict = True
 
@@ -295,11 +304,16 @@ class DispersionConvert(Fittable1DModel):
         ]}
 
     def evaluate(self, x, center, *args, **kwargs):
+        print("HERE: {}".format(x.unit))
         return x.to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
 
     def _parameter_units_for_data_units(self, input_units, output_units):
         return OrderedDict([('center', u.Angstrom)])
 
+
+class Redshift(RedshiftScaleFactor):
+    def _parameter_units_for_data_units(self, input_units, output_units):
+        return OrderedDict([('z', u.Unit(""))])
 
 
 class FluxConvert(Fittable1DModel):
@@ -368,32 +382,30 @@ class LineFinder(Fittable2DModel):
              lambda x: VelocityConvert(self.center)(x * u.Angstrom))
         ]}
 
-    def __init__(self, line_list=None, *args, **kwargs):
-        super(LineFinder, self).__init__(*args, **kwargs)
-        self._model = None
-        self._line_list = line_list
-
     def evaluate(self, x, y, threshold, min_distance, width, center):
-        from .spectrum import SpectrumModel
+        from .spectrum import Spectrum1D
 
-        model = SpectrumModel(center=center)
+        model = Spectrum1D(center=center)
 
         indexes = peakutils.indexes(y, thres=threshold, min_dist=min_distance)
-        print(x.value)
         peaks_x = peakutils.interpolate(x.value, y, ind=indexes, width=width)
+        print("Found {} peaks.".format(len(peaks_x)))
 
         for peak in peaks_x:
+            peak = u.Quantity(peak, x.unit)
             peak.to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
-            model.add_line(lambda_0=peak, line_list=self._line_list)
+            model.add_line(lambda_0=peak)
 
         fitter = LevMarLSQFitter()
-        self._model = fitter(model.tau, x, y)
 
-        return self._model(x)
+        print("Testing: {}".format(x.unit))
+        fit_model = fitter(Gaussian1D(), x, y)
+        print("Testing again: {}".format(x.unit))
+        return fit_model(x)
 
-    # def _parameter_units_for_data_units(self, input_units, output_units):
-    #     return OrderedDict([('min_distance', input_units['x']),
-    #                         ('width', input_units['x'])])
+    def _parameter_units_for_data_units(self, input_units, output_units):
+        return OrderedDict([('min_distance', input_units['x']),
+                            ('width', input_units['x'])])
 
     @property
     def model(self):
