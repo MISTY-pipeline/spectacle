@@ -12,7 +12,7 @@ class LineRegistry(Table):
     def with_name(self, name):
         name = self.correct(name)
 
-        return next((row for row in self if row['name'] == name), None)
+        return self[self['name'] == name]
 
     def correct(self, name):
         _corrector = SpellCorrector(list(self['name']))
