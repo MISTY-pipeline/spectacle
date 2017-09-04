@@ -1,10 +1,9 @@
+import logging
 import os
 
-from astropy.table import Table, join
-from astropy.io import registry as io_registry
-from .spell import SpellCorrector
+from astropy.table import Table
 
-import logging
+from spectacle.utils.spell import SpellCorrector
 
 
 class LineRegistry(Table):

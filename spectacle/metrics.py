@@ -70,6 +70,11 @@ class Epsilon(Metric):
         return self.corr
 
 
+class DeltaV90(Metric):
+    def __call__(self, a, v, *args, **kwargs):
+
+
+
 class CrossCorrelate(Metric):
     """
     Returns the 1d cross-correlation of two input arrays.

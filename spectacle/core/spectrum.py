@@ -1,21 +1,12 @@
-import numpy as np
-from scipy.signal import savgol_filter
-
 import astropy.units as u
-from astropy.constants import c
 
-from astropy.modeling import models, Parameter
-from astropy.modeling.models import RedshiftScaleFactor, Linear1D
-from astropy.modeling.core import Fittable1DModel
+from astropy.modeling import models
+from astropy.modeling.models import Linear1D
 
-from collections import OrderedDict
-import logging
-import peakutils
-
-from .utils import find_nearest
-from .registries import line_registry
-from .models import (TauProfile, DispersionConvert,
-                     FluxConvert, FluxDecrementConvert, SmartScale, Masker, Redshift)
+from ..models.profiles import TauProfile
+from ..models.custom import SmartScale, Redshift
+from ..models.converters import (DispersionConvert, FluxConvert,
+                                 FluxDecrementConvert)
 
 
 class SpectrumModelNotImplemented(Exception): pass
@@ -35,15 +26,9 @@ class Spectrum1D:
 
         self._compound_model = None
 
-    def __call__(self):
-        raise InappropriateModel("This is not a model object; choose either"
-                                 "tau, flux, or flux decrement properties.")
-
-    def __repr__(self):
-        return self._compound_model.__repr__()
-
-    def __str__(self):
-        return self._compound_model.__str__()
+    @property
+    def center(self):
+        return self._center
 
     def copy(self):
         new_spectrum = Spectrum1D(center=self.center.value * self.center.unit)
@@ -55,8 +40,8 @@ class Spectrum1D:
 
         return new_spectrum
 
-    def set_redshift(self, value):
-        self._redshift_model.z = value
+    def set_redshift(self, *args, **kwargs):
+        self._redshift_model = Redshift(*args, **kwargs)
 
         return self
 
@@ -77,21 +62,27 @@ class Spectrum1D:
     def tau(self):
         dc = DispersionConvert(self._center)
         rs = self._redshift_model
-        lm = self._line_model
         ss = SmartScale(1. / (1 + self._redshift_model.z))
+        lm = self._line_model
 
-        return (dc | rs | lm | ss) if lm is not None else (dc | rs | ss)
+        comp_mod = (dc | rs | ss | lm) if lm is not None else (dc | rs | ss)
+
+        return comp_mod
 
     @property
     def flux(self):
         dc = DispersionConvert(self._center)
         rs = self._redshift_model
+        ss = SmartScale(1. / (1 + self._redshift_model.z))
         cm = self._continuum_model
         lm = self._line_model
         fc = FluxConvert()
-        ss = SmartScale(1. / (1 + self._redshift_model.z))
 
-        return (dc | rs | (cm + (lm | fc)) | ss) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = (dc | rs | ss | (cm + (lm | fc))) if lm is not None else (dc | rs | ss | cm)
+
+        comp_mod.input_units = dc.input_units
+
+        return comp_mod
 
     @property
     def flux_decrement(self):
@@ -102,7 +93,9 @@ class Spectrum1D:
         fd = FluxDecrementConvert()
         ss = SmartScale(1. / (1 + self._redshift_model.z))
 
-        return (dc | rs | (cm + (lm | fd)) | ss) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = (dc | rs | ss | (cm + (lm | fd))) if lm is not None else (dc | rs | ss | cm)
+
+        return comp_mod
 
     @property
     def masked(self):
