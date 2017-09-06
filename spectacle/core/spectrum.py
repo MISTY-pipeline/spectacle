@@ -24,8 +24,6 @@ class Spectrum1D:
         self._continuum_model = Linear1D(0 * u.Unit('1/Angstrom'), 1)
         self._line_model = None
 
-        self._compound_model = None
-
     @property
     def center(self):
         return self._center
@@ -65,9 +63,9 @@ class Spectrum1D:
         ss = SmartScale(1. / (1 + self._redshift_model.z))
         lm = self._line_model
 
-        comp_mod = (dc | rs | ss | lm) if lm is not None else (dc | rs | ss)
+        comp_mod = (dc | rs | lm | ss) if lm is not None else (dc | rs | ss)
 
-        return comp_mod
+        return comp_mod.rename("TauModel")
 
     @property
     def flux(self):
@@ -78,11 +76,9 @@ class Spectrum1D:
         lm = self._line_model
         fc = FluxConvert()
 
-        comp_mod = (dc | rs | ss | (cm + (lm | fc))) if lm is not None else (dc | rs | ss | cm)
+        comp_mod = (dc | rs | (cm + (lm | fc)) | ss) if lm is not None else (dc | rs | cm | ss)
 
-        comp_mod.input_units = dc.input_units
-
-        return comp_mod
+        return comp_mod.rename("FluxModel")
 
     @property
     def flux_decrement(self):
@@ -93,20 +89,8 @@ class Spectrum1D:
         fd = FluxDecrementConvert()
         ss = SmartScale(1. / (1 + self._redshift_model.z))
 
-        comp_mod = (dc | rs | ss | (cm + (lm | fd))) if lm is not None else (dc | rs | ss | cm)
+        comp_mod = (dc | rs | (cm + (lm | fd)) | ss) if lm is not None else (dc | rs | cm | ss)
 
-        return comp_mod
-
-    @property
-    def masked(self):
-        line_models = self._line_model if hasattr(self._line_model, '_submodels') else [self._line_model]
-
-        mask_ranges = [line.mask_range() for line in line_models]
-
-        return self._change_base(Masker(mask_ranges=mask_ranges) | self._compound_model)
-
-    @property
-    def line_list(self):
-        return self._line_model.__repr__
+        return comp_mod.rename("FluxDecrementModel")
 
 

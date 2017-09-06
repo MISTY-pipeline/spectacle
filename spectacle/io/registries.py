@@ -3,7 +3,7 @@ import os
 
 from astropy.table import Table
 
-from spectacle.utils.spell import SpellCorrector
+from ..utils.spell import SpellCorrector
 
 
 class LineRegistry(Table):
@@ -31,5 +31,7 @@ class LineRegistry(Table):
 cur_path = os.path.realpath(__file__).split(os.sep)
 cur_path = os.sep.join(cur_path[:-1])
 
-line_registry = LineRegistry.read(os.path.join(cur_path, "data", "atoms.ecsv"),
-                                  format="ascii.ecsv")
+line_registry = LineRegistry.read(
+    os.path.abspath(
+        os.path.join(cur_path, "..", "data", "atoms.ecsv")),
+    format="ascii.ecsv")

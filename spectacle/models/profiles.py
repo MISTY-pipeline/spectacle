@@ -1,14 +1,16 @@
-from astropy.modeling import Fittable1DModel, Parameter
-from astropy.modeling.models import Voigt1D
-import astropy.units as u
-from astropy.constants import c
-import numpy as np
-from scipy import special
-from astropy.modeling.fitting import LevMarLSQFitter
-from scipy.integrate import quad
 from collections import OrderedDict
-from ..utils.utils import find_nearest
-from ..registries import line_registry
+
+import astropy.units as u
+import numpy as np
+from astropy.constants import c
+from astropy.modeling import Fittable1DModel, Parameter
+from astropy.modeling.fitting import LevMarLSQFitter
+from astropy.modeling.models import Voigt1D
+from scipy import special
+from scipy.integrate import quad
+
+from ..io.registries import line_registry
+from spectacle.utils import find_nearest
 
 
 class IncompleteLineInformation(Exception): pass
@@ -64,9 +66,16 @@ class TauProfile(Fittable1DModel):
     delta_v = Parameter(default=0, fixed=False, unit=u.Unit('cm/s'))
     delta_lambda = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
 
-    def __init__(self, name=None, lambda_0=None, *args, **kwargs):
+    def __init__(self, name=None, lambda_0=None, line_list=None, *args, **kwargs):
+        line_mask = np.in1d(line_registry['name'],
+                            [line_registry.correct(n) for n in line_list
+                             if line_registry.correct(n) is not None]) \
+            if line_list is not None else ~np.in1d(line_registry['name'], [])
+        
+        line_table = line_registry[line_mask]
+
         if name is not None:
-            line = line_registry.with_name(name)
+            line = line_table.with_name(name)
 
             if line is None:
                 raise LineNotFound("No line with name '{}' in current ion table.".format(name))
@@ -74,8 +83,9 @@ class TauProfile(Fittable1DModel):
             lambda_0 = line['wave'] * u.Unit('Angstrom')
             name = line['name']
         elif lambda_0 is not None:
-            ind = find_nearest(line_registry['wave'], u.Quantity(lambda_0, u.Unit('Angstrom')))
-            line = line_registry[ind]
+            lambda_0 = u.Quantity(lambda_0, u.Unit('Angstrom'))
+            ind = find_nearest(line_table['wave'], lambda_0.value)
+            line = line_table[ind]
             name = line['name']
         else:
             raise IncompleteLineInformation(
@@ -84,10 +94,10 @@ class TauProfile(Fittable1DModel):
 
         kwargs.setdefault('f_value', line['osc_str'])
         kwargs.setdefault('gamma', line['gamma'])
-        kwargs.setdefault('tied', {'f_value': lambda mod: line_registry[
-            find_nearest(line_registry['wave'], self.lambda_0)]['osc_str'],
-                'gamma': lambda mod: line_registry[
-            find_nearest(line_registry['wave'], self.lambda_0)]['gamma']})
+        kwargs.setdefault('tied', {'f_value': lambda mod: line_table[
+            find_nearest(line_table['wave'], self.lambda_0)]['osc_str'],
+                'gamma': lambda mod: line_table[
+            find_nearest(line_table['wave'], self.lambda_0)]['gamma']})
 
         super(TauProfile, self).__init__(name=name, lambda_0=lambda_0,
                                          *args, **kwargs)

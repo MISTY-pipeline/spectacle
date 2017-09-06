@@ -1,17 +1,11 @@
-import abc
+import logging
 
 import numpy as np
-import six
-from astropy.modeling import fitting, models
-from astropy.modeling.fitting import LevMarLSQFitter, Fitter, SLSQPLSQFitter
-from astropy.table import Table
-from scipy import optimize, stats
 import peakutils
+from astropy.modeling.fitting import LevMarLSQFitter
+from scipy import stats
 
-from .utils import find_nearest
-from .registries import line_registry
-
-import logging
+from spectacle.utils import find_nearest
 
 
 class LevMarFitter(LevMarLSQFitter):

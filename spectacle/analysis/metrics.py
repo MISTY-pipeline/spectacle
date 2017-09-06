@@ -4,6 +4,9 @@ import six
 from scipy import stats
 import numpy as np
 
+from ..core.region_finder import find_regions
+from ..utils import find_nearest
+
 
 @six.add_metaclass(abc.ABCMeta)
 class Metric:
@@ -15,7 +18,7 @@ class Metric:
         return self._corr
 
     @abc.abstractmethod
-    def __call__(self, a, v, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
         pass
 
 
@@ -71,7 +74,34 @@ class Epsilon(Metric):
 
 
 class DeltaV90(Metric):
-    def __call__(self, a, v, *args, **kwargs):
+    """
+    Calculates the velocity width of 90 percent of the apparent optical depth
+    in an absorption region.
+    """
+    def __call__(self, x, y1, y2, exact=True):
+        comp_widths = []
+
+        for y in [y1, y2]:
+            reg = find_regions(y, continuum=np.zeros(y.shape))
+
+            reg_widths = []
+
+            for lr, rr in reg:
+                a = y[lr:rr]
+                mid = (a[-1] - a[0]) * 0.5
+
+                if exact:
+                    x5 = np.interp(np.percentile(a, 5), sorted(a), x[lr:rr])
+                    x95 = np.interp(np.percentile(a, 95), sorted(a), x[lr:rr])
+                else:
+                    x5 = x[find_nearest(sorted(a), np.percentile(a, 5))]
+                    x95 = x[find_nearest(sorted(a), np.percentile(a, 95))]
+
+                reg_widths.append((mid, x5, x95))
+
+            comp_widths.append(reg_widths[0][2] - reg_widths[0][1])
+
+        return comp_widths[0]/comp_widths[1]
 
 
 
