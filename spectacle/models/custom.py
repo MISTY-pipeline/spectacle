@@ -47,14 +47,17 @@ class Masker(Fittable2DModel):
     inputs = ('x', 'y')
     outputs = ('x', 'y')
 
-    def __init__(self, continuum=None, *args, **kwargs):
+    def __init__(self, continuum=None, rel_tol=1e-2, abs_tol=1e-4, *args, **kwargs):
         super(Masker, self).__init__(*args, **kwargs)
 
         self._continuum = continuum
+        self._rel_tol = rel_tol
+        self._abs_tol = abs_tol
 
-    def evaluate(self, x, y, *args, **kwargs):
+    def evaluate(self, x, y):
         continuum = self._continuum if self._continuum is not None else np.zeros(y.shape)
-        reg = find_regions(y, continuum=continuum)
+        reg = find_regions(y, continuum=continuum, rel_tol=self._rel_tol,
+                           abs_tol=self._abs_tol)
 
         mask = np.logical_or.reduce([(x > x[rl]) & (x <= x[rr]) for rl, rr in reg])
 
