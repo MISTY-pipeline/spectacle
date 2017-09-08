@@ -125,8 +125,8 @@ class CrossCorrelate(Metric):
     """
     def __call__(self, a, v, *args, **kwargs):
         # if normalize:
-        a = (a - a.mean()) / (np.std(a) * a.size)
-        v = (v - v.mean()) / np.std(v)
+        a = (a - np.mean(a)) / (np.std(a) * a.size)
+        v = (v - np.mean(v)) / np.std(v)
 
         self._corr = np.correlate(a, v)
 

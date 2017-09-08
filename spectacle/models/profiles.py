@@ -78,7 +78,8 @@ class TauProfile(Fittable1DModel):
             line = line_table.with_name(name)
 
             if line is None:
-                raise LineNotFound("No line with name '{}' in current ion table.".format(name))
+                raise LineNotFound("No line with name '{}' in current ion "
+                                   "table.".format(name))
 
             lambda_0 = line['wave'] * u.Unit('Angstrom')
             name = line['name']
