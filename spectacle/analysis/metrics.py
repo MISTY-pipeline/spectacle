@@ -66,43 +66,10 @@ class CorrMatrixCoeff(Metric):
 
 class Epsilon(Metric):
     def __call__(self, a, v, *args, **kwargs):
-        self._corr = np.sum((a * v) /
-                            (np.sqrt((a ** 2).sum()) *
-                             np.sqrt((v ** 2).sum())))
+        self._corr = np.ma.sum((a * v) / (np.ma.sqrt(np.sum(a ** 2)) *
+                                          np.ma.sqrt(np.sum(v ** 2))))
 
         return self.corr
-
-
-class DeltaV90(Metric):
-    """
-    Calculates the velocity width of 90 percent of the apparent optical depth
-    in an absorption region.
-    """
-    def __call__(self, x, y1, y2, exact=False):
-        comp_widths = []
-
-        for y in [y1, y2]:
-            # reg = find_regions(y, continuum=np.zeros(y.shape))
-            #
-            # reg_widths = []
-            #
-            # for lr, rr in reg:
-            #     a = y[lr:rr]
-            #     mid = (a[-1] - a[0]) * 0.5
-
-            if exact:
-                x5 = np.interp(np.percentile(y, 5), sorted(y), x)
-                x95 = np.interp(np.percentile(y, 95), sorted(y), x)
-            else:
-                x5 = x[find_nearest(sorted(y), np.percentile(y, 5))]
-                x95 = x[find_nearest(sorted(y), np.percentile(y, 95))]
-            print(x5, x95)
-                # reg_widths.append((mid, x5, x95))
-
-            comp_widths.append(x95 - x5)
-        print(comp_widths)
-        return comp_widths[0]/comp_widths[1]
-
 
 
 class CrossCorrelate(Metric):
@@ -125,8 +92,8 @@ class CrossCorrelate(Metric):
     """
     def __call__(self, a, v, *args, **kwargs):
         # if normalize:
-        a = (a - np.mean(a)) / (np.std(a) * a.size)
-        v = (v - np.mean(v)) / np.std(v)
+        a = (a - np.ma.mean(a)) / (np.ma.std(a) * a.size)
+        v = (v - np.ma.mean(v)) / np.ma.std(v)
 
         self._corr = np.correlate(a, v)
 
