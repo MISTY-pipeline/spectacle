@@ -33,25 +33,20 @@ def delta_v_90(x, y, center=None):
         # tau_tot = simps(y, x.value)
         # tau = simps(y, x.value)
 
-        mn, mx = 0, -1
-
-        # while tau / tau_tot > 0.9:
-        tau_tot = tau_left = simps(y[mn:mx], x.value[mn:mx])
-
-        # Take 0.05tau off left
-        while tau_left / tau_tot > 0.95:
-            mn += 1
-            tau_left = simps(y[mn:mx], x.value[mn:mx])
-
-        tau_tot = tau_right = simps(y[mn:mx], x.value[mn:mx])
+        tau_tot = tau_left = tau_right = simps(y, x.value)
 
         # Take 0.05 tau off right
+        rmx = -1
         while tau_right / tau_tot > 0.95:
-            mx -= 1
-            tau_right = simps(y[mn:mx], x.value[mn:mx])
+            rmx -= 1
+            tau_right = simps(y[:rmx], x.value[:rmx])
 
-        # tau = simps(y[mn:mx], x.value[mn:mx])
+        # Take 0.05tau off left
+        lmn = 0
+        while tau_left / tau_tot > 0.95:
+            lmn += 1
+            tau_left = simps(y[lmn:], x.value[lmn:])
 
-        return x[mn], x[mx]
+        return x[lmn], x[rmx]
 
     return _calculate(x, y)
