@@ -21,40 +21,12 @@ def find_regions(data, continuum=None, cap_value=None, smooth=False,
     creg = _get_absorption_regions(data, continuum=continuum, rel_tol=rel_tol,
                                    abs_tol=abs_tol)
 
-    # Find the center point of all the regions
-    avg_list = list(map(lambda i: int(i[0] + (i[1] - i[0]) * 0.5), creg[:, :]))
-
-    if len(avg_list) == 0:
-        logging.warning("No absorption regions identified; defaulting to "
-                        "entire bounds of spectrum.")
-        return [(0, len(data) - 1)]
-
-    # cind = avg_list[find_nearest(avg_list, cind)]
-
-    cont_reg = []
-
-    for cind in avg_list:
-        # For the closest center to the provided lambda_0 value, see if there
-        # is an identified region for it
-        ind = np.where((creg[:, 0] <= cind) & (creg[:, 1] >= cind))
-        ind = ind[0][0]
-
-        left_ind, right_ind = creg[ind]
-
-        if (right_ind - 1 - left_ind) <= 1:
-            logging.error(
-                "Improper boundaries found; defaulting to entire range.")
-            continue
-
-        # Add left and right indices of contiguous region to list
-        cont_reg.append((left_ind, right_ind - 1))
-
-    return cont_reg
+    return creg
 
 
 def _get_absorption_regions(data, continuum, rel_tol, abs_tol):
     # This makes the assumption that the continuum has been normalized to 1
-    mask = ~np.isclose(continuum, data, rtol=rel_tol, atol=abs_tol)
+    mask = ~np.isclose(data, continuum, rtol=rel_tol, atol=abs_tol)
 
     creg = contiguous_regions(mask)
 
@@ -73,7 +45,7 @@ def contiguous_regions(condition):
 
     # We need to start things after the change in "condition". Therefore,
     # we'll shift the index by 1 to the right.
-    idx += 1
+    # idx += 1
 
     if condition[0]:
         # If the start of condition is True prepend a 0
@@ -81,7 +53,7 @@ def contiguous_regions(condition):
 
     if condition[-1]:
         # If the end of condition is True, append the length of the array
-        idx = np.r_[idx, condition.size]
+        idx = np.r_[idx, condition.size - 1]
 
     # Reshape the result into two columns
     idx.shape = (-1, 2)
