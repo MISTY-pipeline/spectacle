@@ -29,8 +29,7 @@ class AndersonDarling(Metric):
         self._p = None
 
     def __call__(self, a, v, *args, **kwargs):
-        self._corr, self._crit, self._p = stats.anderson_ksamp([a, v], *args,
-                                                               **kwargs)
+        self._corr, self._crit, self._p = stats.anderson_ksamp([a, v])
 
         return self.corr
 
@@ -66,8 +65,10 @@ class CorrMatrixCoeff(Metric):
 
 class Epsilon(Metric):
     def __call__(self, a, v, *args, **kwargs):
-        self._corr = np.ma.sum((a * v) / (np.ma.sqrt(np.sum(a ** 2)) *
-                                          np.ma.sqrt(np.sum(v ** 2))))
+        norm_a = a / np.ma.sqrt(np.ma.sum(a ** 2))
+        norm_v = v / np.ma.sqrt(np.ma.sum(v ** 2))
+
+        self._corr = np.ma.sum(norm_a * norm_v)
 
         return self.corr
 
