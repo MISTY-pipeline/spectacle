@@ -56,6 +56,19 @@ class Spectrum1D:
 
         return self
 
+    def _rebuild_compound_model(self, comp_mod):
+        comp_mod.input_units = comp_mod[0].input_units
+        comp_mod.input_units_equivalencies = comp_mod[0].input_units_equivalencies
+
+    @property
+    def transform(self):
+        dc = DispersionConvert(self._center)
+        rs = self._redshift_model
+
+        comp_mod = dc | rs
+
+        return comp_mod.rename("Transform")
+
     @property
     def tau(self):
         dc = DispersionConvert(self._center)
@@ -92,5 +105,3 @@ class Spectrum1D:
         comp_mod = (dc | rs | (cm + (lm | fd)) | ss) if lm is not None else (dc | rs | cm | ss)
 
         return comp_mod.rename("FluxDecrementModel")
-
-
