@@ -3,16 +3,7 @@ from pandas import DataFrame
 from scipy.integrate import simps
 import astropy.units as u
 
-from ..models import WavelengthConvert, VelocityConvert
-
-# def delta_v_90(x, y):
-#     df = DataFrame(list(zip(x.value, y)), columns=('x', 'y'))
-#
-#     x5 = df.quantile(0.25)['x']
-#     x95 = df.quantile(0.65)['x']
-#     x50 = df.quantile(0.5)
-#
-#     return (x95 - x5, x5, x95, x50)
+from ..modeling import WavelengthConvert, VelocityConvert
 
 
 @u.quantity_input(center=u.Unit('Angstrom'))

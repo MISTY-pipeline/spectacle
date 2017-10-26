@@ -4,7 +4,7 @@ import astropy.units as u
 import astropy.constants as const
 
 from spectacle.core.spectrum import Spectrum1D
-from spectacle.models.custom import Masker
+from spectacle.modeling.custom import Masker
 from spectacle.analysis.metrics import Epsilon, CrossCorrelate, \
     CorrMatrixCoeff, KendallsTau, KolmogorovSmirnov, AndersonDarling
 
@@ -48,11 +48,11 @@ def generate(name, corr_func, use_mask=False):
     
     if use_mask:
         x1_f, y1_f = Masker(continuum=np.ones(velocity.shape))(velocity, spectrum1.flux(velocity))
-        x1_t, y1_t = Masker()(velocity, spectrum1.tau(velocity))
+        x1_t, y1_t = Masker()(velocity, spectrum1.optical_depth(velocity))
         x1_d, y1_d = Masker()(velocity, spectrum1.flux_decrement(velocity))
     else:
         x1_f, y1_f = velocity, spectrum1.flux(velocity)
-        x1_t, y1_t = velocity, spectrum1.tau(velocity)
+        x1_t, y1_t = velocity, spectrum1.optical_depth(velocity)
         x1_d, y1_d = velocity, spectrum1.flux_decrement(velocity)
 
     pline1_t = [{'x': x1_t, 'y': y1_t}]
@@ -83,9 +83,9 @@ def generate(name, corr_func, use_mask=False):
             pline2_f.append({'x': x2_f, 'y': y2_f})
             
             if use_mask:
-                x2_t, y2_t = Masker()(velocity, spectrum2.tau(velocity))
+                x2_t, y2_t = Masker()(velocity, spectrum2.optical_depth(velocity))
             else:
-                x2_t, y2_t = velocity, spectrum2.tau(velocity)
+                x2_t, y2_t = velocity, spectrum2.optical_depth(velocity)
 
             corr_tau.append(corr_func(x1_t, x2_t, y1_t, y2_t))
             

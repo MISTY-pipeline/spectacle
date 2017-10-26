@@ -89,7 +89,7 @@ class DispersionConvert(Fittable1DModel):
         ]}
 
     def evaluate(self, x, center):
-        # Astropy fitters strip models of their unit information. However, the
+        # Astropy fitters strip modeling of their unit information. However, the
         # first iterate of a fitter includes the quantity arrays passed to the
         # call method. If the input array is a quantity, immediately store the
         # quantity unit as a reference for future iterations.

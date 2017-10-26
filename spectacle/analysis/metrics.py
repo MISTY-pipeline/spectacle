@@ -4,9 +4,6 @@ import six
 from scipy import stats
 import numpy as np
 
-from ..core.region_finder import find_regions
-from ..utils import find_nearest
-
 
 @six.add_metaclass(abc.ABCMeta)
 class Metric:
