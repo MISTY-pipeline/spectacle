@@ -75,30 +75,28 @@ class WavelengthConvert(Fittable1DModel):
 class DispersionConvert(Fittable1DModel):
     inputs = ('x',)
     outputs = ('x',)
-    input_units_strict = True
-    input_units_allow_dimensionless = True
+
+    input_units = {'x': u.Unit('Angstrom')}
 
     center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
-
-    input_units = {'x': u.Unit('km/s')}
 
     @property
     def input_units_equivalencies(self):
         return {'x': [
             (u.Unit('km/s'), u.Unit('Angstrom'),
-             lambda x: WavelengthConvert(self.center)(x * u.Unit('km/s')),
-             lambda x: VelocityConvert(self.center)(x * u.Unit('Angstrom')))
+             lambda x: WavelengthConvert(self.center)(u.Quantity(x, 'km/s')),
+             lambda x: VelocityConvert(self.center)(u.Quantity(x, 'Angstrom')))
         ]}
 
-    def evaluate(self, x, center, *args, **kwargs):
-        # Astropy fitters strip models of their unit information. However, the
+    def evaluate(self, x, center):
+        # Astropy fitters strip modeling of their unit information. However, the
         # first iterate of a fitter includes the quantity arrays passed to the
         # call method. If the input array is a quantity, immediately store the
         # quantity unit as a reference for future iterations.
         if isinstance(x, u.Quantity):
             self.input_units = {'x': x.unit}
-
-        x = u.Quantity(x, self.input_units['x'])
+        else:
+            x = u.Quantity(x, self.input_units['x'])
 
         return x.to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
 

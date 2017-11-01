@@ -1,4 +1,6 @@
 import numpy as np
+from functools import wraps
+
 
 
 def find_nearest(array, value, side="left"):
@@ -13,3 +15,15 @@ def find_nearest(array, value, side="left"):
         idx = (np.abs(array-value)).argmin()
 
     return idx
+
+
+def unit_validator(equivalencies=None, **dwargs):
+    def unit_validator_decorator(func):
+        @wraps(func)
+        def func_wrapper(*args, **kwargs):
+            # Validate input units
+
+
+            return func(*args, **kwargs)
+        return func_wrapper
+    return unit_validator_decorator

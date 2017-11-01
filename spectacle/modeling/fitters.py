@@ -2,10 +2,97 @@ import logging
 
 import numpy as np
 import peakutils
-from astropy.modeling.fitting import LevMarLSQFitter
+from astropy.modeling.fitting import LevMarLSQFitter, Fitter, _model_to_fit_params, _fitter_to_model_params
+from astropy.modeling import Parameter
 from scipy import stats
+import emcee
 
-from spectacle.utils import find_nearest
+from ..utils import find_nearest
+
+
+class MCMCFitter:
+    @classmethod
+    def lnprior(cls, theta, model):
+        _fitter_to_model_params(model, theta[:-1])
+        fit_params, fit_params_indices = _model_to_fit_params(model)
+
+        # Compose a list of all the `Parameter` objects, so we can still
+        # reference their bounds information
+        params = [getattr(model, x)
+                  for x in np.array(model.param_names)[
+                      np.array(fit_params_indices)]]
+
+        if all([(params[i].bounds[0] or -np.inf)
+                        <= theta[i] <= (params[i].bounds[1] or np.inf)
+                for i in range(len(theta[:-1]))]) and -10.0 < theta[-1] < 1.0:
+            return 0.0
+
+        return -np.inf
+
+    @classmethod
+    def lnlike(cls, theta, x, y, yerr, model):
+        # Convert the array of parameter values back into model parameters
+        _fitter_to_model_params(model, theta[:-1])
+
+        mod_x = model(x)
+
+        print(any(np.isnan(mod_x)))
+
+        inv_sigma2 = 1.0 / (yerr ** 2 + mod_x ** 2 * np.exp(2 * theta[-1]))
+
+        res =  -0.5 * (
+            np.sum((y - mod_x) ** 2 * inv_sigma2 - np.log(inv_sigma2)))
+
+        print(res)
+        print('-'*200)
+        return res
+
+    @classmethod
+    def lnprob(cls, theta, x, y, yerr, model):
+        model = model.copy()
+
+        lp = cls.lnprior(theta, model)
+
+        print(lp)
+
+        if not np.isfinite(lp):
+            return -np.inf
+
+        return lp + cls.lnlike(theta, x, y, yerr, model)
+
+    def __call__(self, model, x, y, yerr=None):
+        # If no errors are provided, assume all errors are normalized
+        if yerr is None:
+            yerr = np.ones(shape=x.shape)
+
+        # Retrieve the parameters that are not considered fixed or tied
+        fit_params, fit_params_indices = _model_to_fit_params(model)
+        fit_params = np.append(fit_params, 0.5)
+
+        # Cache the number of dimensions of the problem, and walker count
+        ndim, nwalkers = len(fit_params), 100
+
+        # Initialize starting positions of walkers in a Gaussian ball
+        pos = [fit_params + 1e-4 * np.random.randn(ndim)
+               for i in range(nwalkers)]
+
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, self.lnprob,
+                                        args=(x, y, yerr, model))
+
+        sampler.run_mcmc(pos, 500, rstate0=np.random.get_state())
+
+        burnin = 50
+        samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))
+
+        # Compute the quantiles.
+        samples[:, 2] = np.exp(samples[:, 2])
+        res = map(
+            lambda v: (v[1], v[2] - v[1], v[1] - v[0]),
+            zip(*np.percentile(samples, [16, 50, 84],
+                               axis=0)))
+
+        print(res)
+
 
 
 class LevMarFitter(LevMarLSQFitter):
@@ -49,7 +136,7 @@ class LevMarFitter(LevMarLSQFitter):
         # Guess doppler
         b_ratio = (redge - ledge) / len(peaks) / ew
 
-        # Override the initial guesses on the models
+        # Override the initial guesses on the modeling
         model.v_doppler = model.v_doppler * b_ratio
         model.lambda_0.bounds = (ledge, redge)
 

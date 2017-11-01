@@ -10,7 +10,8 @@ from scipy import special
 from scipy.integrate import quad
 
 from ..io.registries import line_registry
-from spectacle.utils import find_nearest
+from ..utils import find_nearest
+from .converters import WavelengthConvert, VelocityConvert
 
 
 class IncompleteLineInformation(Exception): pass
@@ -78,7 +79,8 @@ class TauProfile(Fittable1DModel):
             line = line_table.with_name(name)
 
             if line is None:
-                raise LineNotFound("No line with name '{}' in current ion table.".format(name))
+                raise LineNotFound("No line with name '{}' in current ion "
+                                   "table.".format(name))
 
             lambda_0 = line['wave'] * u.Unit('Angstrom')
             name = line['name']
@@ -107,7 +109,7 @@ class TauProfile(Fittable1DModel):
         # Astropy fitters do not fully support units on model parameters. In
         # such cases, the units are striped while the model is evaluated, and
         # then added back to the parameters once the fitting is complete. This
-        # is terrible for models that take advantage of parameter units. Thus,
+        # is terrible for modeling that take advantage of parameter units. Thus,
         # units need to be guaranteed.
         x = u.Quantity(x, self.input_units['x'])
         lambda_0 = u.Quantity(lambda_0, 'Angstrom')
