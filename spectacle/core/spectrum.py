@@ -180,10 +180,12 @@ class Spectrum1D:
         """
         dc = DispersionConvert(self._center)
         rs = self._redshift_model
-        ss = SmartScale(1. / (1 + self._redshift_model.z))
+        ss = SmartScale(tied={
+            'factor': lambda mod: 1. / (1 + self._redshift_model.z)
+        })
         lm = self._line_model
 
-        comp_mod = (dc | rs | lm | ss) if lm is not None else (dc | rs | ss)
+        comp_mod = (dc | lm ) if lm is not None else (dc | rs | ss)
 
         return comp_mod.rename("OpticalDepthModel")
 
@@ -194,7 +196,9 @@ class Spectrum1D:
         """
         dc = DispersionConvert(self._center)
         rs = self._redshift_model
-        ss = SmartScale(1. / (1 + self._redshift_model.z))
+        ss = SmartScale(tied={
+            'factor': lambda mod: 1. / (1 + self._redshift_model.z)
+        })
         cm = self._continuum_model
         lm = self._line_model
         fc = FluxConvert()
@@ -213,7 +217,9 @@ class Spectrum1D:
         cm = self._continuum_model
         lm = self._line_model
         fd = FluxDecrementConvert()
-        ss = SmartScale(1. / (1 + self._redshift_model.z))
+        ss = SmartScale(tied={
+            'factor': lambda mod: 1. / (1 + self._redshift_model.z)
+        })
 
         comp_mod = (dc | rs | (cm + (lm | fd)) | ss) if lm is not None else (dc | rs | cm | ss)
 
