@@ -1,0 +1,7 @@
+{
+    "python.pythonPath": "/Users/nearl/anaconda3/envs/new_spec_env/bin/python",
+    "python.unitTest.pyTestArgs": [
+        "tests"
+    ],
+    "python.unitTest.pyTestEnabled": true
+}
