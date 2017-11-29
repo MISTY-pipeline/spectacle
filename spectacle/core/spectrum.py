@@ -1,27 +1,36 @@
-import astropy.units as u
+import logging
 
+import astropy.units as u
 from astropy.modeling import models
 from astropy.modeling.models import Linear1D
 
-from ..modeling.profiles import TauProfile
-from ..modeling.custom import SmartScale, Redshift
 from ..modeling.converters import (DispersionConvert, FluxConvert,
                                    FluxDecrementConvert)
+from ..modeling.custom import Redshift, SmartScale
+from ..modeling.profiles import TauProfile
 
 
-class SpectrumModelNotImplemented(Exception): pass
+class SpectrumModelNotImplemented(Exception):
+    pass
 
-class InappropriateModel(Exception): pass
 
-class NoLines(Exception): pass
+class InappropriateModel(Exception):
+    pass
+
+
+class NoLines(Exception):
+    pass
 
 
 class Spectrum1D:
-    def __init__(self, center=0, z=0):
+    def __init__(self, center=0, redshift=None, continuum=None):
         self._center = u.Quantity(center, 'Angstrom')
 
-        self._redshift_model = Redshift(z).inverse
-        self._continuum_model = Linear1D(0 * u.Unit('1/Angstrom'), 1)
+        self._redshift_model = Redshift(
+            **(redshift or {'z': 0})).inverse
+        self._continuum_model = Linear1D(
+            **(continuum or {'slope': 0 * u.Unit('1/Angstrom'),
+                             'intercept': 1 * u.Unit('')}))
         self._line_model = None
 
         self._lsf = None
@@ -93,7 +102,7 @@ class Spectrum1D:
         : `~astropy.modeling.modeling.Fittable1DModel`
             The continuum model in the spectrum compound model.
         """
-        return self._continum_model
+        return self._continuum_model
 
     @continuum.setter
     def continuum(self, model='Linear1D', *args, **kwargs):
@@ -113,7 +122,15 @@ class Spectrum1D:
         -------
 
         """
-        self._continum_model = getattr(models, model)(*args, **kwargs)
+        if not hasattr(models, model):
+            logging.error(
+                "No available model named %s. Modle must be one of \n%s.",
+                model, [cls.__name__ for cls in
+                        vars()['FittableModel1D'].__subclasses()])
+
+            return
+
+        self._continuum_model = getattr(models, model)(*args, **kwargs)
 
     def add_line(self, *args, **kwargs):
         """
@@ -132,7 +149,7 @@ class Spectrum1D:
         tau_prof = TauProfile(*args, **kwargs)
 
         self._line_model = tau_prof if self._line_model is None \
-                                    else self._line_model + tau_prof
+            else self._line_model + tau_prof
 
         return self
 
@@ -165,15 +182,6 @@ class Spectrum1D:
         comp_mod.input_units_equivalencies = comp_mod[0].input_units_equivalencies
 
     @property
-    def transform(self):
-        dc = DispersionConvert(self._center)
-        rs = self._redshift_model
-
-        comp_mod = dc | rs
-
-        return comp_mod.rename("Transform")
-
-    @property
     def optical_depth(self):
         """
         Compound spectrum model in tau space.
@@ -185,9 +193,13 @@ class Spectrum1D:
         })
         lm = self._line_model
 
-        comp_mod = (dc | lm ) if lm is not None else (dc | rs | ss)
+        comp_mod = (dc | rs | lm | ss) if lm is not None else (dc | rs | ss)
 
-        return comp_mod.rename("OpticalDepthModel")
+        return type('OpticalDepth', (comp_mod.__class__,),
+                    {'inputs': ('x',),
+                     'outputs': ('y',),
+                     'input_units_script': True,
+                     'inputs_units': input_units={'x': u.Unit('Angstrom')}})
 
     @property
     def flux(self):
@@ -203,7 +215,8 @@ class Spectrum1D:
         lm = self._line_model
         fc = FluxConvert()
 
-        comp_mod = (dc | rs | (cm + (lm | fc)) | ss) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = (dc | rs | (cm + (lm | fc)) |
+                    ss) if lm is not None else (dc | rs | cm | ss)
 
         return comp_mod.rename("FluxModel")
 
@@ -221,6 +234,19 @@ class Spectrum1D:
             'factor': lambda mod: 1. / (1 + self._redshift_model.z)
         })
 
-        comp_mod = (dc | rs | (cm + (lm | fd)) | ss) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = (dc | rs | (cm + (lm | fd)) |
+                    ss) if lm is not None else (dc | rs | cm | ss)
 
         return comp_mod.rename("FluxDecrementModel")
+
+
+def model_factory(bases, name="BaseModel"):
+    class BaseModel(Fittable1D):
+        inputs = ('x',)
+        outputs = ('y',)
+
+        input_units_strict = True
+
+        input_units = {'x': u.Unit('Angstrom')}
+
+    new_class = type(name, bases, )

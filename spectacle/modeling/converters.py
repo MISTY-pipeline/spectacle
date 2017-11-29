@@ -1,8 +1,9 @@
-from astropy.modeling import Fittable1DModel, Parameter
-import astropy.units as u
-from astropy.constants import c
 from collections import OrderedDict
+
+import astropy.units as u
 import numpy as np
+from astropy.constants import c
+from astropy.modeling import Fittable1DModel, Parameter
 
 
 class VelocityConvert(Fittable1DModel):
@@ -35,7 +36,7 @@ class VelocityConvert(Fittable1DModel):
         # ln_lambda = np.log(x) - np.log(center)
         # vel = (c.cgs * ln_lambda).to('km/s').value
 
-        vel = (c.cgs * ((x - center)/x)).to('km/s')
+        vel = (c.cgs * ((x - center) / x)).to('km/s')
 
         return vel
 

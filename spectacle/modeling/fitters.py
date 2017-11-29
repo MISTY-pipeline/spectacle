@@ -34,17 +34,13 @@ class MCMCFitter:
         # Convert the array of parameter values back into model parameters
         _fitter_to_model_params(model, theta[:-1])
 
-        mod_x = model(x)
+        mod_y = model(x)
 
-        print(any(np.isnan(mod_x)))
+        inv_sigma2 = 1.0 / (yerr ** 2 + mod_y ** 2 * np.exp(2 * theta[-1]))
 
-        inv_sigma2 = 1.0 / (yerr ** 2 + mod_x ** 2 * np.exp(2 * theta[-1]))
+        res = -0.5 * (
+            np.sum((y - mod_y) ** 2 * inv_sigma2 - np.log(inv_sigma2)))
 
-        res =  -0.5 * (
-            np.sum((y - mod_x) ** 2 * inv_sigma2 - np.log(inv_sigma2)))
-
-        print(res)
-        print('-'*200)
         return res
 
     @classmethod
@@ -52,8 +48,6 @@ class MCMCFitter:
         model = model.copy()
 
         lp = cls.lnprior(theta, model)
-
-        print(lp)
 
         if not np.isfinite(lp):
             return -np.inf

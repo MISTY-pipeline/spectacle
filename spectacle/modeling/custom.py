@@ -1,12 +1,13 @@
-from astropy.modeling.models import Scale, RedshiftScaleFactor
-from astropy.modeling import Parameter, Fittable2DModel
-import astropy.units as u
 from collections import OrderedDict
+
+import astropy.units as u
 import numpy as np
+from astropy.modeling import Fittable1DModel, Fittable2DModel, Parameter
+from astropy.modeling.models import RedshiftScaleFactor, Scale
 
 from ..core.region_finder import find_regions
+from ..modeling.converters import VelocityConvert, WavelengthConvert
 from ..modeling.profiles import TauProfile
-from ..modeling.converters import WavelengthConvert, VelocityConvert
 
 
 class SmartScale(Scale):
@@ -30,19 +31,13 @@ class SmartScale(Scale):
         else:
             return factor * x
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
-        return OrderedDict([('factor', None)])
-
 
 class Redshift(RedshiftScaleFactor):
-    z = Parameter(default=0, min=0)
+    z = Parameter(default=0, min=0, fixed=True)
 
     @property
     def input_units(*args, **kwargs):
         return {'x': u.Unit('Angstrom')}
-
-    def _parameter_units_for_data_units(self, input_units, output_units):
-        return OrderedDict([('z', None)])
 
 
 class Masker(Fittable2DModel):
@@ -62,20 +57,12 @@ class Masker(Fittable2DModel):
     ignored.
     """
     inputs = ('x', 'y')
-    outputs = ('x', 'y')
+    outputs = ('z')
     input_units_strict = True
+    input_units = {'x': u.Unit('Angstrom')}
 
+    # The center parameter should be tied to the compound model's dispersion
     center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
-
-    # input_units = {'x': u.Unit('Angstrom')}
-
-    @property
-    def input_units_equivalencies(self):
-        return {'x': [
-            (u.Unit('km/s'), u.Unit('Angstrom'),
-             lambda x: WavelengthConvert(self.center)(x * u.Unit('km/s')),
-             lambda x: VelocityConvert(self.center)(x * u.Unit('Angstrom')))
-        ]}
 
     def __init__(self, continuum=None, line_list=None, rel_tol=1e-2,
                  abs_tol=1e-4, *args, **kwargs):
@@ -114,15 +101,16 @@ class Masker(Fittable2DModel):
         self._rel_tol = rel_tol
         self._abs_tol = abs_tol
 
-    def evaluate(self, x, y, center):
+    def evaluate(self, x, y):
         # Store the input unit of the dispersion array. This requires that we
         # do not set the `input_units` attribute, or else the array will
         # always be the input unit defined in the attribute.
-        self.output_units = {'x': x.unit}
+        # self.output_units = {'x': x.unit}
 
         x = x.to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
 
-        continuum = self._continuum if self._continuum is not None else np.zeros(y.shape)
+        continuum = self._continuum if self._continuum is not None else np.zeros(
+            y.shape)
 
         reg = find_regions(y, continuum=continuum, rel_tol=self._rel_tol,
                            abs_tol=self._abs_tol)
@@ -136,10 +124,12 @@ class Masker(Fittable2DModel):
 
             reg = filt_reg
 
-        mask = np.logical_or.reduce([(x > x[rl]) & (x <= x[rr]) for rl, rr in reg])
+        mask = np.logical_or.reduce(
+            [(x > x[rl]) & (x <= x[rr]) for rl, rr in reg])
 
         # Ensure that the output quantities are the original input quantities
-        x = x.to(self.output_units['x'],
-                 equivalencies=self.input_units_equivalencies['x'])
+        # x = x.to(self.output_units['x'],
+        #          equivalencies=self.input_units_equivalencies['x'])
 
-        return np.ma.array(x, mask=~mask), np.ma.array(y, mask=~mask)
+        # return np.ma.array(x, mask=~mask), np.ma.array(y, mask=~mask)
+        return mask
