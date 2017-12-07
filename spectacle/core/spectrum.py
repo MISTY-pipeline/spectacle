@@ -1,13 +1,15 @@
 import logging
 
 import astropy.units as u
-from astropy.modeling import models
+from astropy.modeling import models, Fittable1DModel
 from astropy.modeling.models import Linear1D
 
 from ..modeling.converters import (DispersionConvert, FluxConvert,
                                    FluxDecrementConvert)
 from ..modeling.custom import Redshift, SmartScale
 from ..modeling.profiles import TauProfile
+
+from ..io.registries import line_registry
 
 
 class SpectrumModelNotImplemented(Exception):
@@ -23,14 +25,25 @@ class NoLines(Exception):
 
 
 class Spectrum1D:
-    def __init__(self, center=0, redshift=None, continuum=None):
-        self._center = u.Quantity(center, 'Angstrom')
+    def __init__(self, center=None, ion=None, redshift=None, continuum=None):
+        if center is not None:
+            self._center = u.Quantity(center, 'Angstrom')
+
+        if ion is not None:
+            ion = line_registry.with_name(ion)
+            self._center = ion['wave'] * line_registry['wave'].unit
 
         self._redshift_model = Redshift(
-            **(redshift or {'z': 0})).inverse
-        self._continuum_model = Linear1D(
-            **(continuum or {'slope': 0 * u.Unit('1/Angstrom'),
-                             'intercept': 1 * u.Unit('')}))
+            **({'z': redshift or 0})).inverse
+
+        if continuum is not None and isinstance(continuum, Fittable1DModel):
+            self._continuum_model = continuum
+        else:
+            self._continuum_model = Linear1D(
+                slope=0 * u.Unit('1/Angstrom'), intercept=1 * u.Unit(''))
+
+            logging.info("Default continuum set to a Linear1D model.")
+
         self._line_model = None
 
         self._lsf = None
@@ -77,7 +90,7 @@ class Spectrum1D:
             The redshift model in the spectrum compound model.
         """
 
-        return self._redshift_model
+        return self._redshift_model.z
 
     @redshift.setter
     def redshift(self, z):
@@ -132,7 +145,7 @@ class Spectrum1D:
 
         self._continuum_model = getattr(models, model)(*args, **kwargs)
 
-    def add_line(self, *args, **kwargs):
+    def add_line(self, name=None, *args, model=None, **kwargs):
         """
         Create an absorption line Voigt profile model and add it to the
         compound spectral model.
@@ -146,7 +159,9 @@ class Spectrum1D:
         : `~spectacle.core.spectrum.Spectrum1D`
             The spectrum compound model including the new line.
         """
-        tau_prof = TauProfile(*args, **kwargs)
+        kwargs.setdefault('lambda_0', self._center if name is None else None)
+
+        tau_prof = TauProfile(name=name, *args, **kwargs) if model is None else model
 
         self._line_model = tau_prof if self._line_model is None \
             else self._line_model + tau_prof
@@ -195,11 +210,7 @@ class Spectrum1D:
 
         comp_mod = (dc | rs | lm | ss) if lm is not None else (dc | rs | ss)
 
-        return type('OpticalDepth', (comp_mod.__class__,),
-                    {'inputs': ('x',),
-                     'outputs': ('y',),
-                     'input_units_script': True,
-                     'inputs_units': input_units={'x': u.Unit('Angstrom')}})
+        return model_factory(comp_mod, 'OpticalDepth')
 
     @property
     def flux(self):
@@ -241,12 +252,25 @@ class Spectrum1D:
 
 
 def model_factory(bases, name="BaseModel"):
-    class BaseModel(Fittable1D):
+    from ..modeling.converters import WavelengthConvert, VelocityConvert
+    from collections import OrderedDict
+
+    class BaseSpectrumModel(bases.__class__):
         inputs = ('x',)
         outputs = ('y',)
 
         input_units_strict = True
+        input_units_allow_dimensionless = True
 
         input_units = {'x': u.Unit('Angstrom')}
 
-    new_class = type(name, bases, )
+        input_units_equivalencies = {'x': [
+                (u.Unit('km/s'), u.Unit('Angstrom'),
+                 lambda x: WavelengthConvert(bases[0].center)(u.Quantity(x, 'km/s')),
+                 lambda x: VelocityConvert(bases[0].center)(u.Quantity(x, 'Angstrom')))
+            ]}
+
+        def _parameter_units_for_data_units(self, input_units, output_units):
+            return OrderedDict()
+
+    return BaseSpectrumModel().rename(name)
