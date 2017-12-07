@@ -17,7 +17,7 @@ class LineRegistry(Table):
 
     def correct(self, name):
         _corrector = SpellCorrector(list(self['name']))
-        correct_name = _corrector.correction(name)
+        correct_name = _corrector.correction(name.upper())
 
         if correct_name != name:
             logging.info(
