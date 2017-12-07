@@ -13,7 +13,7 @@ def find_regions(data, continuum=None, cap_value=None, smooth=False,
         data[data > cap_value] = cap_value
 
     if continuum is None:
-        continuum = np.ones(data.shape)
+        continuum = np.zeros(data.shape)
 
     data = savgol_filter(data, 49, 3) if smooth else data
 
