@@ -102,7 +102,7 @@ class DispersionConvert(Fittable1DModel):
         return x.to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
 
     def _parameter_units_for_data_units(self, input_units, output_units):
-        return OrderedDict([('center', u.Unit('Angstrom'))])
+        return OrderedDict()
 
 
 class FluxConvert(Fittable1DModel):

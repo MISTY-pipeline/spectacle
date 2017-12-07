@@ -31,6 +31,9 @@ class SmartScale(Scale):
         else:
             return factor * x
 
+    def _parameter_units_for_data_units(self, input_units, output_units):
+        return OrderedDict()
+
 
 class Redshift(RedshiftScaleFactor):
     z = Parameter(default=0, min=0, fixed=True)
@@ -38,6 +41,9 @@ class Redshift(RedshiftScaleFactor):
     @property
     def input_units(*args, **kwargs):
         return {'x': u.Unit('Angstrom')}
+
+    def _parameter_units_for_data_units(self, input_units, output_units):
+        return OrderedDict()
 
 
 class Masker(Fittable2DModel):
