@@ -1,36 +1,83 @@
-import peakutils
-from spectacle.modeling import *
-from spectacle.core.spectrum import Spectrum1D
+import logging
 
+import astropy.units as u
+import numpy as np
+import peakutils
+from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel
 from astropy.modeling.models import Voigt1D
 
+from spectacle.core.spectrum import Spectrum1D
+from spectacle.modeling import *
+
 from .initializers import Voigt1DInitializer
+
+AMP_CONST = 8.854187817e-12 * u.Unit('F/m')# (np.pi * np.exp(2)) / (m_e.cgs * c.cgs) * 0.001
+PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
+TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /
+               (m_e.cgs * c.cgs))).cgs
 
 
 class LineFinder(Fittable2DModel):
+    """
+    Line finder model.
+
+    Parameters
+    ----------
+    center : float
+        The lambda value used to convert from wavelength to velocity space.
+    z : float
+        Redshift value of the resultant spectrum.
+    threshold : float
+        Normalized threshold used in peak finder. Only the peaks with 
+        amplitude higher than the threshold will be detected.
+    min_distance : float
+        Minimum distance between each detected peak used in peak finder. The 
+        peak with the highest amplitude is preferred to satisfy this 
+        constraint.
+    """
     inputs = ('x', 'y')
     outputs = ('y',)
 
     input_units_strict = True
     input_units_allow_dimensionless = True
 
-    center = Parameter(default=1216, min=0, unit=u.Unit('Angstrom'), fixed=True)
+    center = Parameter(default=0, min=0, unit=u.Unit('Angstrom'), fixed=True)
     z = Parameter(default=0, min=0, fixed=True)
-    threshold = Parameter(default=0.5)
-    min_distance = Parameter(default=30, min=0)
+    threshold = Parameter(default=0.5, min=0)
+    min_distance = Parameter(default=30, min=0.1)
+    rel_tol = Parameter(default=1e-2, min=1e-10, max=1)
+    abs_tol = Parameter(default=1e-4, min=1e-10, max=1)
 
     input_units = {'x': u.Unit('km/s')}
 
+    def __init__(self, data_type='optical_depth', *args, **kwargs):
+        super(LineFinder, self).__init__(*args, **kwargs)
+        if data_type not in ('optical_depth', 'flux', 'flux_decrement'):
+            logging.error("No available data type named '{}'. Defaulting to"
+                          "optical_depth'.".format(data_type))
+            self._data_type = 'optical_depth'
+        else:
+            self._data_type = data_type
+
+        self._result_model = None
+        self._regions = None
+
     @property
     def input_units_equivalencies(self):
+        """
+        Unit equivalencies used by `LineFinder`.
+        """
         return {'x': [
             (u.Unit('km/s'), u.Unit('Angstrom'),
              lambda x: WavelengthConvert(self.center)(x * u.Unit('km/s')),
              lambda x: VelocityConvert(self.center)(x * u.Unit('Angstrom')))
         ]}
 
-    def evaluate(self, x, y, center, z, threshold, min_distance):
+    def evaluate(self, x, y, center, z, threshold, min_distance, rel_tol, abs_tol):
+        """
+        Evaluate `LineFinder` model.
+        """
         # Astropy fitters strip modeling of their unit information. However, the
         # first iterate of a fitter includes the quantity arrays passed to the
         # call method. If the input array is a quantity, immediately store the
@@ -38,83 +85,93 @@ class LineFinder(Fittable2DModel):
         if isinstance(x, u.Quantity):
             self.input_units = {'x': x.unit}
 
-        print(center[0])
-
         x = u.Quantity(x, self.input_units['x'])
-        wavelength = x.to('Angstrom',
-                          equivalencies=self.input_units_equivalencies['x'])
-        # min_distance = u.Quantity(min_distance, self.input_units['x'])
 
-        ion = line_registry.with_name('HI1216')
-        ion = ion['wave'] * line_registry['wave'].unit
+        ion_info = line_registry.with_name('HI1216')
+        ion = ion_info['wave'] * line_registry['wave'].unit
 
+        logging.info(
+            "Relative tolerance: %f, Absolute Tolerance: %f", rel_tol, abs_tol)
+        logging.info("Threshold: %f, Minimum Distance: %f",
+                     threshold, min_distance)
         indexes = peakutils.indexes(y, thres=threshold, min_dist=min_distance)
+        logging.info("Found %i peaks.", len(indexes))
 
-        print("Found {} lines.".format(len(indexes)))
+        spectrum = Spectrum1D(center=center[0], redshift=z[0])
 
-        spectrum = Spectrum1D(center=center[0], redshift=z)
-
-        # Get the interesting regions within the data provided
-        reg = find_regions(y, rel_tol=1e-2, abs_tol=1e-4)
-
-        filt_reg = [(rl, rr) for rl, rr in reg
-                    if wavelength[rl] <= self.center <= wavelength[rr]]
-
-        # Create the mask that can be applied to the original data to produce
-        # data only with the particular region we're interested in
-        mask = np.logical_or.reduce(
-            [(wavelength > wavelength[rl]) &
-             (wavelength <= wavelength[rr]) for rl, rr in filt_reg])
+        # Get the interesting regions within the data provided. Don't bother
+        # calculating more than once, since y doesn't change.
+        if self._regions is None:
+            self._regions = find_regions(y, rel_tol=rel_tol, abs_tol=abs_tol)
 
         for ind in indexes:
-            peak = u.Quantity(wavelength[ind], wavelength.unit)
-            dlambda = peak - ion
-            dv = dlambda.to('km/s', equivalencies=self.input_units_equivalencies['x'])
+            peak = u.Quantity(x[ind], x.unit)
+            dv = peak.to('km/s', equivalencies=self.input_units_equivalencies['x']) - ion.to(
+                'km/s', equivalencies=self.input_units_equivalencies['x'])
 
-            print("Found line at {} ({} with shift of {}).".format(peak, ion, dlambda))
+            # Given the peak found by the peak finder, select the corresponding
+            # region found in the region finder
+            filt_reg = [(rl, rr) for rl, rr in self._regions
+                        if x[rl] <= peak <= x[rr]]
+
+            # Create the mask that can be applied to the original data to produce
+            # data only with the particular region we're interested in
+            mask = np.logical_or.reduce([(x > x[rl]) & (x <= x[rr])
+                                         for rl, rr in filt_reg])
 
             # Estimate the voigt parameters
             voigt = Voigt1D()
             initializer = Voigt1DInitializer()
             init_voigt = initializer.initialize(voigt,
-                                                wavelength[mask].value,
+                                                x[mask].value,
                                                 y[mask])
 
             # Fit the spectral line to the voigt line we initialized above
             fitter = LevMarLSQFitter()
 
-            fit_line = fitter(init_voigt, wavelength[mask].value, y[mask],
-                              maxiter=200)
+            fit_line = fitter(init_voigt, x[mask].value, y[mask], maxiter=200)
 
-            print(list(zip(fit_line.param_names, fit_line.parameters)))
-            print(10 ** (init_voigt.amplitude_L.value * 2), (fit_line.amplitude_L.value * 2))
+            # Estimate the doppler b parameter
+            v_dop = np.abs((ion_info['osc_str'] / AMP_CONST * ion ** 2 /
+                            (fit_line.amplitude_L.value * u.Unit('(kg m4)/(s3 A2)'))
+                            ).decompose().to('cm/s'))
+
+            # Estimate the column density
+            col_dens_over_tau = (v_dop / (TAU_FACTOR * ion_info['osc_str']) /
+                                 center[0]).decompose().to('1/cm2')
+            print(col_dens_over_tau)
 
             # Add the line to the spectrum object
             line = TauProfile(lambda_0=center[0],
-                              delta_lambda=dlambda,
-                              v_doppler=1e7 * u.Unit('cm/s'),
-                              column_density=10 ** (fit_line.amplitude_L.value *
-                                                    1.4142135623730951) * u.Unit('1/cm2')
-                              )
+                              delta_v=dv,
+                              v_doppler=v_dop,
+                              column_density=col_dens_over_tau)
 
             spectrum.add_line(model=line)
 
-        self._result_model = spectrum
+        # Fit the spectrum mode to the given data
+        # fitter = LevMarLSQFitter()
 
-        import matplotlib.pyplot as plt
+        # fitter(spectrum.optical_depth, x, y, maxiter=1000)
+        self._result_model = getattr(spectrum, self._data_type)
 
-        f, ax = plt.subplots()
-
-        ax.plot(x, y)
-        ax.plot(x, spectrum.optical_depth(x))
-
-        plt.show()
-
-        return spectrum.optical_depth(x)
+        return self._result_model(x)
 
     def _parameter_units_for_data_units(self, input_units, output_units):
         return OrderedDict()
 
     @property
     def result_model(self):
+        """
+        Returns the resultant spectrum model that is constructed by the
+        `LineFinder`.
+        """
         return self._result_model
+
+    @property
+    def regions(self):
+        """
+        Returns the list of tuples specifying the beginning and end indices of
+        identified absorption/emission regions.
+        """
+        return self._regions

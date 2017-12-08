@@ -2,7 +2,7 @@ from collections import OrderedDict
 
 import astropy.units as u
 import numpy as np
-from astropy.constants import c
+from astropy.constants import c, m_e
 from astropy.modeling import Fittable1DModel, Parameter
 from astropy.modeling.fitting import LevMarLSQFitter
 from astropy.modeling.models import Voigt1D
@@ -13,10 +13,17 @@ from ..io.registries import line_registry
 from ..utils import find_nearest
 from .converters import WavelengthConvert, VelocityConvert
 
+PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
+TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /
+               (m_e.cgs * c.cgs))).cgs
 
-class IncompleteLineInformation(Exception): pass
 
-class LineNotFound(Exception): pass
+class IncompleteLineInformation(Exception):
+    pass
+
+
+class LineNotFound(Exception):
+    pass
 
 
 class TauProfile(Fittable1DModel):
@@ -72,7 +79,7 @@ class TauProfile(Fittable1DModel):
                             [line_registry.correct(n) for n in line_list
                              if line_registry.correct(n) is not None]) \
             if line_list is not None else ~np.in1d(line_registry['name'], [])
-        
+
         line_table = line_registry[line_mask]
 
         if name is not None:
@@ -96,10 +103,12 @@ class TauProfile(Fittable1DModel):
 
         kwargs.setdefault('f_value', line['osc_str'])
         kwargs.setdefault('gamma', line['gamma'])
-        kwargs.setdefault('tied', {'f_value': lambda mod: line_table[
-            find_nearest(line_table['wave'], self.lambda_0)]['osc_str'],
-                'gamma': lambda mod: line_table[
-            find_nearest(line_table['wave'], self.lambda_0)]['gamma']})
+        kwargs.setdefault('tied', {
+            'f_value': lambda mod: line_table[find_nearest(line_table['wave'],
+                                                           self.lambda_0)]['osc_str'],
+            'gamma': lambda mod: line_table[find_nearest(line_table['wave'],
+                                                         self.lambda_0)]['gamma']
+        })
 
         super(TauProfile, self).__init__(name=name, lambda_0=lambda_0,
                                          *args, **kwargs)
@@ -118,10 +127,6 @@ class TauProfile(Fittable1DModel):
         delta_lambda = u.Quantity(delta_lambda, 'Angstrom')
         delta_v = u.Quantity(delta_v, 'cm/s')
 
-        charge_proton = u.Quantity(4.8032056e-10, 'esu')
-        tau_factor = ((np.sqrt(np.pi) * charge_proton ** 2 /
-                       (u.M_e.cgs * c.cgs))).cgs
-
         # shift lambda_0 by delta_v
         shifted_lambda = lambda_0 * (1 + delta_v / c.cgs) + delta_lambda
 
@@ -129,7 +134,7 @@ class TauProfile(Fittable1DModel):
         nudop = (v_doppler / shifted_lambda).to('Hz')  # doppler width in Hz
 
         # tau_0
-        tau_x = tau_factor * column_density * f_value / v_doppler
+        tau_x = TAU_FACTOR * column_density * f_value / v_doppler
         tau0 = (tau_x * lambda_0).decompose()
 
         # dimensionless frequency offset in units of doppler freq
@@ -162,9 +167,11 @@ class TauProfile(Fittable1DModel):
                             ('delta_lambda', u.Unit('Angstrom'))])
 
     def fwhm(self):
-        shifted_lambda = self.lambda_0 * (1 + self.delta_v / c.cgs) + self.delta_lambda
+        shifted_lambda = self.lambda_0 * \
+            (1 + self.delta_v / c.cgs) + self.delta_lambda
 
-        mod = ExtendedVoigt1D(x_0=VelocityConvert(center=self.lambda_0)(shifted_lambda))
+        mod = ExtendedVoigt1D(x_0=VelocityConvert(
+            center=self.lambda_0)(shifted_lambda))
         fitter = LevMarLSQFitter()
 
         x = np.linspace(-10000, 10000, 1000) * u.Unit('km/s')
@@ -175,6 +182,9 @@ class TauProfile(Fittable1DModel):
 
         return fwhm
 
+    def quick_fwhm(self):
+        return self.gamma / self.v_doppler / 2
+
     def dv90(self):
         velocity = np.linspace(-10000, 10000, 1000) * u.Unit('km/s')
 
@@ -184,7 +194,8 @@ class TauProfile(Fittable1DModel):
         def vel_space(val):
             return VelocityConvert(center=self.lambda_0)(val)
 
-        shifted_lambda = self.lambda_0 * (1 + self.delta_v / c.cgs) + self.delta_lambda
+        shifted_lambda = self.lambda_0 * \
+            (1 + self.delta_v / c.cgs) + self.delta_lambda
 
         cind = find_nearest(velocity.value, vel_space(shifted_lambda).value)
         mn = mx = cind
@@ -197,7 +208,7 @@ class TauProfile(Fittable1DModel):
                        wave_space(velocity[0]).value,
                        wave_space(velocity[-1]).value)
 
-        while tau_fwhm[0]/tau_tot[0] < 0.9:
+        while tau_fwhm[0] / tau_tot[0] < 0.9:
             mn -= 1
             mx += 1
             tau_fwhm = quad(lambda x: self(x * u.Unit('Angstrom')),

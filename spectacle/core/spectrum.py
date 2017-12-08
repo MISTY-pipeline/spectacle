@@ -89,21 +89,20 @@ class Spectrum1D:
         : `~astropy.modeling.modeling.Fittable1DModel`
             The redshift model in the spectrum compound model.
         """
-
         return self._redshift_model.z
 
     @redshift.setter
-    def redshift(self, z):
+    def redshift(self, value):
         """
         Set the redshift value to use in the compound spectrum model.
 
         Parameters
         ----------
-        z : float
+        value : float
             The redshift value to use.
         """
         # TODO: include check on the input arguments
-        self._redshift_model = Redshift(z=z).inverse
+        self._redshift_model = Redshift(z=value).inverse
 
     @property
     def continuum(self):
@@ -128,12 +127,8 @@ class Spectrum1D:
         model : str
             The class name of the model as a string. This model must exist in
             the `~astropy.modeling.modeling` package.
-        args :
-        kwargs
-
-        Returns
-        -------
-
+        args : Positional arguments pass to continuum model class.
+        kwargs : Keyword arguments passed to continuum model class.
         """
         if not hasattr(models, model):
             logging.error(
