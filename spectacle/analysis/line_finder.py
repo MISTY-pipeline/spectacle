@@ -5,14 +5,13 @@ import numpy as np
 import peakutils
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel
-from astropy.modeling.models import Voigt1D
 
-from spectacle.core.spectrum import Spectrum1D
-from spectacle.modeling import *
+from ..core.spectrum import Spectrum1D
+from ..modeling import *
 
 from .initializers import Voigt1DInitializer
 
-AMP_CONST = 8.854187817e-12 * u.Unit('F/m')# (np.pi * np.exp(2)) / (m_e.cgs * c.cgs) * 0.001
+AMP_CONST = 8.854187817e-13 * u.Unit('1/cm')# (np.pi * np.exp(2)) / (m_e.cgs * c.cgs) * 0.001
 PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
 TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /
                (m_e.cgs * c.cgs))).cgs
@@ -120,7 +119,7 @@ class LineFinder(Fittable2DModel):
                                          for rl, rr in filt_reg])
 
             # Estimate the voigt parameters
-            voigt = Voigt1D()
+            voigt = ExtendedVoigt1D()
             initializer = Voigt1DInitializer()
             init_voigt = initializer.initialize(voigt,
                                                 x[mask].value,
@@ -132,14 +131,20 @@ class LineFinder(Fittable2DModel):
             fit_line = fitter(init_voigt, x[mask].value, y[mask], maxiter=200)
 
             # Estimate the doppler b parameter
-            v_dop = np.abs((ion_info['osc_str'] / AMP_CONST * ion ** 2 /
-                            (fit_line.amplitude_L.value * u.Unit('(kg m4)/(s3 A2)'))
-                            ).decompose().to('cm/s'))
+            # v_dop = np.abs((ion_info['osc_str'] / AMP_CONST * ion ** 2 /
+            #                 (fit_line.amplitude_L.value) * c.cgs
+            #                 ).decompose().to('cm')) 
+
+            fwhm_L = (fit_line.fwhm_L * x.unit).to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
+            v_dop = (fwhm_L * c.cgs / (2 * fit_line.fwhm * center[0])).decompose().to('cm/s')
+
+            # v_dop = ((ion_info['osc_str'] * ion * AMP_CONST * c.cgs) / fit_line.amplitude_L).decompose().to('cm/s')
+            print("Velocity:", v_dop)
 
             # Estimate the column density
             col_dens_over_tau = (v_dop / (TAU_FACTOR * ion_info['osc_str']) /
-                                 center[0]).decompose().to('1/cm2')
-            print(col_dens_over_tau)
+                                 center[0]).decompose().to('1/cm2') *0.1    
+            print("Column density:", col_dens_over_tau)
 
             # Add the line to the spectrum object
             line = TauProfile(lambda_0=center[0],

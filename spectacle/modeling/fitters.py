@@ -69,7 +69,7 @@ class MCMCFitter:
         fit_params = np.append(fit_params, 0.5)
 
         # Cache the number of dimensions of the problem, and walker count
-        ndim, nwalkers = len(fit_params), 10
+        ndim, nwalkers = len(fit_params), 100
 
         # Initialize starting positions of walkers in a Gaussian ball
         pos = [fit_params + 1e-4 * np.random.randn(ndim)
