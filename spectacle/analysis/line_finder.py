@@ -11,7 +11,7 @@ from ..modeling import *
 
 from .initializers import Voigt1DInitializer
 
-AMP_CONST = 8.854187817e-13 * u.Unit('1/cm')# (np.pi * np.exp(2)) / (m_e.cgs * c.cgs) * 0.001
+AMP_CONST = 8.854187817e-13 * u.Unit('cm')# (np.pi * np.exp(2)) / (m_e.cgs * c.cgs) * 0.001
 PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
 TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /
                (m_e.cgs * c.cgs))).cgs
@@ -28,11 +28,11 @@ class LineFinder(Fittable2DModel):
     z : float
         Redshift value of the resultant spectrum.
     threshold : float
-        Normalized threshold used in peak finder. Only the peaks with 
+        Normalized threshold used in peak finder. Only the peaks with
         amplitude higher than the threshold will be detected.
     min_distance : float
-        Minimum distance between each detected peak used in peak finder. The 
-        peak with the highest amplitude is preferred to satisfy this 
+        Minimum distance between each detected peak used in peak finder. The
+        peak with the highest amplitude is preferred to satisfy this
         constraint.
     """
     inputs = ('x', 'y')
@@ -43,10 +43,11 @@ class LineFinder(Fittable2DModel):
 
     center = Parameter(default=0, min=0, unit=u.Unit('Angstrom'), fixed=True)
     z = Parameter(default=0, min=0, fixed=True)
-    threshold = Parameter(default=0.5, min=0)
+    threshold = Parameter(default=0.1, min=0)
     min_distance = Parameter(default=30, min=0.1)
     rel_tol = Parameter(default=1e-2, min=1e-10, max=1)
     abs_tol = Parameter(default=1e-4, min=1e-10, max=1)
+    width = Parameter(default=40, min=2)
 
     input_units = {'x': u.Unit('km/s')}
 
@@ -73,7 +74,8 @@ class LineFinder(Fittable2DModel):
              lambda x: VelocityConvert(self.center)(x * u.Unit('Angstrom')))
         ]}
 
-    def evaluate(self, x, y, center, z, threshold, min_distance, rel_tol, abs_tol):
+    def evaluate(self, x, y, center, z, threshold, min_distance, rel_tol,
+                 abs_tol, width):
         """
         Evaluate `LineFinder` model.
         """
@@ -110,13 +112,14 @@ class LineFinder(Fittable2DModel):
 
             # Given the peak found by the peak finder, select the corresponding
             # region found in the region finder
-            filt_reg = [(rl, rr) for rl, rr in self._regions
-                        if x[rl] <= peak <= x[rr]]
+            # filt_reg = [(rl, rr) for rl, rr in self._regions
+            #             if x[rl] <= peak <= x[rr]]
 
             # Create the mask that can be applied to the original data to produce
             # data only with the particular region we're interested in
-            mask = np.logical_or.reduce([(x > x[rl]) & (x <= x[rr])
-                                         for rl, rr in filt_reg])
+            # mask = np.logical_or.reduce([(x > x[rl]) & (x <= x[rr])
+            #                              for rl, rr in filt_reg])
+            mask = ((x > x[ind - int(width)]) & (x < x[ind + int(width)]))
 
             # Estimate the voigt parameters
             voigt = ExtendedVoigt1D()
@@ -133,18 +136,23 @@ class LineFinder(Fittable2DModel):
             # Estimate the doppler b parameter
             # v_dop = np.abs((ion_info['osc_str'] / AMP_CONST * ion ** 2 /
             #                 (fit_line.amplitude_L.value) * c.cgs
-            #                 ).decompose().to('cm')) 
+            #                 ).decompose().to('cm'))
 
-            fwhm_L = (fit_line.fwhm_L * x.unit).to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
-            v_dop = (fwhm_L * c.cgs / (2 * fit_line.fwhm * center[0])).decompose().to('cm/s')
+            print(fit_line.amplitude_L, y[ind])
 
-            # v_dop = ((ion_info['osc_str'] * ion * AMP_CONST * c.cgs) / fit_line.amplitude_L).decompose().to('cm/s')
-            print("Velocity:", v_dop)
+            fwhm_L = fit_line.fwhm_L # * x.unit).to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
+            # v_dop = (fwhm_L * c.cgs / (fit_line.fwhm * center[0])).decompose().to('cm/s')
+            v_dop = (c.cgs * ion_info['osc_str'] * center[0] / (fit_line.amplitude_L * ion_info['gamma'] * AMP_CONST)).to('cm/s')
+
+            # v_dop = ((ion_info['osc_str'] * AMP_CONST * c.cgs) / (ion * fit_line.amplitude_L)).decompose().to('cm/s')
+            print("Velocity: {:g}".format(v_dop))
 
             # Estimate the column density
-            col_dens_over_tau = (v_dop / (TAU_FACTOR * ion_info['osc_str']) /
-                                 center[0]).decompose().to('1/cm2') *0.1    
-            print("Column density:", col_dens_over_tau)
+            # col_dens_over_tau = (v_dop / (TAU_FACTOR * ion_info['osc_str']) /
+            #                      center[0]).decompose().to('1/cm2')
+            col_dens_over_tau = (ion_info['osc_str'] * center[0]**2 * c.cgs / (center[0] * v_dop * AMP_CONST)).decompose() * u.Unit('1/cm^2')
+
+            print("Column density: {:g}".format(col_dens_over_tau))
 
             # Add the line to the spectrum object
             line = TauProfile(lambda_0=center[0],
@@ -153,6 +161,7 @@ class LineFinder(Fittable2DModel):
                               column_density=col_dens_over_tau)
 
             spectrum.add_line(model=line)
+            # spectrum.append(fit_line)
 
         # Fit the spectrum mode to the given data
         # fitter = LevMarLSQFitter()
