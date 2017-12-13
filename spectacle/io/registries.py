@@ -2,8 +2,10 @@ import logging
 import os
 
 from astropy.table import Table
+import astropy.units as u
 
 from ..utils.spell import SpellCorrector
+from ..utils import find_nearest
 
 
 class LineRegistry(Table):
@@ -14,6 +16,12 @@ class LineRegistry(Table):
         name = self.correct(name)
 
         return next((row for row in self if row['name'] == name), None)
+
+    def with_lambda(self, lambda_0):
+        lambda_0 = u.Quantity(lambda_0, u.Unit('Angstrom'))
+        ind = find_nearest(self['wave'], lambda_0.value)
+
+        return self[ind]
 
     def correct(self, name):
         _corrector = SpellCorrector(list(self['name']))

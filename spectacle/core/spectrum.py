@@ -205,6 +205,9 @@ class Spectrum1D:
 
         comp_mod = (dc | rs | lm | ss) if lm is not None else (dc | rs | ss)
 
+        if self.lsf is not None:
+            comp_mod = comp_mod | self.lsf
+
         return model_factory(comp_mod, 'OpticalDepth')
 
     @property
@@ -224,6 +227,9 @@ class Spectrum1D:
         comp_mod = (dc | rs | (cm + (lm | fc)) |
                     ss) if lm is not None else (dc | rs | cm | ss)
 
+        if self.lsf is not None:
+            comp_mod = comp_mod | self.lsf
+
         return comp_mod.rename("FluxModel")
 
     @property
@@ -242,6 +248,9 @@ class Spectrum1D:
 
         comp_mod = (dc | rs | (cm + (lm | fd)) |
                     ss) if lm is not None else (dc | rs | cm | ss)
+
+        if self.lsf is not None:
+            comp_mod = comp_mod | self.lsf
 
         return comp_mod.rename("FluxDecrementModel")
 
