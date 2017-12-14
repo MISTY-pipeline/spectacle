@@ -237,7 +237,7 @@ class ExtendedVoigt1D(Voigt1D):
         fwhm : float
             The estimate of the FWHM
         """
-        fwhm = 0.5346 * self.fwhm_L + np.sqrt(0.2166 * (self.fwhm_L ** 2.)
-                                              + self.fwhm_G ** 2.)
+        fwhm = 0.5346 * self.fwhm_L + np.sqrt(0.2166 * (self.fwhm_L ** 2)
+                                              + self.fwhm_G ** 2)
 
         return fwhm
