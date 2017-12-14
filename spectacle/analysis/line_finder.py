@@ -8,11 +8,13 @@ from astropy.modeling import Fittable2DModel
 
 from ..core.spectrum import Spectrum1D
 from ..modeling import *
+from ..modeling.fitters import MCMCFitter
 
 from .initializers import Voigt1DInitializer
 
 # (np.pi * np.exp(2)) / (m_e.cgs * c.cgs) * 0.001
-AMP_CONST = 8.854187817e-13 * u.Unit('1/cm')
+AMP_CONST = np.pi * np.e ** 2 / (
+m_e.cgs * c.cgs)  # 8.854187817e-13 * u.Unit('1/cm')
 PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
 TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /
                (m_e.cgs * c.cgs))).cgs
@@ -53,7 +55,8 @@ class LineFinder(Fittable2DModel):
 
     input_units = {'x': u.Unit('km/s')}
 
-    def __init__(self, x, y, ion=None, data_type='optical_depth',
+    def __init__(self, x, y, ion_name=None, data_type='optical_depth',
+                 defaults=None,
                  *args, **kwargs):
         super(LineFinder, self).__init__(*args, **kwargs)
 
@@ -67,26 +70,34 @@ class LineFinder(Fittable2DModel):
         self._result_model = None
         self._regions = None
         self._x = x
+        self.input_units['x'] = x.unit
         self._y = y
+        self._line_defaults = defaults or {}
 
-        if ion is not None:
-            ion = line_registry.with_name(ion)
-            self.center = ion['wave'] * line_registry['wave'].unit
+        if 'lambda_0' in self._line_defaults:
+            self.center = self._line_defaults.get('lambda_0')
+            self._ion_info = line_registry.with_lambda(self.center)
+        elif ion_name is not None:
+            self._ion_info = line_registry.with_name(ion_name)
+            self.center = self._ion_info['wave'] * line_registry['wave'].unit
 
     @property
     def input_units_equivalencies(self):
         """
         Unit equivalencies used by `LineFinder`.
         """
-        return {'x': [
-            (u.Unit('km/s'), u.Unit('Angstrom'),
-             lambda x: WavelengthConvert(
-                 self.center)(x * u.Unit('km/s')),
-             lambda x: VelocityConvert(self.center)(x * u.Unit('Angstrom')))
-        ]}
+        vel_to_wave = (u.Unit('km/s'), u.Unit('Angstrom'),
+                       lambda x: WavelengthConvert(
+                           self.center)(x * u.Unit('km/s')),
+                       lambda x: VelocityConvert(self.center)(
+                           x * u.Unit('Angstrom')))
 
-    def evaluate(self, x, y, center, redshift, threshold, min_distance, rel_tol,
-                 abs_tol, width):
+        u.set_enabled_equivalencies([vel_to_wave])
+
+        return {'x': [vel_to_wave]}
+
+    def evaluate(self, x, y, center, redshift, threshold, min_distance,
+                 rel_tol, abs_tol, width):
         """
         Evaluate `LineFinder` model.
         """
@@ -96,12 +107,10 @@ class LineFinder(Fittable2DModel):
         # quantity unit as a reference for future iterations.
         if isinstance(x, u.Quantity):
             self.input_units = {'x': x.unit}
-
         x = u.Quantity(x, self.input_units['x'])
+        print(x.unit)
         center = center[0]
         redshift = redshift[0]
-
-        ion_info = line_registry.with_lambda(center)
 
         logging.info(
             "Relative tolerance: %f, Absolute Tolerance: %f", rel_tol, abs_tol)
@@ -118,9 +127,18 @@ class LineFinder(Fittable2DModel):
             self._regions = find_regions(y, rel_tol=rel_tol, abs_tol=abs_tol)
 
         for ind in indexes:
+            line_kwargs = {'lambda_0': center}
             peak = u.Quantity(x[ind], x.unit)
-            dv = peak.to('km/s', equivalencies=self.input_units_equivalencies['x']) - center.to(
-                'km/s', equivalencies=self.input_units_equivalencies['x'])
+            print("Found peak at: ", peak)
+
+            if x.unit.physical_type == 'length':
+                line_kwargs['delta_lambda'] = peak.to('Angstrom') - center.to(
+                    'Angstrom')
+            elif x.unit.physical_type == 'speed':
+                line_kwargs['delta_v'] = peak.to('km/s') - center.to('km/s')
+            else:
+                logging.error(
+                    "Could not get physical type of dispersion axis unit.")
 
             # Given the peak found by the peak finder, select the corresponding
             # region found in the region finder
@@ -145,40 +163,36 @@ class LineFinder(Fittable2DModel):
 
             fit_line = fitter(init_voigt, x[mask].value, y[mask], maxiter=200)
 
+            print("\tFWHM_L:", fit_line.fwhm_L.value)
+            print("\tFWHM:", fit_line.fwhm)
+
             # Estimate the doppler b parameter
-            # v_dop = np.abs((ion_info['osc_str'] / AMP_CONST * ion ** 2 /
-            #                 (fit_line.amplitude_L.value) * c.cgs
-            #                 ).decompose().to('cm'))
+            fwhm_L = fit_line.fwhm_L * x.unit
+            fwhm = fit_line.fwhm * x.unit
+            peak_lambda = peak.to('Angstrom')
 
-            print(fit_line.amplitude_L, y[ind])
-
-            fwhm_L = (fit_line.fwhm_L * x.unit).to('Angstrom',
-                                                   equivalencies=self.input_units_equivalencies['x'])
-            print("Gamma: {:g}".format(fwhm_L.to('cm')))
-            # v_dop = (fwhm_L * c.cgs / (fit_line.fwhm * center[0])).decompose().to('cm/s')
-            # v_dop = (AMP_CONST * c.cgs * ion_info['osc_str'] * center[0] / (fit_line.amplitude_L)).to('cm/s')
-            print(center)
-            v_dop = (c.cgs * fwhm_L /
-                     (2 * center * fit_line.fwhm)).decompose().to('cm/s')
-            print(v_dop)
-            print("Velocity: {:g}".format(v_dop))
+            # v_dop = (c.cgs * fwhm_L / (2 * fwhm * peak_lambda.value)).to('cm/s')
+            v_dop = (np.sqrt(
+                1729929 * fwhm_L ** 2 - 26730000 * fwhm_L * fwhm + 25000000 * fwhm ** 2) / (
+                     5000 * np.sqrt(16))).to('cm/s') * 3
+            print("\tVelocity: {:g}".format(v_dop))
 
             # Estimate the column density
-            # col_dens_over_tau = (v_dop / (TAU_FACTOR * ion_info['osc_str']) /
-            #                      center[0]).decompose().to('1/cm2')
-            # col_dens_over_tau = (ion_info['osc_str'] * center[0]**2 * c.cgs /
-            #                      (center[0] * v_dop * AMP_CONST)).decompose() * u.Unit('1/cm^2')
-            # col_dens = (v_dop * 10 * u.Unit('1/cm') / (TAU_FACTOR * ion_info['osc_str'])).to('1/cm2')
-            col_dens = y[ind] / (SIGMA * ion_info['osc_str']
-                                 * fit_line(x[ind].value))
+            f_value = self._line_defaults.get('f_value',
+                                              self._ion_info['osc_str'])
+            col_dens = (y[ind] / (TAU_FACTOR * f_value * center
+                                          * fit_line(x[ind].value) * u.Unit('s/km'))).to(
+                '1/cm2') * 10
 
-            print("Column density: {:g}".format(col_dens))
+            print("\tColumn density: {:g}".format(col_dens))
+
+            line_kwargs.update({'v_doppler': v_dop,
+                                'column_density': col_dens})
+
+            line_kwargs.update(self._line_defaults)
 
             # Add the line to the spectrum object
-            line = TauProfile(lambda_0=center,
-                              delta_v=dv,
-                              v_doppler=v_dop,
-                              column_density=col_dens)
+            line = TauProfile(**line_kwargs)
 
             spectrum.add_line(model=line)
             # spectrum.append(fit_line)
@@ -211,7 +225,62 @@ class LineFinder(Fittable2DModel):
         return self._regions
 
     def fit(self, *args, **kwargs):
-        fitter = LevMarLSQFitter(*args, **kwargs)
+        fitter = MCMCFitter(*args, **kwargs) #LevMarLSQFitter(*args, **kwargs)
         fit_finder_model = fitter(self, self._x, self._y, self._y)
 
         return fit_finder_model.result_model
+
+    def _estimate_voigt(self):
+        spectrum = Spectrum1D(center=self.center, redshift=self.redshift)
+
+        for line in self._estimated_model:
+            line_kwargs = {'lambda_0': self.center}
+
+            # Store the peak of this absorption feature, note that this is not
+            # the center of the ion
+            peak = line.center * self._x.unit
+
+            # Get the index of this line model's centroid
+            ind = (np.abs(self._x.value - peak.value)).argmin()
+
+            if self._x.unit.physical_type == 'length':
+                line_kwargs['delta_lambda'] = peak.to('Angstrom') - self.center.to(
+                    'Angstrom')
+            elif self._x.unit.physical_type == 'speed':
+                line_kwargs['delta_v'] = peak.to('km/s') - self.center.to('km/s')
+            else:
+                logging.error(
+                    "Could not get physical type of dispersion axis unit.")
+
+
+            # Estimate the doppler b parameter
+            fwhm_L = line.fwhm_L * self._x.unit
+            fwhm = line.fwhm * self._x.unit
+
+            # v_dop = (c.cgs * fwhm_L / (2 * fwhm * peak_lambda.value)).to('cm/s')
+            v_dop = (np.sqrt(
+                1729929 * fwhm_L ** 2 - 26730000 * fwhm_L * fwhm + 25000000 * fwhm ** 2) / (
+                     5000 * np.sqrt(16))).to('cm/s') * 3
+
+            print("\tVelocity: {:g}".format(v_dop))
+
+            # Estimate the column density
+            f_value = self._line_defaults.get('f_value',
+                                              self._ion_info['osc_str'])
+            col_dens = (self._y[ind] / (TAU_FACTOR * f_value * self.center
+                                          * line(self._x[ind].value) * u.Unit('s/km'))).to(
+                '1/cm2') * 10
+
+            print("\tColumn density: {:g}".format(col_dens))
+
+            line_kwargs.update({'v_doppler': v_dop,
+                                'column_density': col_dens})
+
+            line_kwargs.update(self._line_defaults)
+
+            # Add the line to the spectrum object
+            line = TauProfile(**line_kwargs)
+
+            spectrum.add_line(model=line)
+
+        self._result_model = getattr(spectrum, self._data_type)
