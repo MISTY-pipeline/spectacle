@@ -65,7 +65,7 @@ class Voigt1DInitializer(object):
 
         # amplitude is derived from area.
         delta_x = x[1:] - x[:-1]
-        sum_y = np.sum((y[1:] - np.min(y[1:])) * delta_x)
+        sum_y = np.sum((y[1:]) * delta_x)
         height = sum_y / (fwhm / 2.355 * np.sqrt( 2 * np.pi))
 
         _setattr(instance, 'amplitude_L', height * self._factor)
