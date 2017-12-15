@@ -2,11 +2,11 @@ import logging
 
 import astropy.units as u
 from astropy.modeling import models, Fittable1DModel
-from astropy.modeling.models import Linear1D
+from astropy.modeling.models import Linear1D, RedshiftScaleFactor
 
 from ..modeling.converters import (DispersionConvert, FluxConvert,
                                    FluxDecrementConvert)
-from ..modeling.custom import Redshift, SmartScale
+from ..modeling.custom import SmartScale
 from ..modeling.profiles import TauProfile
 
 from ..io.registries import line_registry
@@ -33,8 +33,8 @@ class Spectrum1D:
             ion = line_registry.with_name(ion)
             self._center = ion['wave'] * line_registry['wave'].unit
 
-        self._redshift_model = Redshift(
-            **({'z': redshift or 0})).inverse
+        self._redshift_model = RedshiftScaleFactor(
+            **({'z': redshift or 0}))
 
         if continuum is not None and isinstance(continuum, Fittable1DModel):
             self._continuum_model = continuum
@@ -102,7 +102,7 @@ class Spectrum1D:
             The redshift value to use.
         """
         # TODO: include check on the input arguments
-        self._redshift_model = Redshift(z=value).inverse
+        self._redshift_model = RedshiftScaleFactor(z=value).inverse
 
     @property
     def continuum(self):
@@ -139,6 +139,10 @@ class Spectrum1D:
             return
 
         self._continuum_model = getattr(models, model)(*args, **kwargs)
+
+    @property
+    def line_model(self):
+        return self._line_model
 
     def add_line(self, name=None, *args, model=None, **kwargs):
         """
@@ -197,10 +201,12 @@ class Spectrum1D:
         Compound spectrum model in tau space.
         """
         dc = DispersionConvert(self._center)
-        rs = self._redshift_model
-        ss = SmartScale(tied={
-            'factor': lambda mod: 1. / (1 + self._redshift_model.z)
-        })
+        rs = self._redshift_model.inverse
+        ss = SmartScale(
+            factor=1. / (1 + self._redshift_model.z),
+            tied={
+                'factor': lambda mod: 1. / (1 + mod[1].z)
+            })
         lm = self._line_model
 
         comp_mod = (dc | rs | lm | ss) if lm is not None else (dc | rs | ss)
@@ -216,10 +222,12 @@ class Spectrum1D:
         Compound spectrum model in flux space.
         """
         dc = DispersionConvert(self._center)
-        rs = self._redshift_model
-        ss = SmartScale(tied={
-            'factor': lambda mod: 1. / (1 + self._redshift_model.z)
-        })
+        rs = self._redshift_model.inverse
+        ss = SmartScale(
+            factor=1. / (1 + self._redshift_model.z),
+            tied={
+                'factor': lambda mod: 1. / (1 + self._redshift_model.z)
+            })
         cm = self._continuum_model
         lm = self._line_model
         fc = FluxConvert()
