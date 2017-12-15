@@ -224,6 +224,11 @@ class TauProfile(Fittable1DModel):
 
 
 class ExtendedVoigt1D(Voigt1D):
+    x_0 = Parameter(default=0)
+    amplitude_L = Parameter(default=1)
+    fwhm_L = Parameter(default=2/np.pi, min=0)
+    fwhm_G = Parameter(default=np.log(2), min=0)
+
     @property
     def fwhm(self):
         """
