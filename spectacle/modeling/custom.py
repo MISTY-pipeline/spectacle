@@ -35,17 +35,6 @@ class SmartScale(Scale):
         return OrderedDict()
 
 
-class Redshift(RedshiftScaleFactor):
-    z = Parameter(default=0, min=0, fixed=True)
-
-    @property
-    def input_units(*args, **kwargs):
-        return {'x': u.Unit('Angstrom')}
-
-    def _parameter_units_for_data_units(self, input_units, output_units):
-        return OrderedDict()
-
-
 class Masker(Fittable2DModel):
     """
     Model for masking uninteresting features in a spectrum and dispersion

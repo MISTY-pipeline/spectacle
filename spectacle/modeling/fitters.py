@@ -78,9 +78,9 @@ class MCMCFitter:
         sampler = emcee.EnsembleSampler(nwalkers, ndim, self.lnprob,
                                         args=(x, y, yerr, model))
 
-        sampler.run_mcmc(pos, 100, rstate0=np.random.get_state())
+        sampler.run_mcmc(pos, 20, rstate0=np.random.get_state())
 
-        burnin = 50
+        burnin = 1
         samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))
 
         # Compute the quantiles.
