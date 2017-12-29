@@ -182,9 +182,6 @@ class TauProfile(Fittable1DModel):
 
         return fwhm
 
-    def quick_fwhm(self):
-        return self.gamma / self.v_doppler / 2
-
     def dv90(self):
         velocity = np.linspace(-10000, 10000, 1000) * u.Unit('km/s')
 
