@@ -40,7 +40,8 @@ class Spectrum1D:
             self._continuum_model = continuum
         else:
             self._continuum_model = Linear1D(
-                slope=0 * u.Unit('1/Angstrom'), intercept=1 * u.Unit(''))
+                slope=0 * u.Unit('1/Angstrom'), intercept=1 * u.Unit(''),
+                fixed={'slope': True, 'intercept': True})
 
             logging.info("Default continuum set to a Linear1D model.")
 
@@ -203,10 +204,11 @@ class Spectrum1D:
         dc = DispersionConvert(self._center)
         rs = self._redshift_model.inverse
         ss = SmartScale(
-            factor=1. / (1 + self._redshift_model.z),
+            # factor=1. / (1 + self._redshift_model.z),
             tied={
-                'factor': lambda mod: 1. / (1 + mod[1].z)
-            })
+                'factor': lambda mod: 1. / (1 + mod[1].inverse.z)
+            },
+            fixed={'factor': True})
         lm = self._line_model
 
         comp_mod = (dc | rs | lm | ss) if lm is not None else (dc | rs | ss)
@@ -224,21 +226,21 @@ class Spectrum1D:
         dc = DispersionConvert(self._center)
         rs = self._redshift_model.inverse
         ss = SmartScale(
-            factor=1. / (1 + self._redshift_model.z),
+            # factor=1. / (1 + self._redshift_model.z),
             tied={
                 'factor': lambda mod: 1. / (1 + self._redshift_model.z)
-            })
+            },
+            fixed={'factor': True})
         cm = self._continuum_model
         lm = self._line_model
         fc = FluxConvert()
 
-        comp_mod = (dc | rs | (cm + (lm | fc)) |
-                    ss) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = (dc | rs | (cm + (lm | fc))) if lm is not None else (dc | rs | cm)
 
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return comp_mod.rename("FluxModel")
+        return model_factory(comp_mod, 'Flux')
 
     @property
     def flux_decrement(self):
@@ -250,9 +252,12 @@ class Spectrum1D:
         cm = self._continuum_model
         lm = self._line_model
         fd = FluxDecrementConvert()
-        ss = SmartScale(tied={
-            'factor': lambda mod: 1. / (1 + self._redshift_model.z)
-        })
+        ss = SmartScale(
+            # factor=1. / (1 + self._redshift_model.z),
+            tied={
+                'factor': lambda mod: 1. / (1 + self._redshift_model.z)
+            },
+            fixed={'factor': True})
 
         comp_mod = (dc | rs | (cm + (lm | fd)) |
                     ss) if lm is not None else (dc | rs | cm | ss)
@@ -260,7 +265,7 @@ class Spectrum1D:
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return comp_mod.rename("FluxDecrementModel")
+        return model_factory(comp_mod, 'FluxDecrement')
 
 
 def model_factory(bases, name="BaseModel"):
