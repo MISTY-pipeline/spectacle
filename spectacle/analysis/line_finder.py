@@ -3,6 +3,7 @@ import logging
 import astropy.units as u
 import numpy as np
 import peakutils
+import scipy.integrate as integrate
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel
 from astropy.modeling.models import Linear1D
@@ -15,7 +16,7 @@ from .initializers import Voigt1DInitializer
 
 # (np.pi * np.exp(2)) / (m_e.cgs * c.cgs) * 0.001
 AMP_CONST = np.pi * np.e ** 2 / (
-m_e.cgs * c.cgs)  # 8.854187817e-13 * u.Unit('1/cm')
+    m_e.cgs * c.cgs)  # 8.854187817e-13 * u.Unit('1/cm')
 PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
 TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /
                (m_e.cgs * c.cgs))).cgs
@@ -114,10 +115,16 @@ class LineFinder(Fittable2DModel):
             "Relative tolerance: %f, Absolute Tolerance: %f", rel_tol, abs_tol)
         logging.info("Threshold: %f, Minimum Distance: %f",
                      threshold, min_distance)
+
+        if self._data_type != 'optical_depth':
+            y = max(y) - y
+
         indexes = peakutils.indexes(y, thres=threshold, min_dist=min_distance)
         logging.info("Found %i peaks.", len(indexes))
 
-        abs_lines = Linear1D(0, 0, fixed={'slope': True, 'intercept': True})
+        abs_lines = Linear1D(slope=0,
+                             intercept=0 if self._data_type == 'optical_depth' else 1,
+                             fixed={'slope': True, 'intercept': True})
 
         # Get the interesting regions within the data provided. Don't bother
         # calculating more than once, since y doesn't change.
@@ -150,15 +157,16 @@ class LineFinder(Fittable2DModel):
 
             fit_line = fitter(init_voigt, x[mask].value, y[mask], maxiter=200)
 
-            abs_lines += fit_line
+            abs_lines = abs_lines + \
+                fit_line #if self._data_type == 'optical_depth' else abs_lines - fit_line
 
         # Fit the spectrum mode to the given data
         # fitter = LevMarLSQFitter()
 
         # fitter(spectrum.optical_depth, x, y, maxiter=1000)
-        self._estimated_model = abs_lines #getattr(spectrum, self._data_type)
+        self._estimated_model = abs_lines  # getattr(spectrum, self._data_type)
 
-        return self._estimated_model(x.value)
+        return self._estimate_voigt()(x)
 
     def _parameter_units_for_data_units(self, input_units, output_units):
         return OrderedDict()
@@ -183,7 +191,7 @@ class LineFinder(Fittable2DModel):
         return self._regions
 
     def fit(self, *args, **kwargs):
-        fitter = LevMarLSQFitter() #MCMCFitter() #
+        fitter = LevMarLSQFitter()  # MCMCFitter() #
         fit_finder = fitter(self, self._x, self._y, self._y)
 
         # Iterate model
@@ -203,6 +211,7 @@ class LineFinder(Fittable2DModel):
             # Store the peak of this absorption feature, note that this is not
             # the center of the ion
             peak = line.x_0.value * self._x.unit
+            deredshifted_peak = spectrum._redshift_model.inverse(peak)
 
             print("Peak: {}, Center: {}".format(peak, center))
 
@@ -210,23 +219,25 @@ class LineFinder(Fittable2DModel):
             ind = (np.abs(self._x.value - peak.value)).argmin()
 
             if self._x.unit.physical_type == 'length':
-                line_kwargs['delta_lambda'] = peak.to('Angstrom') - redshifted_center.to(
+                line_kwargs['delta_lambda'] = deredshifted_peak.to('Angstrom') - center.to(
                     'Angstrom')
             elif self._x.unit.physical_type == 'speed':
-                line_kwargs['delta_v'] = np.abs(peak.to('km/s') - redshifted_center.to('km/s'))
+                line_kwargs['delta_v'] = deredshifted_peak.to(
+                    'km/s') - center.to('km/s')
             else:
                 logging.error(
                     "Could not get physical type of dispersion axis unit.")
-
 
             # Estimate the doppler b parameter
             fwhm_L = line.fwhm_L * self._x.unit
             fwhm = line.fwhm * self._x.unit
 
             # v_dop = (c.cgs * fwhm_L / (2 * fwhm * peak_lambda.value)).to('cm/s')
-            v_dop = (np.sqrt(
-                1729929 * fwhm_L ** 2 - 26730000 * fwhm_L * fwhm + 25000000 * fwhm ** 2) / (
-                     5000 * np.sqrt(np.log(16))))
+            # v_dop = (np.sqrt(
+            #     1729929 * fwhm_L ** 2 - 26730000 * fwhm_L * fwhm + 25000000 * fwhm ** 2) / (
+            #     5000 * np.sqrt(np.log(16))))
+            v_dop = np.sqrt(0.0249576 * fwhm_L ** 2 - 0.385632 * fwhm_L *
+                            fwhm + 0.360674 * fwhm ** 2)
 
             if self._x.unit.physical_type == 'length':
                 v_dop = (v_dop * c.cgs) / center
@@ -236,9 +247,12 @@ class LineFinder(Fittable2DModel):
             # Estimate the column density
             f_value = self._line_defaults.get('f_value',
                                               self._ion_info['osc_str'])
-            col_dens = (self._y[ind] / (TAU_FACTOR * f_value * center
-                                          * line(self._x[ind].value) * u.Unit('s/km'))).to(
-                '1/cm2')
+
+            # col_dens = (self._y[ind] / (TAU_FACTOR * f_value * deredshifted_peak
+            #                        * line(self._x[ind].value) * u.Unit('s/km'))).to(
+            #     '1/cm2') * 5
+            col_dens = (np.trapz(line(self._x.value), self._x.value) * u.Unit(
+                'kg/(s2 * Angstrom)') * SIGMA * f_value * center.to('Angstrom')).to('1/cm2')
 
             print("\tColumn density: {:g}".format(col_dens))
 
