@@ -31,35 +31,31 @@ class MCMCFitter:
 
     @classmethod
     def lnlike(cls, theta, x, y, yerr, model):
-        try:
-            # Convert the array of parameter values back into model parameters
-            _fitter_to_model_params(model, theta[:-1])
+        # Convert the array of parameter values back into model parameters
+        _fitter_to_model_params(model, theta[:-1])
+        mod_y = model(x, y)
+        inv_sigma2 = 1.0 / (yerr ** 2 + mod_y ** 2 * np.exp(2 * theta[-1]))
+        res = -0.5 * (
+            np.sum((y - mod_y) ** 2 * inv_sigma2 - np.log(inv_sigma2)))
 
-            mod_y = model(x, y)
-
-            inv_sigma2 = 1.0 / (yerr ** 2 + mod_y ** 2 * np.exp(2 * theta[-1]))
-
-            res = -0.5 * (
-                np.sum((y - mod_y) ** 2 * inv_sigma2 - np.log(inv_sigma2)))
-
-            return res
-        except:
-            logging.error("Something bad happened.")
-
-            return 0
+        return res
 
     @classmethod
     def lnprob(cls, theta, x, y, yerr, model):
         model = model.copy()
-
         lp = cls.lnprior(theta, model)
 
         if not np.isfinite(lp):
             return -np.inf
 
-        return lp + cls.lnlike(theta, x, y, yerr, model)
+        ll = cls.lnlike(theta, x, y, yerr, model)
 
-    def __call__(self, model, x, y, yerr=None):
+        if np.isnan(ll):
+            return -np.inf
+
+        return lp + ll
+
+    def __call__(self, model, x, y, yerr=None, nwalkers=100, steps=500):
         # If no errors are provided, assume all errors are normalized
         if yerr is None:
             yerr = np.ones(shape=x.shape)
@@ -69,18 +65,16 @@ class MCMCFitter:
         fit_params = np.append(fit_params, 0.5)
 
         # Cache the number of dimensions of the problem, and walker count
-        ndim, nwalkers = len(fit_params), 20
+        ndim = len(fit_params)
 
         # Initialize starting positions of walkers in a Gaussian ball
-        pos = [fit_params + 1e-2 * np.random.randn(ndim)
+        pos = [fit_params + fit_params * 0.1 * np.random.randn(ndim)
                for i in range(nwalkers)]
-
         sampler = emcee.EnsembleSampler(nwalkers, ndim, self.lnprob,
                                         args=(x, y, yerr, model))
+        sampler.run_mcmc(pos, steps, rstate0=np.random.get_state())
 
-        sampler.run_mcmc(pos, 20, rstate0=np.random.get_state())
-
-        burnin = 1
+        burnin = int(steps * 0.1)
         samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))
 
         # Compute the quantiles.
