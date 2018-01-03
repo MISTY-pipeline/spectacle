@@ -2,11 +2,11 @@ import logging
 
 import astropy.units as u
 from astropy.modeling import models, Fittable1DModel
-from astropy.modeling.models import Linear1D, RedshiftScaleFactor
+from astropy.modeling.models import Linear1D
 
 from ..modeling.converters import (DispersionConvert, FluxConvert,
                                    FluxDecrementConvert)
-from ..modeling.custom import SmartScale
+from ..modeling.custom import SmartScale, Redshift
 from ..modeling.profiles import TauProfile
 
 from ..io.registries import line_registry
@@ -33,8 +33,7 @@ class Spectrum1D:
             ion = line_registry.with_name(ion)
             self._center = ion['wave'] * line_registry['wave'].unit
 
-        self._redshift_model = RedshiftScaleFactor(
-            **({'z': redshift or 0}))
+        self._redshift_model = Redshift(**({'z': redshift or 0}))
 
         if continuum is not None and isinstance(continuum, Fittable1DModel):
             self._continuum_model = continuum
@@ -103,7 +102,7 @@ class Spectrum1D:
             The redshift value to use.
         """
         # TODO: include check on the input arguments
-        self._redshift_model = RedshiftScaleFactor(z=value).inverse
+        self._redshift_model = Redshift(z=value)
 
     @property
     def continuum(self):

@@ -10,7 +10,11 @@ from ..modeling.converters import VelocityConvert, WavelengthConvert
 from ..modeling.profiles import TauProfile
 
 
-RedshiftScaleFactor._parameter_units_for_data_units = lambda *args, **kwargs: OrderedDict()
+class Redshift(RedshiftScaleFactor):
+    z = Parameter(default=0, min=0, fixed=True)
+
+    def _parameter_units_for_data_units(self, *args, **kargs):
+        return OrderedDict()
 
 
 class SmartScale(Scale):
