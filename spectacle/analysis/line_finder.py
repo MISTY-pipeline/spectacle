@@ -133,7 +133,6 @@ class LineFinder(Fittable2DModel):
 
         for ind in indexes:
             peak = u.Quantity(x[ind], x.unit)
-            print("Found peak at: ", peak)
             # Given the peak found by the peak finder, select the corresponding
             # region found in the region finder
             # filt_reg = [(rl, rr) for rl, rr in self._regions
@@ -194,9 +193,6 @@ class LineFinder(Fittable2DModel):
         fitter = LevMarLSQFitter()  # MCMCFitter() #
         fit_finder = fitter(self, self._x, self._y, self._y)
 
-        # Iterate model
-        # print(fit_finder)
-
         return fit_finder.result_model
 
     def _estimate_voigt(self):
@@ -205,15 +201,12 @@ class LineFinder(Fittable2DModel):
         for line in self._estimated_model[1:]:
             center = self.center.value * self.center.unit
             redshifted_center = spectrum._redshift_model(center)
-            print("Center: {} ({})".format(center, redshifted_center))
             line_kwargs = {'lambda_0': center}
 
             # Store the peak of this absorption feature, note that this is not
             # the center of the ion
             peak = line.x_0.value * self._x.unit
             deredshifted_peak = spectrum._redshift_model.inverse(peak)
-
-            print("Peak: {}, Center: {}".format(peak, center))
 
             # Get the index of this line model's centroid
             ind = (np.abs(self._x.value - peak.value)).argmin()
@@ -242,8 +235,6 @@ class LineFinder(Fittable2DModel):
             if self._x.unit.physical_type == 'length':
                 v_dop = (v_dop * c.cgs) / center
 
-            print("\tVelocity: {:g}".format(v_dop))
-
             # Estimate the column density
             f_value = self._line_defaults.get('f_value',
                                               self._ion_info['osc_str'])
@@ -253,8 +244,6 @@ class LineFinder(Fittable2DModel):
             #     '1/cm2') * 5
             col_dens = (np.trapz(line(self._x.value), self._x.value) * u.Unit(
                 'kg/(s2 * Angstrom)') * SIGMA * f_value * center.to('Angstrom')).to('1/cm2')
-
-            print("\tColumn density: {:g}".format(col_dens))
 
             line_kwargs.update({'v_doppler': v_dop,
                                 'column_density': col_dens})
