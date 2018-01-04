@@ -33,7 +33,7 @@ class Spectrum1D:
             ion = line_registry.with_name(ion)
             self._center = ion['wave'] * line_registry['wave'].unit
 
-        self._redshift_model = Redshift(**({'z': redshift or 0}))
+        self._redshift_model = Redshift(**{'z': redshift or 0})
 
         if continuum is not None and isinstance(continuum, Fittable1DModel):
             self._continuum_model = continuum

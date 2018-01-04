@@ -182,8 +182,9 @@ class TauProfile(Fittable1DModel):
 
         return fwhm
 
-    def dv90(self):
-        velocity = np.linspace(-10000, 10000, 1000) * u.Unit('km/s')
+    @u.quantity_input(velocity='speed')
+    def dv90(self, velocity=None):
+        velocity = velocity or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
 
         def wave_space(val):
             return WavelengthConvert(center=self.lambda_0)(val)
@@ -212,7 +213,7 @@ class TauProfile(Fittable1DModel):
                             wave_space(velocity[mn]).value,
                             wave_space(velocity[mx]).value)
 
-        return (velocity[mn], velocity[mx])
+        return velocity[mx] - velocity[mn]
 
     def mask_range(self):
         fwhm = self.fwhm() * u.Unit('km/s')
