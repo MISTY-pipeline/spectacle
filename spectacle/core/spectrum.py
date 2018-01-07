@@ -8,6 +8,7 @@ from ..modeling.converters import (DispersionConvert, FluxConvert,
                                    FluxDecrementConvert)
 from ..modeling.custom import SmartScale, Redshift
 from ..modeling.profiles import TauProfile
+# from ..modeling.resample import ResampleModel
 
 from ..io.registries import line_registry
 
@@ -26,8 +27,7 @@ class NoLines(Exception):
 
 class Spectrum1D:
     def __init__(self, center=None, ion=None, redshift=None, continuum=None):
-        if center is not None:
-            self._center = u.Quantity(center, 'Angstrom')
+        self._center = u.Quantity(center or 0, 'Angstrom')
 
         if ion is not None:
             ion = line_registry.with_name(ion)
@@ -39,14 +39,15 @@ class Spectrum1D:
             self._continuum_model = continuum
         else:
             self._continuum_model = Linear1D(
-                slope=0 * u.Unit('1/Angstrom'), intercept=1 * u.Unit(''),
+                slope=0 * u.Unit('1/Angstrom'), intercept=1,
                 fixed={'slope': True, 'intercept': True})
 
             logging.info("Default continuum set to a Linear1D model.")
 
         self._line_model = None
-
-        self._lsf = None
+        self._lsf_model = None
+        self._noise_model = None
+        self._resample_model = None
 
     def copy(self):
         new_spectrum = Spectrum1D(center=self.center.value * self.center.unit)
@@ -177,7 +178,7 @@ class Spectrum1D:
         : `~astropy.modeling.modeling.Fittable1D`
             LSF kernel model.
         """
-        return self._lsf
+        return self._lsf_model
 
     @lsf.setter
     def lsf(self, value):
@@ -189,7 +190,37 @@ class Spectrum1D:
         value : `~astropy.modeling.modeling.Fittable1D`
             The model to use. Must take 'y' as input and give 'y' as output.
         """
-        self._lsf = value
+        if issubclass(value.__class__, Fittable1DModel) or value is None:
+            self._lsf_model = value
+        else:
+            logging.error("LSF model must be a subclass of `Fittable1DModel`.")
+
+    @property
+    def noise(self):
+        """
+        Reads the current noise model used in the compound spectrum model.
+
+        Returns
+        -------
+        : `~astropy.modeling.modeling.Fittable1D`
+            Noise model.
+        """
+        return self._noise_model
+
+    @noise.setter
+    def noise(self, value):
+        """
+        Sets the LSF model to be used in the compound spectrum model.
+
+        Parameters
+        ----------
+        value : `~astropy.modeling.modeling.Fittable1D`
+            The model to use. Must take 'y' as input and give 'y' as output.
+        """
+        if issubclass(value.__class__, Fittable1DModel) or value is None:
+            self._noise_model = value
+        else:
+            logging.error("Noise model must be a subclass of `Fittable1DModel`.")
 
     def _rebuild_compound_model(self, comp_mod):
         comp_mod.input_units = comp_mod[0].input_units
@@ -203,7 +234,6 @@ class Spectrum1D:
         dc = DispersionConvert(self._center)
         rs = self._redshift_model.inverse
         ss = SmartScale(
-            # factor=1. / (1 + self._redshift_model.z),
             tied={
                 'factor': lambda mod: 1. / (1 + mod[1].inverse.z)
             },
@@ -212,6 +242,8 @@ class Spectrum1D:
 
         comp_mod = (dc | rs | lm | ss) if lm is not None else (dc | rs | ss)
 
+        if self.noise is not None:
+            comp_mod = comp_mod | self.noise
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
@@ -225,7 +257,6 @@ class Spectrum1D:
         dc = DispersionConvert(self._center)
         rs = self._redshift_model.inverse
         ss = SmartScale(
-            # factor=1. / (1 + self._redshift_model.z),
             tied={
                 'factor': lambda mod: 1. / (1 + self._redshift_model.z)
             },
@@ -234,8 +265,10 @@ class Spectrum1D:
         lm = self._line_model
         fc = FluxConvert()
 
-        comp_mod = (dc | rs | (cm + (lm | fc))) if lm is not None else (dc | rs | cm)
+        comp_mod = (dc | rs | (cm + (lm | fc)) | ss) if lm is not None else (dc | rs | cm | ss)
 
+        if self.noise is not None:
+            comp_mod = comp_mod | self.noise
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
@@ -252,7 +285,6 @@ class Spectrum1D:
         lm = self._line_model
         fd = FluxDecrementConvert()
         ss = SmartScale(
-            # factor=1. / (1 + self._redshift_model.z),
             tied={
                 'factor': lambda mod: 1. / (1 + self._redshift_model.z)
             },
@@ -261,6 +293,8 @@ class Spectrum1D:
         comp_mod = (dc | rs | (cm + (lm | fd)) |
                     ss) if lm is not None else (dc | rs | cm | ss)
 
+        if self.noise is not None:
+            comp_mod = comp_mod | self.noise
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
@@ -279,6 +313,7 @@ def model_factory(bases, name="BaseModel"):
         input_units_allow_dimensionless = True
 
         input_units = {'x': u.Unit('Angstrom')}
+        output_units = {'y': u.Unit('')}
 
         input_units_equivalencies = {'x': [
                 (u.Unit('km/s'), u.Unit('Angstrom'),
