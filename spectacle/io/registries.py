@@ -13,9 +13,13 @@ class LineRegistry(Table):
         super(LineRegistry, self).__init__(*args, **kwargs)
 
     def with_name(self, name):
-        name = self.correct(name)
+        ion = next((row for row in self if row['name'] == name), None)
 
-        return next((row for row in self if row['name'] == name), None)
+        if ion is None:
+            name = self.correct(name)
+            ion = next((row for row in self if row['name'] == name), None)
+
+        return ion
 
     def with_lambda(self, lambda_0):
         lambda_0 = u.Quantity(lambda_0, u.Unit('Angstrom'))

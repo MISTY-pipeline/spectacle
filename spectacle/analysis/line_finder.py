@@ -5,7 +5,7 @@ import numpy as np
 import peakutils
 import scipy.integrate as integrate
 from astropy.constants import c, m_e
-from astropy.modeling import Fittable2DModel
+from astropy.modeling import Fittable2DModel, Parameter
 from astropy.modeling.models import Linear1D
 
 from ..core.spectrum import Spectrum1D
