@@ -5,6 +5,9 @@ import numpy as np
 from astropy.constants import c
 from astropy.modeling import Fittable1DModel, Parameter
 
+__all__ = ['VelocityConvert', 'WavelengthConvert',
+           'DispersionConvert', 'FluxConvert', 'FluxDecrementConvert']
+
 
 class VelocityConvert(Fittable1DModel):
     """

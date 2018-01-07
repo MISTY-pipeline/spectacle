@@ -11,7 +11,9 @@ from scipy.integrate import quad
 
 from ..io.registries import line_registry
 from ..utils import find_nearest
-from .converters import WavelengthConvert, VelocityConvert
+from .converters import VelocityConvert, WavelengthConvert
+
+__all__ = ['TauProfile', 'ExtendedVoigt1D']
 
 PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
 TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /

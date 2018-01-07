@@ -5,7 +5,7 @@ from astropy.convolution import Gaussian1DKernel, Kernel1D, convolve
 from astropy.modeling import Fittable1DModel, Parameter
 
 
-__all__ = ['COSLSFModel', 'GaussianLSFModels']
+__all__ = ['COSLSFModel', 'GaussianLSFModel']
 
 
 class COSKernel1D(Kernel1D):
@@ -27,8 +27,8 @@ class COSLSFModel(Fittable1DModel):
     """
     COS LSF model which can be used with the compound model objects.
     """
-    input = ('y',)
-    output = ('y',)
+    inputs = ('y',)
+    outputs = ('y',)
 
     @staticmethod
     def evaluate(y):
@@ -41,8 +41,8 @@ class GaussianLSFModel(Fittable1DModel):
     """
     Gaussian LSF model which can used with the compound model objects.
     """
-    input = ('y',)
-    output = ('y',)
+    inputs = ('y',)
+    outputs = ('y',)
 
     stddev = Parameter(default=0, min=0, fixed=True)
 
