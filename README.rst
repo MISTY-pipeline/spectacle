@@ -6,35 +6,36 @@ Spectacle
 .. image:: https://img.shields.io/pypi/v/spectacle.svg
         :target: https://pypi.python.org/pypi/spectacle
 
-.. image:: https://img.shields.io/travis/nmearl/spectacle.svg
-        :target: https://travis-ci.org/nmearl/spectacle
+.. image:: https://img.shields.io/travis/misty-pipeline/spectacle.svg
+        :target: https://travis-ci.org/misty-pipeline/spectacle
 
 .. image:: https://readthedocs.org/projects/spectacle/badge/?version=latest
-        :target: https://spectacle.readthedocs.io/en/latest/?badge=latest
+        :target: https://spectacle-py.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
-.. image:: https://pyup.io/repos/github/nmearl/spectacle/shield.svg
-     :target: https://pyup.io/repos/github/nmearl/spectacle/
+.. image:: https://pyup.io/repos/github/misty-pipeline/spectacle/shield.svg
+     :target: https://pyup.io/repos/github/misty-pipeline/spectacle/
      :alt: Updates
 
 
-Spectroscopic analysis package for simulated or observed spectra
+Spectroscopic analysis package for simulated or observed spectra.
 
 
 * Free software: MIT license
-* Documentation: https://spectacle.readthedocs.io.
+* Documentation: https://spectacle-py.readthedocs.io.
 
 
 Features
 --------
 
-* TODO
+* Analytic spectrum generation
+* Automatic line detection
+* Simultaneous line fitting
+* Multi-component modeling
+* Integrated analysis techniques
 
 Credits
 ---------
 
-This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypackage`_ project template.
-
-.. _Cookiecutter: https://github.com/audreyr/cookiecutter
-.. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
-
+This is built with the support of Hubble grants HST-AR-13919, HST-GO-14268, 
+and HST-AR-14560
