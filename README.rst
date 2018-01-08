@@ -9,7 +9,7 @@ Spectacle
 .. image:: https://img.shields.io/travis/MISTY-pipeline/spectacle.svg
         :target: https://travis-ci.org/MISTY-pipeline/spectacle
 
-.. image:: https://readthedocs.org/projects/spectacle/badge/?version=latest
+.. image:: https://readthedocs.org/projects/spectacle-py/badge/?version=latest
         :target: https://spectacle-py.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
