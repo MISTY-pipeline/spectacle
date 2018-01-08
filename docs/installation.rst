@@ -32,13 +32,13 @@ You can either clone the public repository:
 
 .. code-block:: console
 
-    $ git clone git://github.com/misty-pipeline/spectacle
+    $ git clone git://github.com/MISTY-pipeline/spectacle
 
 Or download the `tarball`_:
 
 .. code-block:: console
 
-    $ curl  -OL https://github.com/misty-pipeline/spectacle/tarball/master
+    $ curl  -OL https://github.com/MISTY-pipeline/spectacle/tarball/master
 
 Once you have a copy of the source, you can install it with:
 
@@ -47,5 +47,5 @@ Once you have a copy of the source, you can install it with:
     $ python setup.py install
 
 
-.. _Github repo: https://github.com/misty-pipeline/spectacle
-.. _tarball: https://github.com/misty-pipeline/spectacle/tarball/master
+.. _Github repo: https://github.com/MISTY-pipeline/spectacle
+.. _tarball: https://github.com/MISTY-pipeline/spectacle/tarball/master

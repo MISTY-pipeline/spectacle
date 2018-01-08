@@ -33,7 +33,7 @@ setup(
     long_description=readme + '\n\n' + history,
     author="Nicholas Earl",
     author_email='nearl@stsci.edu',
-    url='https://github.com/misty-pipeline/spectacle',
+    url='https://github.com/MISTY-pipeline/spectacle',
     packages=find_packages(include=['spectacle']),
     entry_points={
         'console_scripts': []

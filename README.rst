@@ -6,15 +6,15 @@ Spectacle
 .. image:: https://img.shields.io/pypi/v/spectacle.svg
         :target: https://pypi.python.org/pypi/spectacle
 
-.. image:: https://img.shields.io/travis/misty-pipeline/spectacle.svg
-        :target: https://travis-ci.org/misty-pipeline/spectacle
+.. image:: https://img.shields.io/travis/MISTY-pipeline/spectacle.svg
+        :target: https://travis-ci.org/MISTY-pipeline/spectacle
 
 .. image:: https://readthedocs.org/projects/spectacle/badge/?version=latest
         :target: https://spectacle-py.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
-.. image:: https://pyup.io/repos/github/misty-pipeline/spectacle/shield.svg
-     :target: https://pyup.io/repos/github/misty-pipeline/spectacle/
+.. image:: https://pyup.io/repos/github/MISTY-pipeline/spectacle/shield.svg
+     :target: https://pyup.io/repos/github/MISTY-pipeline/spectacle/
      :alt: Updates
 
 

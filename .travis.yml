@@ -19,7 +19,7 @@ deploy:
       M1VTWXNvZmNmZzdBSnJoU285T3A2ekx5K3JTNHBqWmNubk9xNzc1NzQ5TmJhandhaTRtWExuYXM9
   true:
     python: 2.7
-    repo: misty-pipeline/spectacle
+    repo: MISTY-pipeline/spectacle
     tags: true
 install: pip install -U tox-travis
 language: python
