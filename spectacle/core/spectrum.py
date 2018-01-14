@@ -145,6 +145,11 @@ class Spectrum1D:
     def line_model(self):
         return self._line_model
 
+    @property
+    def n_components(self):
+        """Return the number of identified lines in this spectrum."""
+        return len(self.line_model)
+
     def add_line(self, name=None, *args, model=None, **kwargs):
         """
         Create an absorption line Voigt profile model and add it to the
