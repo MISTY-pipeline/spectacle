@@ -42,7 +42,7 @@ class Spectrum1D:
                 slope=0 * u.Unit('1/Angstrom'), intercept=1,
                 fixed={'slope': True, 'intercept': True})
 
-            logging.info("Default continuum set to a Linear1D model.")
+            logging.debug("Default continuum set to a Linear1D model.")
 
         self._line_model = None
         self._lsf_model = None
@@ -150,7 +150,7 @@ class Spectrum1D:
         """Return the number of identified lines in this spectrum."""
         return len(self.line_model)
 
-    def add_line(self, name=None, *args, model=None, **kwargs):
+    def add_line(self, name=None, model=None, *args, **kwargs):
         """
         Create an absorption line Voigt profile model and add it to the
         compound spectral model.
@@ -239,9 +239,7 @@ class Spectrum1D:
         dc = DispersionConvert(self._center)
         rs = self._redshift_model.inverse
         ss = SmartScale(
-            tied={
-                'factor': lambda mod: 1. / (1 + mod[1].inverse.z)
-            },
+            1. / (1 + self._redshift_model.z),
             fixed={'factor': True})
         lm = self._line_model
 
@@ -262,15 +260,13 @@ class Spectrum1D:
         dc = DispersionConvert(self._center)
         rs = self._redshift_model.inverse
         ss = SmartScale(
-            tied={
-                'factor': lambda mod: 1. / (1 + self._redshift_model.z)
-            },
+            1. / (1 + self._redshift_model.z),
             fixed={'factor': True})
         cm = self._continuum_model
         lm = self._line_model
         fc = FluxConvert()
 
-        comp_mod = (dc | rs | (cm + (lm | fc)) | ss) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = (dc | rs | (cm + (lm | ss | fc))) if lm is not None else (dc | rs | cm | ss)
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
@@ -290,13 +286,10 @@ class Spectrum1D:
         lm = self._line_model
         fd = FluxDecrementConvert()
         ss = SmartScale(
-            tied={
-                'factor': lambda mod: 1. / (1 + self._redshift_model.z)
-            },
+            1. / (1 + self._redshift_model.z),
             fixed={'factor': True})
 
-        comp_mod = (dc | rs | (cm + (lm | fd)) |
-                    ss) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = (dc | rs | (cm + (lm | ss | fd))) if lm is not None else (dc | rs | cm | ss)
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
