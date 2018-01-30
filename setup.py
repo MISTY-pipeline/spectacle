@@ -13,7 +13,9 @@ with open('HISTORY.rst') as history_file:
 
 requirements = [
     'numpy',
-    'astropy'
+    'astropy',
+    'peakutils',
+    'emcee'
 ]
 
 setup_requirements = [
