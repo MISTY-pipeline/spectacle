@@ -1,4 +1,5 @@
 import logging
+from collections import OrderedDict
 
 import astropy.units as u
 import numpy as np
@@ -7,10 +8,13 @@ import scipy.integrate as integrate
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel, Parameter
 from astropy.modeling.models import Linear1D
+from astropy.modeling.fitting import LevMarLSQFitter
 
 from ..core.spectrum import Spectrum1D
 from ..modeling import *
 from ..modeling.fitters import MCMCFitter
+from ..io.registries import line_registry
+from ..core.region_finder import find_regions
 
 from .initializers import Voigt1DInitializer
 
@@ -111,16 +115,10 @@ class LineFinder(Fittable2DModel):
         if not isinstance(x, u.Quantity):
             x = u.Quantity(x, self._x.unit)
 
-        logging.info(
-            "Relative tolerance: %f, Absolute Tolerance: %f", rel_tol, abs_tol)
-        logging.info("Threshold: %f, Minimum Distance: %f",
-                     threshold, min_distance)
-
         if self._data_type != 'optical_depth':
             y = max(y) - y
 
         indexes = peakutils.indexes(y, thres=threshold, min_dist=min_distance)
-        logging.info("Found %i peaks.", len(indexes))
 
         abs_lines = Linear1D(slope=0,
                              intercept=0 if self._data_type == 'optical_depth' else 1,
@@ -156,14 +154,13 @@ class LineFinder(Fittable2DModel):
 
             fit_line = fitter(init_voigt, x[mask].value, y[mask], maxiter=200)
 
-            abs_lines = abs_lines + \
-                fit_line #if self._data_type == 'optical_depth' else abs_lines - fit_line
+            abs_lines = abs_lines + fit_line
 
         # Fit the spectrum mode to the given data
         # fitter = LevMarLSQFitter()
 
         # fitter(spectrum.optical_depth, x, y, maxiter=1000)
-        self._estimated_model = abs_lines  # getattr(spectrum, self._data_type)
+        self._estimated_model = abs_lines
 
         return self._estimate_voigt()(x)
 
@@ -198,61 +195,67 @@ class LineFinder(Fittable2DModel):
     def _estimate_voigt(self):
         spectrum = Spectrum1D(center=self.center, redshift=self.redshift)
 
-        for line in self._estimated_model[1:]:
-            center = self.center.value * self.center.unit
-            redshifted_center = spectrum._redshift_model(center)
-            line_kwargs = {'lambda_0': center}
+        # Iterate over the found lines only if they exist
+        logging.debug("Model has %s submodels." % self._estimated_model.n_submodels())
+        
+        if self._estimated_model.n_submodels() > 1:
+            for line in [x for x in self._estimated_model][1:]:
+                center = self.center.value * self.center.unit
+                redshifted_center = spectrum._redshift_model(center)
+                line_kwargs = {'lambda_0': center}
 
-            # Store the peak of this absorption feature, note that this is not
-            # the center of the ion
-            peak = line.x_0.value * self._x.unit
-            deredshifted_peak = spectrum._redshift_model.inverse(peak)
+                # Store the peak of this absorption feature, note that this is not
+                # the center of the ion
+                peak = line.x_0.value * self._x.unit
+                deredshifted_peak = spectrum._redshift_model.inverse(peak)
 
-            # Get the index of this line model's centroid
-            ind = (np.abs(self._x.value - peak.value)).argmin()
+                # Get the index of this line model's centroid
+                ind = (np.abs(self._x.value - peak.value)).argmin()
 
-            if self._x.unit.physical_type == 'length':
-                line_kwargs['delta_lambda'] = deredshifted_peak.to('Angstrom') - center.to(
-                    'Angstrom')
-            elif self._x.unit.physical_type == 'speed':
-                line_kwargs['delta_v'] = deredshifted_peak.to(
-                    'km/s') - center.to('km/s')
-            else:
-                logging.error(
-                    "Could not get physical type of dispersion axis unit.")
+                if self._x.unit.physical_type == 'length':
+                    line_kwargs['delta_lambda'] = deredshifted_peak.to('Angstrom') - center.to(
+                        'Angstrom')
+                elif self._x.unit.physical_type == 'speed':
+                    line_kwargs['delta_v'] = deredshifted_peak.to(
+                        'km/s') - center.to('km/s')
+                else:
+                    logging.error(
+                        "Could not get physical type of dispersion axis unit.")
 
-            # Estimate the doppler b parameter
-            fwhm_L = line.fwhm_L * self._x.unit
-            fwhm = line.fwhm * self._x.unit
+                # Estimate the doppler b parameter
+                fwhm_L = line.fwhm_L * self._x.unit
+                fwhm = line.fwhm * self._x.unit
 
-            # v_dop = (c.cgs * fwhm_L / (2 * fwhm * peak_lambda.value)).to('cm/s')
-            # v_dop = (np.sqrt(
-            #     1729929 * fwhm_L ** 2 - 26730000 * fwhm_L * fwhm + 25000000 * fwhm ** 2) / (
-            #     5000 * np.sqrt(np.log(16))))
-            v_dop = np.sqrt(0.0249576 * fwhm_L ** 2 - 0.385632 * fwhm_L *
-                            fwhm + 0.360674 * fwhm ** 2)
+                # v_dop = (c.cgs * fwhm_L / (2 * fwhm * peak_lambda.value)).to('cm/s')
+                # v_dop = (np.sqrt(
+                #     1729929 * fwhm_L ** 2 - 26730000 * fwhm_L * fwhm + 25000000 * fwhm ** 2) / (
+                #     5000 * np.sqrt(np.log(16))))
+                v_dop = np.sqrt(0.0249576 * fwhm_L ** 2 - 0.385632 * fwhm_L *
+                                fwhm + 0.360674 * fwhm ** 2)
 
-            if self._x.unit.physical_type == 'length':
-                v_dop = (v_dop * c.cgs) / center
+                if self._x.unit.physical_type == 'length':
+                    v_dop = (v_dop * c.cgs) / center
 
-            # Estimate the column density
-            f_value = self._line_defaults.get('f_value',
-                                              self._ion_info['osc_str'])
+                # Estimate the column density
+                f_value = self._line_defaults.get('f_value',
+                                                self._ion_info['osc_str'])
 
-            # col_dens = (self._y[ind] / (TAU_FACTOR * f_value * deredshifted_peak
-            #                        * line(self._x[ind].value) * u.Unit('s/km'))).to(
-            #     '1/cm2') * 5
-            col_dens = (np.trapz(line(self._x.value), self._x.value) * u.Unit(
-                'kg/(s2 * Angstrom)') * SIGMA * f_value * center.to('Angstrom')).to('1/cm2')
+                # col_dens = (self._y[ind] / (TAU_FACTOR * f_value * deredshifted_peak
+                #                        * line(self._x[ind].value) * u.Unit('s/km'))).to(
+                #     '1/cm2') * 5
+                col_dens = (np.trapz(line(self._x.value), self._x.value) * u.Unit(
+                    'kg/(s2 * Angstrom)') * SIGMA * f_value * center.to('Angstrom')).to('1/cm2')
 
-            line_kwargs.update({'v_doppler': v_dop,
-                                'column_density': col_dens})
+                line_kwargs.update({'v_doppler': v_dop,
+                                    'column_density': col_dens})
 
-            line_kwargs.update(self._line_defaults)
+                line_kwargs.update(self._line_defaults)
 
-            # Add the line to the spectrum object
-            line = TauProfile(**line_kwargs)
+                # Add the line to the spectrum object
+                line = TauProfile(**line_kwargs)
 
-            spectrum.add_line(model=line)
+                spectrum.add_line(model=line)
+        else:
+            logging.info("No absorption features found using line finder.")
 
         return getattr(spectrum, self._data_type)
