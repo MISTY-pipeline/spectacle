@@ -36,7 +36,8 @@ setup(
     author="Nicholas Earl",
     author_email='nearl@stsci.edu',
     url='https://github.com/MISTY-pipeline/spectacle',
-    packages=find_packages(include=['spectacle']),
+    packages=find_packages(),
+    use_2to3=True,
     entry_points={
         'console_scripts': []
     },

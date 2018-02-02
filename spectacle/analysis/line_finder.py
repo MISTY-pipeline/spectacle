@@ -62,8 +62,7 @@ class LineFinder(Fittable2DModel):
     input_units = {}
 
     def __init__(self, x, y, ion_name=None, data_type='optical_depth',
-                 defaults=None,
-                 *args, **kwargs):
+                 defaults=None, *args, **kwargs):
         super(LineFinder, self).__init__(*args, **kwargs)
 
         if data_type not in ('optical_depth', 'flux', 'flux_decrement'):
