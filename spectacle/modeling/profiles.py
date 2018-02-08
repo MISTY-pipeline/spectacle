@@ -1,3 +1,4 @@
+import logging
 from collections import OrderedDict
 
 import astropy.units as u
@@ -72,7 +73,8 @@ class TauProfile(Fittable1DModel):
     f_value = Parameter(fixed=True, min=0, max=2.0, default=0)
     gamma = Parameter(fixed=True, min=0, default=0)
     v_doppler = Parameter(default=1e5, min=0, unit=u.Unit('cm/s'))
-    column_density = Parameter(default=1e13, min=0, max=1e25, unit=u.Unit('1/cm2'))
+    column_density = Parameter(
+        default=1e13, min=0, max=1e25, unit=u.Unit('1/cm2'))
     delta_v = Parameter(default=0, fixed=False, unit=u.Unit('cm/s'))
     delta_lambda = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
 
@@ -208,12 +210,16 @@ class TauProfile(Fittable1DModel):
                        wave_space(velocity[0]).value,
                        wave_space(velocity[-1]).value)
 
-        while tau_fwhm[0] / tau_tot[0] < 0.9:
-            mn -= 1
-            mx += 1
-            tau_fwhm = quad(lambda x: self(x * u.Unit('Angstrom')),
-                            wave_space(velocity[mn]).value,
-                            wave_space(velocity[mx]).value)
+        if tau_tot[0] > 0:
+            while tau_fwhm[0] / tau_tot[0] < 0.9:
+                mn -= 1
+                mx += 1
+                tau_fwhm = quad(lambda x: self(x * u.Unit('Angstrom')),
+                                wave_space(velocity[mn]).value,
+                                wave_space(velocity[mx]).value)
+        else:
+            logging.info("No optical depth found for line '{}', skipping dv90 "
+                         "calculation.".format(self.name))
 
         return velocity[mx] - velocity[mn]
 
@@ -226,7 +232,7 @@ class TauProfile(Fittable1DModel):
 class ExtendedVoigt1D(Voigt1D):
     x_0 = Parameter(default=0)
     amplitude_L = Parameter(default=1)
-    fwhm_L = Parameter(default=2/np.pi, min=0)
+    fwhm_L = Parameter(default=2 / np.pi, min=0)
     fwhm_G = Parameter(default=np.log(2), min=0)
 
     @property
