@@ -212,11 +212,15 @@ class TauProfile(Fittable1DModel):
 
         if tau_tot[0] > 0:
             while tau_fwhm[0] / tau_tot[0] < 0.9:
-                mn -= 1
-                mx += 1
+                mn = mn - 1 if mn >= 0 else 0
+                mx = mx + 1 if mx < velocity.size else velocity.size
+
                 tau_fwhm = quad(lambda x: self(x * u.Unit('Angstrom')),
                                 wave_space(velocity[mn]).value,
                                 wave_space(velocity[mx]).value)
+
+                if mn == 0 and max == velocity.size:
+                    logging.info("dv90 did not converge over the entire spectrum.")
         else:
             logging.info("No optical depth found for line '{}', skipping dv90 "
                          "calculation.".format(self.name))
