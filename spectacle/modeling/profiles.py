@@ -213,7 +213,7 @@ class TauProfile(Fittable1DModel):
         if tau_tot[0] > 0:
             while tau_fwhm[0] / tau_tot[0] < 0.9:
                 mn = mn - 1 if mn >= 0 else 0
-                mx = mx + 1 if mx < velocity.size else velocity.size
+                mx = mx + 1 if mx < velocity.size else velocity.size - 1
 
                 tau_fwhm = quad(lambda x: self(x * u.Unit('Angstrom')),
                                 wave_space(velocity[mn]).value,
