@@ -188,44 +188,36 @@ class TauProfile(Fittable1DModel):
 
     @u.quantity_input(velocity='speed')
     def dv90(self, velocity=None):
-        velocity = velocity or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
-
         def wave_space(val):
             return WavelengthConvert(center=self.lambda_0)(val)
 
         def vel_space(val):
             return VelocityConvert(center=self.lambda_0)(val)
 
+        velocity = velocity or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
+        wavelength = wave_space(velocity)
+
         shifted_lambda = self.lambda_0 * \
             (1 + self.delta_v / c.cgs) + self.delta_lambda
 
-        cind = find_nearest(velocity.value, vel_space(shifted_lambda).value)
-        mn = mx = cind
+        y = self(wavelength)
+        mask = [y > 1e-5]
+        y = y[mask]
+        wavelength = wavelength[mask]
 
-        tau_fwhm = quad(lambda x: self(x * u.Unit('Angstrom')),
-                        wave_space(velocity[mn]).value,
-                        wave_space(velocity[mx]).value)
+        if y.size > 0:
+            y95 = np.percentile(y, 95, interpolation='midpoint')
+            y5 = np.percentile(y, 5, interpolation='midpoint')
 
-        tau_tot = quad(lambda x: self(x * u.Unit('Angstrom')),
-                       wave_space(velocity[0]).value,
-                       wave_space(velocity[-1]).value)
-
-        if tau_tot[0] > 0:
-            while tau_fwhm[0] / tau_tot[0] < 0.9:
-                mn = mn - 1 if mn >= 0 else 0
-                mx = mx + 1 if mx < velocity.size else velocity.size
-
-                tau_fwhm = quad(lambda x: self(x * u.Unit('Angstrom')),
-                                wave_space(velocity[mn]).value,
-                                wave_space(velocity[mx]).value)
-
-                if mn == 0 and max == velocity.size:
-                    logging.info("dv90 did not converge over the entire spectrum.")
+            w95 = wavelength[find_nearest(y, y95)]
+            w5 = wavelength[find_nearest(y, y5)]
         else:
-            logging.info("No optical depth found for line '{}', skipping dv90 "
-                         "calculation.".format(self.name))
+            logging.warning("No reasonable amount of optical depth found in "
+                            "spectrum, aborpting dv90 calculation.")
 
-        return velocity[mx] - velocity[mn]
+            return u.Quantity(0)
+
+        return (c.cgs * (w95 - w5) / shifted_lambda).to('km/s')
 
     def mask_range(self):
         fwhm = self.fwhm() * u.Unit('km/s')
