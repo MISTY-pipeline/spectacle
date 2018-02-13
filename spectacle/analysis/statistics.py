@@ -11,7 +11,7 @@ from ..utils import find_nearest
 
 
 @u.quantity_input(x=['length', 'speed'], center=['length'])
-def dv90(x, y, continuum=None, center=None, ion_name=None):
+def delta_v_90(x, y, continuum=None, center=None, ion_name=None):
     equivalencies = [(u.Unit('km/s'), u.Unit('Angstrom'),
                       lambda x: WavelengthConvert(center)(x * u.Unit('km/s')),
                       lambda x: VelocityConvert(center)(x * u.Unit('Angstrom')))]
@@ -51,7 +51,6 @@ def equivalent_width(x, y, continuum=None, center=None, ion_name=None):
                       lambda x: WavelengthConvert(center)(x * u.Unit('km/s')),
                       lambda x: VelocityConvert(center)(x * u.Unit('Angstrom')))]
 
-    @u.quantity_input(x=u.Unit('km/s'), equivalencies=equivalencies)
     def _calculate(x, y, continuum):
         # Continuum is always assumed to be 1.0
         continuum = continuum if continuum is not None else 1.0
