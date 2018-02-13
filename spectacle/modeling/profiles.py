@@ -232,11 +232,12 @@ class TauProfile(Fittable1DModel):
         input_unit = x.unit if x is not None else u.Unit('km/s')
 
         def _calculate(x):
-            x = x or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
-            x = x.to(u.Unit('Angstrom'), equivalencies=equivalencies)
+            x = x or np.linspace(self.lambda_0 - 25 * u.Unit('Angstrom'), 
+                                 self.lambda_0 + 25 * u.Unit('Angstrom'), 
+                                 1000)
 
             # The profile only generates optical depth; create flux
-            y = np.exp(-self(x))
+            y = np.exp(-self(x.to('Angstrom', equivalencies=equivalencies)))
 
             # In this case, continuum is defined to be 1
             continuum = 1
@@ -245,9 +246,9 @@ class TauProfile(Fittable1DModel):
             avg_dx = np.mean(x[1:] - x[:-1])
 
             # Calculate equivalent width
-            ew = ((continuum - y / continuum) * avg_dx).sum()
+            ew = ((1 - y / continuum) * avg_dx).sum()
 
-            return ew.to(input_unit, equivalencies=equivalencies)
+            return ew
 
         return _calculate(x)
 

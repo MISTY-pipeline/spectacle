@@ -59,7 +59,7 @@ def equivalent_width(x, y, continuum=None, center=None, ion_name=None):
         avg_dx = np.mean(x[1:] - x[:-1])
 
         # Calculate equivalent width
-        ew = ((continuum - y / continuum) * avg_dx).sum()
+        ew = ((1 - y / continuum) * avg_dx).sum()
 
         return ew
 
