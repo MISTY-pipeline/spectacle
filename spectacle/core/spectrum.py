@@ -44,6 +44,8 @@ class Spectrum1D:
 
             logging.debug("Default continuum set to a Linear1D model.")
 
+        self._regions = {}
+
         self._line_model = None
         self._lsf_model = None
         self._noise_model = None
@@ -140,6 +142,22 @@ class Spectrum1D:
             return
 
         self._continuum_model = getattr(models, model)(*args, **kwargs)
+
+    @property
+    def regions(self):
+        """
+        Identified absorption regions with references to individual line
+        profiles.
+        """
+        return self._regions
+
+    @regions.setter
+    def regions(self, value):
+        """
+        Identified absorption regions with references to individual line
+        profiles.
+        """
+        self._regions = value
 
     @property
     def line_model(self):
