@@ -195,7 +195,12 @@ class TauProfile(Fittable1DModel):
 
         def _calculate(x):
             x = x or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
-            x = x.to(u.Unit('km/s'), equivalencies=equivalencies)
+
+            # Profiles require dispersion to be in wavelength space
+            x = x.to(u.Unit('Angstrom'), equivalencies=equivalencies)
+
+            shifted_lambda = self.lambda_0 * \
+                (1 + self.delta_v / c.cgs) + self.delta_lambda
 
             y = self(x)
             mask = [y > 1e-5]
@@ -206,28 +211,32 @@ class TauProfile(Fittable1DModel):
                 y95 = np.percentile(y, 95, interpolation='midpoint')
                 y5 = np.percentile(y, 5, interpolation='midpoint')
 
-                v95 = x[find_nearest(y, y95)]
-                v5 = x[find_nearest(y, y5)]
+                w95 = x[find_nearest(y, y95)]
+                w5 = x[find_nearest(y, y5)]
             else:
                 logging.warning("No reasonable amount of optical depth found in "
                                 "spectrum, aborting dv90 calculation.")
 
                 return u.Quantity(0)
 
-            return (v95 - v5).to('km/s')
+            return np.abs((c.cgs * (w95 - w5) / shifted_lambda).to('km/s'))
 
         return _calculate(x)
 
     @u.quantity_input(x=['length', 'speed'])
-    def equivalent_width(self, x, y):
+    def equivalent_width(self, x=None):
         equivalencies = [(u.Unit('km/s'), u.Unit('Angstrom'),
                         lambda x: WavelengthConvert(self.lambda_0)(x * u.Unit('km/s')),
                         lambda x: VelocityConvert(self.lambda_0)(x * u.Unit('Angstrom')))]
 
-        @u.quantity_input(x=u.Unit('km/s'), equivalencies=equivalencies)
-        def _calculate(x, y):
+        input_unit = x.unit if x is not None else u.Unit('km/s')
+
+        def _calculate(x):
+            x = x or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
+            x = x.to(u.Unit('Angstrom'), equivalencies=equivalencies)
+
             # The profile only generates optical depth; create flux
-            y = np.exp(-y)
+            y = np.exp(-self(x))
 
             # In this case, continuum is defined to be 1
             continuum = 1
@@ -238,9 +247,9 @@ class TauProfile(Fittable1DModel):
             # Calculate equivalent width
             ew = ((continuum - y / continuum) * avg_dx).sum()
 
-            return ew
+            return ew.to(input_unit, equivalencies=equivalencies)
 
-        return _calculate(x, y)
+        return _calculate(x)
 
     def mask_range(self):
         fwhm = self.fwhm() * u.Unit('km/s')
