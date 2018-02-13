@@ -55,8 +55,8 @@ class LineFinder(Fittable2DModel):
     redshift = Parameter(default=0, min=0, fixed=True)
     threshold = Parameter(default=0.01, min=0)
     min_distance = Parameter(default=30, min=0.1)
-    rel_tol = Parameter(default=1e-2, min=1e-10, max=1)
-    abs_tol = Parameter(default=1e-4, min=1e-10, max=1)
+    # rel_tol = Parameter(default=1e-2, min=1e-10, max=1)
+    # abs_tol = Parameter(default=1e-4, min=1e-10, max=1)
     width = Parameter(default=15, min=2)
 
     input_units = {}
@@ -102,8 +102,7 @@ class LineFinder(Fittable2DModel):
 
         return {'x': [vel_to_wave]}
 
-    def evaluate(self, x, y, center, redshift, threshold, min_distance,
-                 rel_tol, abs_tol, width):
+    def evaluate(self, x, y, center, redshift, threshold, min_distance, width):
         """
         Evaluate `LineFinder` model.
         """
@@ -125,8 +124,10 @@ class LineFinder(Fittable2DModel):
 
         # Get the interesting regions within the data provided. Don't bother
         # calculating more than once, since y doesn't change.
-        if self._regions is None:
-            self._regions = find_regions(y, rel_tol=rel_tol, abs_tol=abs_tol)
+        # if self._regions is None:
+        #     logging.info("Finding regions...")
+        #     self._regions = find_regions(y, rel_tol=rel_tol, abs_tol=abs_tol)
+        #     logging.info(self._regions)
 
         for ind in indexes:
             peak = u.Quantity(x[ind], x.unit)
@@ -161,7 +162,7 @@ class LineFinder(Fittable2DModel):
         # fitter(spectrum.optical_depth, x, y, maxiter=1000)
         self._estimated_model = abs_lines
 
-        return self._estimate_voigt()(x)
+        return getattr(self._estimate_voigt(), self._data_type)(x)
 
     def _parameter_units_for_data_units(self, input_units, output_units):
         return OrderedDict()
@@ -177,13 +178,12 @@ class LineFinder(Fittable2DModel):
 
         return self._result_model
 
-    @property
-    def regions(self):
+    def find_regions(self):
         """
         Returns the list of tuples specifying the beginning and end indices of
         identified absorption/emission regions.
         """
-        return self._regions
+        return find_regions(self._y, rel_tol=1e-2, abs_tol=1e-4)
 
     def fit(self, *args, **kwargs):
         fitter = LevMarLSQFitter()  # MCMCFitter() #
@@ -195,8 +195,19 @@ class LineFinder(Fittable2DModel):
         spectrum = Spectrum1D(center=self.center, redshift=self.redshift)
 
         # Iterate over the found lines only if they exist
-        logging.debug("Model has %s submodels." % self._estimated_model.n_submodels())
-        
+        logging.debug("Model has %s submodels." %
+                      self._estimated_model.n_submodels())
+
+        # Calculate the regions in the raw data
+        regions = find_regions(self._y, rel_tol=1e-2, abs_tol=1e-4,
+                               continuum=self._estimated_model[0](self._x.value))
+
+        # Convert regions to a dictionary where the keys are the tuple of the
+        # indicies
+        reg_dict = {(reg[0], reg[1]): [] for reg in regions}
+
+        logging.debug("Found {} absorption regions.".format(len(reg_dict)))
+
         if self._estimated_model.n_submodels() > 1:
             for line in [x for x in self._estimated_model][1:]:
                 center = self.center.value * self.center.unit
@@ -237,7 +248,7 @@ class LineFinder(Fittable2DModel):
 
                 # Estimate the column density
                 f_value = self._line_defaults.get('f_value',
-                                                self._ion_info['osc_str'])
+                                                  self._ion_info['osc_str'])
 
                 # col_dens = (self._y[ind] / (TAU_FACTOR * f_value * deredshifted_peak
                 #                        * line(self._x[ind].value) * u.Unit('s/km'))).to(
@@ -254,7 +265,17 @@ class LineFinder(Fittable2DModel):
                 line = TauProfile(**line_kwargs)
 
                 spectrum.add_line(model=line)
+
+                # Add this line to the region dictionary
+                for k in reg_dict.keys():
+                    mn, mx = self._x[k[0]], self._x[k[1]]
+
+                    if mn <= peak <= mx:
+                        reg_dict[k].append(line)
+
+            # Set the region dictionary on the spectrum model object
+            spectrum.regions = reg_dict
         else:
             logging.info("No absorption features found using line finder.")
 
-        return getattr(spectrum, self._data_type)
+        return spectrum
