@@ -1,43 +1,67 @@
+import logging
+
+import astropy.units as u
+from astropy.constants import c, m_e
 import numpy as np
 from pandas import DataFrame
 from scipy.integrate import simps
-import astropy.units as u
 
-from ..modeling import WavelengthConvert, VelocityConvert
+from ..modeling import VelocityConvert, WavelengthConvert
+from ..utils import find_nearest
 
 
-@u.quantity_input(center=u.Unit('Angstrom'))
-def delta_v_90(x, y, center=None):
+@u.quantity_input(x=['length', 'speed'], center=['length'])
+def dv90(x, y, continuum=None, center=None, ion_name=None):
+    equivalencies = [(u.Unit('km/s'), u.Unit('Angstrom'),
+                      lambda x: WavelengthConvert(center)(x * u.Unit('km/s')),
+                      lambda x: VelocityConvert(center)(x * u.Unit('Angstrom')))]
 
-    if isinstance(x, np.ma.MaskedArray):
-        x = x.compressed()
+    def _calculate(x, y, continuum):
+        x = x.to(u.Unit('km/s'), equivalencies=equivalencies)
 
-    if isinstance(y, np.ma.MaskedArray):
-        y = y.compressed()
+        if continuum is None:
+            continuum = 1.0
+            logging.info("No continuum provided, assuming 1.0.")
 
+        y = continuum - y
+        mask = [y > 1e-5]
+        y = y[mask]
+        x = x[mask]
+
+        if y.size > 0:
+            y95 = np.percentile(y, 95, interpolation='midpoint')
+            y5 = np.percentile(y, 5, interpolation='midpoint')
+
+            v95 = x[find_nearest(y, y95)]
+            v5 = x[find_nearest(y, y5)]
+        else:
+            logging.warning("No reasonable amount of optical depth found in "
+                            "spectrum, aborting dv90 calculation.")
+
+            return u.Quantity(0)
+
+        return (v95 - v5).to('km/s')
+
+    return _calculate(x, y, continuum)
+
+
+@u.quantity_input(x=['length', 'speed'], center=['length'])
+def equivalent_width(x, y, continuum=None, center=None, ion_name=None):
     equivalencies = [(u.Unit('km/s'), u.Unit('Angstrom'),
                       lambda x: WavelengthConvert(center)(x * u.Unit('km/s')),
                       lambda x: VelocityConvert(center)(x * u.Unit('Angstrom')))]
 
     @u.quantity_input(x=u.Unit('km/s'), equivalencies=equivalencies)
-    def _calculate(x, y):
-        # tau_tot = simps(y, x.value)
-        # tau = simps(y, x.value)
+    def _calculate(x, y, continuum):
+        # Continuum is always assumed to be 1.0
+        continuum = continuum if continuum is not None else 1.0
 
-        tau_tot = tau_left = tau_right = simps(y, x.value)
+        # Average dispersion in the line region.
+        avg_dx = np.mean(x[1:] - x[:-1])
 
-        # Take 0.05 tau off right
-        rmx = -1
-        while tau_right / tau_tot > 0.95:
-            rmx -= 1
-            tau_right = simps(y[:rmx], x.value[:rmx])
+        # Calculate equivalent width
+        ew = ((continuum - y / continuum) * avg_dx).sum()
 
-        # Take 0.05tau off left
-        lmn = 0
-        while tau_left / tau_tot > 0.95:
-            lmn += 1
-            tau_left = simps(y[lmn:], x.value[lmn:])
+        return ew
 
-        return x[lmn], x[rmx]
-
-    return _calculate(x, y)
+    return _calculate(x, y, continuum)

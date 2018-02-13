@@ -186,38 +186,61 @@ class TauProfile(Fittable1DModel):
 
         return fwhm
 
-    @u.quantity_input(velocity='speed')
-    def dv90(self, velocity=None):
-        def wave_space(val):
-            return WavelengthConvert(center=self.lambda_0)(val)
+    @u.quantity_input(x=['length', 'speed'])
+    def dv90(self, x=None):
+        equivalencies = [(u.Unit('km/s'), u.Unit('Angstrom'),
+                          lambda x: WavelengthConvert(
+                              self.lambda_0)(x * u.Unit('km/s')),
+                          lambda x: VelocityConvert(self.lambda_0)(x * u.Unit('Angstrom')))]
 
-        def vel_space(val):
-            return VelocityConvert(center=self.lambda_0)(val)
+        def _calculate(x):
+            x = x or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
+            x = x.to(u.Unit('km/s'), equivalencies=equivalencies)
 
-        velocity = velocity or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
-        wavelength = wave_space(velocity)
+            y = self(x)
+            mask = [y > 1e-5]
+            y = y[mask]
+            x = x[mask]
 
-        shifted_lambda = self.lambda_0 * \
-            (1 + self.delta_v / c.cgs) + self.delta_lambda
+            if y.size > 0:
+                y95 = np.percentile(y, 95, interpolation='midpoint')
+                y5 = np.percentile(y, 5, interpolation='midpoint')
 
-        y = self(wavelength)
-        mask = [y > 1e-5]
-        y = y[mask]
-        wavelength = wavelength[mask]
+                v95 = x[find_nearest(y, y95)]
+                v5 = x[find_nearest(y, y5)]
+            else:
+                logging.warning("No reasonable amount of optical depth found in "
+                                "spectrum, aborting dv90 calculation.")
 
-        if y.size > 0:
-            y95 = np.percentile(y, 95, interpolation='midpoint')
-            y5 = np.percentile(y, 5, interpolation='midpoint')
+                return u.Quantity(0)
 
-            w95 = wavelength[find_nearest(y, y95)]
-            w5 = wavelength[find_nearest(y, y5)]
-        else:
-            logging.warning("No reasonable amount of optical depth found in "
-                            "spectrum, aborpting dv90 calculation.")
+            return (v95 - v5).to('km/s')
 
-            return u.Quantity(0)
+        return _calculate(x)
 
-        return (c.cgs * (w95 - w5) / shifted_lambda).to('km/s')
+    @u.quantity_input(x=['length', 'speed'])
+    def equivalent_width(self, x, y):
+        equivalencies = [(u.Unit('km/s'), u.Unit('Angstrom'),
+                        lambda x: WavelengthConvert(self.lambda_0)(x * u.Unit('km/s')),
+                        lambda x: VelocityConvert(self.lambda_0)(x * u.Unit('Angstrom')))]
+
+        @u.quantity_input(x=u.Unit('km/s'), equivalencies=equivalencies)
+        def _calculate(x, y):
+            # The profile only generates optical depth; create flux
+            y = np.exp(-y)
+
+            # In this case, continuum is defined to be 1
+            continuum = 1
+
+            # Average dispersion in the line region.
+            avg_dx = np.mean(x[1:] - x[:-1])
+
+            # Calculate equivalent width
+            ew = ((continuum - y / continuum) * avg_dx).sum()
+
+            return ew
+
+        return _calculate(x, y)
 
     def mask_range(self):
         fwhm = self.fwhm() * u.Unit('km/s')
