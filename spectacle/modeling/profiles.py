@@ -178,7 +178,7 @@ class TauProfile(Fittable1DModel):
                             ('delta_v', u.Unit('cm/s')),
                             ('delta_lambda', u.Unit('Angstrom'))])
 
-    def fwhm(self):
+    def fwhm(self, x=None):
         shifted_lambda = self.lambda_0 * \
             (1 + self.delta_v / c.cgs) + self.delta_lambda
 
@@ -186,7 +186,7 @@ class TauProfile(Fittable1DModel):
             center=self.lambda_0)(shifted_lambda))
         fitter = LevMarLSQFitter()
 
-        x = np.linspace(-10000, 10000, 1000) * u.Unit('km/s')
+        x = x or np.linspace(-10000, 10000, 1000) * u.Unit('km/s')
 
         fit_mod = fitter(mod, x, (WavelengthConvert(center=self.lambda_0)
                                   | self)(x))
@@ -195,7 +195,7 @@ class TauProfile(Fittable1DModel):
         return fwhm
 
     @u.quantity_input(x=['length', 'speed'])
-    def dv90(self, x=None):
+    def delta_v_90(self, x=None):
         x = x or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
 
         return delta_v_90(x=x, y=self(x), center=self.lambda_0)
