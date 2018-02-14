@@ -13,6 +13,7 @@ from scipy.integrate import quad
 from ..io.registries import line_registry
 from ..utils import find_nearest
 from .converters import VelocityConvert, WavelengthConvert
+from ..analysis.statistics import delta_v_90, equivalent_width
 
 __all__ = ['TauProfile', 'ExtendedVoigt1D']
 
@@ -117,6 +118,12 @@ class TauProfile(Fittable1DModel):
         super(TauProfile, self).__init__(name=name, lambda_0=lambda_0,
                                          *args, **kwargs)
 
+    @property
+    def input_units_equivalencies(self):
+        return {'x': [(u.Unit('km/s'), u.Unit('Angstrom'),
+                        lambda x: WavelengthConvert(self.lambda_0)(x * u.Unit('km/s')),
+                        lambda x: VelocityConvert(self.lambda_0)(x * u.Unit('Angstrom')))]}
+
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
         # Astropy fitters do not fully support units on model parameters. In
@@ -125,6 +132,7 @@ class TauProfile(Fittable1DModel):
         # is terrible for modeling that take advantage of parameter units. Thus,
         # units need to be guaranteed.
         x = u.Quantity(x, self.input_units['x'])
+
         lambda_0 = u.Quantity(lambda_0, 'Angstrom')
         v_doppler = u.Quantity(v_doppler, 'cm/s')
         column_density = u.Quantity(column_density, '1/cm2')
@@ -188,69 +196,15 @@ class TauProfile(Fittable1DModel):
 
     @u.quantity_input(x=['length', 'speed'])
     def dv90(self, x=None):
-        equivalencies = [(u.Unit('km/s'), u.Unit('Angstrom'),
-                          lambda x: WavelengthConvert(
-                              self.lambda_0)(x * u.Unit('km/s')),
-                          lambda x: VelocityConvert(self.lambda_0)(x * u.Unit('Angstrom')))]
+        x = x or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
 
-        def _calculate(x):
-            x = x or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
-
-            # Profiles require dispersion to be in wavelength space
-            x = x.to(u.Unit('Angstrom'), equivalencies=equivalencies)
-
-            shifted_lambda = self.lambda_0 * \
-                (1 + self.delta_v / c.cgs) + self.delta_lambda
-
-            y = self(x)
-            mask = [y > 1e-5]
-            y = y[mask]
-            x = x[mask]
-
-            if y.size > 0:
-                y95 = np.percentile(y, 95, interpolation='midpoint')
-                y5 = np.percentile(y, 5, interpolation='midpoint')
-
-                w95 = x[find_nearest(y, y95)]
-                w5 = x[find_nearest(y, y5)]
-            else:
-                logging.warning("No reasonable amount of optical depth found in "
-                                "spectrum, aborting dv90 calculation.")
-
-                return u.Quantity(0)
-
-            return np.abs((c.cgs * (w95 - w5) / shifted_lambda).to('km/s'))
-
-        return _calculate(x)
+        return delta_v_90(x=x, y=self(x), center=self.lambda_0)
 
     @u.quantity_input(x=['length', 'speed'])
     def equivalent_width(self, x=None):
-        equivalencies = [(u.Unit('km/s'), u.Unit('Angstrom'),
-                        lambda x: WavelengthConvert(self.lambda_0)(x * u.Unit('km/s')),
-                        lambda x: VelocityConvert(self.lambda_0)(x * u.Unit('Angstrom')))]
+        x = x or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
 
-        input_unit = x.unit if x is not None else u.Unit('km/s')
-
-        def _calculate(x):
-            x = x or np.linspace(self.lambda_0 - 25 * u.Unit('Angstrom'), 
-                                 self.lambda_0 + 25 * u.Unit('Angstrom'), 
-                                 1000)
-
-            # The profile only generates optical depth; create flux
-            y = np.exp(-self(x.to('Angstrom', equivalencies=equivalencies)))
-
-            # In this case, continuum is defined to be 1
-            continuum = 1
-
-            # Average dispersion in the line region.
-            avg_dx = np.mean(x[1:] - x[:-1])
-
-            # Calculate equivalent width
-            ew = ((1 - y / continuum) * avg_dx).sum()
-
-            return ew
-
-        return _calculate(x)
+        return equivalent_width(x=x, y=self(x))
 
     def mask_range(self):
         fwhm = self.fwhm() * u.Unit('km/s')
