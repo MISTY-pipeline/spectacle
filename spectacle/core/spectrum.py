@@ -117,31 +117,25 @@ class Spectrum1D:
         : `~astropy.modeling.modeling.Fittable1DModel`
             The continuum model in the spectrum compound model.
         """
-        return self._continuum_model
+        dc = DispersionConvert(self._center)
+        rs = self._redshift_model.inverse
+        ss = SmartScale(
+            1. / (1 + self._redshift_model.z),
+            fixed={'factor': True})
+        cm = self._continuum_model
+
+        return (dc | rs | cm | ss).rename("Continuum Model")
 
     @continuum.setter
-    def continuum(self, model='Linear1D', *args, **kwargs):
+    def continuum(self, value):
         """
         Set the continuum model used in the spectrum compound model to one of
         a user-defined model from within the astropy modeling package.
-
-        Parameters
-        ----------
-        model : str
-            The class name of the model as a string. This model must exist in
-            the `~astropy.modeling.modeling` package.
-        args : Positional arguments pass to continuum model class.
-        kwargs : Keyword arguments passed to continuum model class.
         """
-        if not hasattr(models, model):
-            logging.error(
-                "No available model named %s. Modle must be one of \n%s.",
-                model, [cls.__name__ for cls in
-                        vars()['FittableModel1D'].__subclasses()])
+        if not issubclass(value.__class__, Fittable1DModel):
+            raise ValueError("Continuum must inherit from 'Fittable1DModel'.")
 
-            return
-
-        self._continuum_model = getattr(models, model)(*args, **kwargs)
+        self._continuum_model = value
 
     @property
     def regions(self):
