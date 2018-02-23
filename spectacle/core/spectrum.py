@@ -212,6 +212,18 @@ class Spectrum1D:
         else:
             logging.error("LSF model must be a subclass of `Fittable1DModel`.")
 
+    def resample(self, x):
+        """
+        Returns a new `~spectacle.core.spectrum.Spectrum1D` model with a
+        resample matrix model as part of the compound spectrum model.
+
+        Returns
+        -------
+        x : array-like
+            Dispersion to which the model will be resampled.
+        """
+        self._resample_model = Resample()
+
     @property
     def noise(self):
         """

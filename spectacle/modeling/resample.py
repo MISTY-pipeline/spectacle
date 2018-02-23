@@ -3,20 +3,25 @@ import os
 
 import numpy as np
 import astropy.units as u
-from astropy.modeling import Fittable1DModel, Parameter
+from astropy.modeling import Fittable1DModel, Parameter, Fittable2DModel
 
 __all__ = ['Resample']
 
 
-class Resample:
+class Resample(Fittable2DModel):
     """
-    Gaussian LSF model which can used with the compound model objects.
+    Resample model which can be used with compound model objects.
     """
-    def __init__(self, x1, x2):
-        self._remat = resample(x1, x2)
+    inputs = ('x', 'y')
+    outputs = ('y',)
 
-    def __call__(self, y):
-        return np.dot(self._remat, y)
+    def __init__(self, new_dispersion):
+        self._new_dispersion = new_dispersion
+
+    def __call__(self, x, y):
+        _remat = resample(x, self._new_dispersion)
+
+        return np.dot(_remat, y)
 
 
 def resample(orig_lamb, fin_lamb, force=None, **kwargs):
