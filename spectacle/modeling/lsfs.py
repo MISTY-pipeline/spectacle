@@ -17,7 +17,7 @@ class COSKernel1D(Kernel1D):
 
     def __init__(self):
         path = os.path.abspath(
-            os.path.join(__file__, '..', 'data', 'cos.ecsv'))
+            os.path.join(__file__, '..', '..', 'data', 'cos.ecsv'))
         table = Table.read(path, format='ascii.ecsv')
 
         super(COSKernel1D, self).__init__(array=table['value'])
