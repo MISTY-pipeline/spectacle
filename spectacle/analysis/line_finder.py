@@ -14,7 +14,7 @@ from ..modeling import *
 from ..modeling.fitters import MCMCFitter
 from ..io.registries import line_registry
 from ..core.region_finder import find_regions
-from ..utils import peak
+from ..utils import peak_finder, wave_to_vel_equiv
 
 from .initializers import Voigt1DInitializer
 
@@ -49,7 +49,6 @@ class LineFinder(Fittable2DModel):
     outputs = ('y',)
 
     input_units_strict = True
-    input_units_allow_dimensionless = True
 
     center = Parameter(default=0, min=0, unit=u.Unit('Angstrom'), fixed=True)
     redshift = Parameter(default=0, min=0, fixed=True)
@@ -57,9 +56,9 @@ class LineFinder(Fittable2DModel):
     min_distance = Parameter(default=2, min=0.1)
     width = Parameter(default=15, min=2)
 
-    input_units = {'x': u.Unit('km/s')}
+    input_units = {'x': u.Unit('Angstrom')}
 
-    def __init__(self, x, y, ion_name=None, data_type='optical_depth',
+    def __init__(self, ion_name=None, data_type='optical_depth',
                  defaults=None, *args, **kwargs):
         super(LineFinder, self).__init__(*args, **kwargs)
 
@@ -71,11 +70,7 @@ class LineFinder(Fittable2DModel):
             self._data_type = data_type
 
         self._result_model = None
-        self._estimated_model = None
         self._regions = None
-        self._x = x
-        # self.input_units['x'] = x.unit
-        self._y = y
         self._line_defaults = defaults or {}
 
         if 'lambda_0' in self._line_defaults:
@@ -87,25 +82,21 @@ class LineFinder(Fittable2DModel):
 
     @property
     def input_units_equivalencies(self):
-        """
-        Unit equivalencies used by `LineFinder`.
-        """
-        vel_to_wave = (u.Unit('km/s'), u.Unit('Angstrom'),
-                       lambda x: WavelengthConvert(
-                           self.center)(x * u.Unit('km/s')),
-                       lambda x: VelocityConvert(self.center)(
-                           x * u.Unit('Angstrom')))
+        return {'x': wave_to_vel_equiv(self.center)}
 
-        u.set_enabled_equivalencies([vel_to_wave])
+    def __call__(self, *args, **kwargs):
+        super(LineFinder, self).__call__(*args, **kwargs)
 
-        return {'x': [vel_to_wave]}
+        return self._result_model
 
     def evaluate(self, x, y, center, redshift, threshold, min_distance, width):
         """
         Evaluate `LineFinder` model.
         """
         # Units are stripped in the evaluate methods of models
-        x = u.Quantity(x, unit=self.input_units['x'])
+        # x = u.Quantity(x, unit=self.input_units['x'])
+        logging.info("Input units: {}".format(x.unit))
+        center = center[0]
 
         # Convert the min_distance from dispersion units to data elements
         min_ind = (np.abs(x.value - (x[0].value + min_distance))).argmin()
@@ -113,18 +104,44 @@ class LineFinder(Fittable2DModel):
         logging.info("Min distance: %i elements.", min_ind)
 
         # Take a first iteration of the minima finder
-        indicies = peak.indexes(np.max(y) - y, thres=threshold, min_dist=min_ind)
+        indicies = peak_finder.indexes(
+            np.max(y) - y if self._data_type != 'optical_depth' else y,
+            thres=threshold, min_dist=min_ind)
 
         # Given each minima in the finder, construct a new spectrum object with
         # absorption lines at the given indicies.
-        spectrum = Spectrum1D(center=self.center, redshift=self.redshift)
+        spectrum = Spectrum1D(center=self.center.value,
+                              redshift=self.redshift.value,
+                              continuum=Linear1D(slope=u.Quantity(0, 1 / x.unit),
+                                                 intercept=(
+                                                     0 if self._data_type == 'optical_depth' else 1) * u.Unit(""),
+                                                 fixed={'slope': True, 'intercept': True}))
+
+        # Calculate the regions in the raw data
+        regions = find_regions(y, rel_tol=1e-2, abs_tol=1e-4,
+                               continuum=spectrum._continuum_model(x).value)
+
+        # Convert regions to a dictionary where the keys are the tuple of the
+        # indicies
+        reg_dict = {(reg[0], reg[1]): [] for reg in regions}
+
+        logging.info("Found {} absorption regions.".format(len(reg_dict)))
 
         for ind in indicies:
-            redshifted_center = u.Quantity(x[ind], x.unit)
-            deredshifted_peak = spectrum._redshift_model.inverse(redshifted_center)
-            
+            redshifted_peak = u.Quantity(x[ind], x.unit)
+            deredshifted_peak = spectrum._redshift_model.inverse(
+                redshifted_peak)
+
+            logging.info(
+                """
+                center:               {}
+                redshifted peak:      {}
+                de-redshifted peak:   {}
+                """.format(center, redshifted_peak, deredshifted_peak)
+            )
+
             # Get the index of this line model's centroid
-            ind = (np.abs(x.value - redshifted_center.value)).argmin()
+            ind = (np.abs(x.value - redshifted_peak.value)).argmin()
 
             # Construct a dictionary with all of the true values for this
             # absorption line.
@@ -132,39 +149,67 @@ class LineFinder(Fittable2DModel):
 
             # Based on the dispersion type, calculate the lambda or velocity
             # deltas.
-            if x.unit.physical_type == 'length':
+            with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
+                if x.unit.physical_type == 'length':
                     line_kwargs['delta_lambda'] = deredshifted_peak.to('Angstrom') - center.to(
                         'Angstrom')
-            elif x.unit.physical_type == 'speed':
-                line_kwargs['delta_v'] = deredshifted_peak.to(
-                    'km/s') - center.to('km/s')
-            else:
-                logging.error("Could not get physical type of dispersion "
-                                "axis unit.")
+                    line_kwargs['fixed'] = {
+                        'delta_lambda': False,
+                        'delta_v': True
+                    }
+                elif x.unit.physical_type == 'speed':
+                    line_kwargs['delta_v'] = deredshifted_peak.to(
+                        'km/s') - center.to('km/s')
+                    line_kwargs['fixed'] = {
+                        'delta_lambda': True,
+                        'delta_v': False
+                    }
+                else:
+                    logging.error("Could not get physical type of dispersion "
+                                  "axis unit.")
 
             # Calculate some initial parameters for velocity and col density
-            line_kwargs.update(estimate_line_parameters(x, y, ind, min_ind))
+            vel = x.to(
+                'km/s', equivalencies=self.input_units_equivalencies['x'])
+            # line_kwargs.update(estimate_line_parameters(vel, y, ind, min_ind))
+            line_kwargs.update({'v_doppler': 1.5e7 * u.Unit('cm/s'),
+                                'column_density': 1e15 * u.Unit('1/cm2')})
 
             # Create a line profile model and add it to the spectrum object
-            spectrum.add_line(**line_kwargs)
+            line = spectrum.add_line(**line_kwargs)
+
+            # Add this line to the region dictionary
+            for k in reg_dict.keys():
+                mn, mx = x[k[0]], x[k[1]]
+                logging.info("{} {} {}".format(mn, redshifted_peak, mx))
+
+                if mn <= redshifted_peak <= mx:
+                    reg_dict[k].append(line)
+
+        logging.info("Begin fitting... x: {}".format(x.unit))
+
+        # Attempt to fit this new spectrum object to the data
+        fitter = LevMarLSQFitter()
+        fit_spec_mod = fitter(
+            getattr(spectrum, self._data_type), x, y, maxiter=2000)
+
+        # Update spectrum line model parameters with fitted results
+        fit_line_mods = [x for x in fit_spec_mod if hasattr(x, 'lambda_0')]
+        spectrum._line_model = np.sum(fit_line_mods)
+
+        logging.info("End fitting.")
+
+        self._result_model = spectrum
+
+        # Set the region dictionary on the spectrum model object
+        spectrum.regions = reg_dict
 
         logging.info("Found %i minima.", len(indicies))
 
-        return getattr(spectrum, self._data_type)(x)
+        return getattr(self._result_model, self._data_type)(x)
 
     def _parameter_units_for_data_units(self, input_units, output_units):
         return OrderedDict()
-
-    @property
-    def result_model(self):
-        """
-        Returns the resultant spectrum model that is constructed by the
-        `LineFinder`.
-        """
-        if self._result_model is None:
-            self._result_model = self._estimate_voigt()
-
-        return self._result_model
 
     def find_regions(self):
         """
@@ -173,17 +218,11 @@ class LineFinder(Fittable2DModel):
         """
         return find_regions(self._y, rel_tol=1e-2, abs_tol=1e-4)
 
-    def fit(self, *args, **kwargs):
-        fitter = LevMarLSQFitter()  # MCMCFitter() #
-        fit_finder = fitter(self, self._x, self._y, self._y)
-
-        return fit_finder.result_model
-
 
 def estimate_line_parameters(x, y, ind, min_ind):
     bound_low = max(0, min(ind - min_ind, x.size - 1))
     bound_up = max(0, min(ind + min_ind, x.size - 1))
-    mask = ((x > x[bound_low]) & (x < x[bound_up]))
+    mask = ((x > x[0]) & (x < x[-1]))
 
     x = x[mask]
     y = y[mask]
@@ -195,14 +234,14 @@ def estimate_line_parameters(x, y, ind, min_ind):
     # amplitude is derived from area.
     delta_x = x[1:] - x[:-1]
     sum_y = np.sum((y[1:]) * delta_x)
-    height = sum_y / (fwhm / 2.355 * np.sqrt( 2 * np.pi))
+    height = sum_y / (fwhm / 2.355 * np.sqrt(2 * np.pi))
 
     # Estimate the doppler b parameter
-    v_dop = 0.60056120439322491 * fwhm
+    v_dop = 0.60056120439322491 * fwhm * 1000
 
     # Estimate the column density
-    col_dens = sum_y.value * u.Unit('1/cm2')
+    col_dens = sum_y.value * 1e12 * u.Unit('1/cm2')
 
-    logging.info("\tb={}\n\tN={}".format(v_dop, col_dens))
+    logging.info("\n\tb={:g}\n\tN={:g}".format(v_dop, col_dens))
 
     return dict(v_doppler=v_dop, column_density=col_dens)
