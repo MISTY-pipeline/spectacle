@@ -6,11 +6,10 @@ import numpy as np
 from pandas import DataFrame
 from scipy.integrate import simps
 
-from ..modeling import VelocityConvert, WavelengthConvert
 from ..utils import find_nearest, wave_to_vel_equiv
 
 
-@u.quantity_input(x=['length', 'speed'], center=['length'])
+@u.quantity_input(x=['length', 'speed'], center=u.Unit('Angstrom'))
 def delta_v_90(x, y, center=None, continuum=None, ion_name=None):
     """
     Calculate the dispersion that encompasses the central 90 percent of the
