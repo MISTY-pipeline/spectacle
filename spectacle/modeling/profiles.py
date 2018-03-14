@@ -73,9 +73,9 @@ class TauProfile(Fittable1DModel):
     lambda_0 = Parameter(fixed=True, min=0, unit=u.Unit('Angstrom'))
     f_value = Parameter(fixed=True, min=0, max=2.0, default=0)
     gamma = Parameter(fixed=True, min=0, default=0)
-    v_doppler = Parameter(default=1e5, min=0, unit=u.Unit('cm/s'))
+    v_doppler = Parameter(default=1e6, min=1e5, unit=u.Unit('cm/s'))
     column_density = Parameter(
-        default=1e13, min=0, max=1e25, unit=u.Unit('1/cm2'))
+        default=1e13, min=1e8, max=1e25, unit=u.Unit('1/cm2'))
     delta_v = Parameter(default=0, min=0, fixed=False, unit=u.Unit('cm/s'))
     delta_lambda = Parameter(default=0, fixed=False, unit=u.Unit('Angstrom'))
 
