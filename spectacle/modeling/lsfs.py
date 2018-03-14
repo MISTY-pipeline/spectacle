@@ -17,7 +17,7 @@ class COSKernel1D(Kernel1D):
 
     def __init__(self):
         path = os.path.abspath(
-            os.path.join(__file__, '..', 'data', 'cos.ecsv'))
+            os.path.join(__file__, '..', '..', 'data', 'cos.ecsv'))
         table = Table.read(path, format='ascii.ecsv')
 
         super(COSKernel1D, self).__init__(array=table['value'])
@@ -46,8 +46,13 @@ class GaussianLSFModel(Fittable1DModel):
 
     stddev = Parameter(default=0, min=0, fixed=True)
 
-    @staticmethod
-    def evaluate(y, stddev):
-        kernel = Gaussian1DKernel(stddev=stddev)
+    def __init__(self, stddev, *args, **kwargs):
+        super(GaussianLSFModel, self).__init__(stddev)
 
-        return convolve(y, kernel)
+        self._kernel_args = args
+        self._kernel_kwargs = kwargs
+
+    def evaluate(self, y, stddev):
+        kernel = Gaussian1DKernel(stddev, *self._kernel_args, **self._kernel_kwargs)
+
+        return convolve(y, kernel, boundary='extend')

@@ -11,6 +11,7 @@ from ..modeling.profiles import TauProfile
 # from ..modeling.resample import ResampleModel
 
 from ..io.registries import line_registry
+from ..utils import wave_to_vel_equiv
 
 
 class SpectrumModelNotImplemented(Exception):
@@ -39,7 +40,7 @@ class Spectrum1D:
             self._continuum_model = continuum
         else:
             self._continuum_model = Linear1D(
-                slope=0 * u.Unit('1/Angstrom'), intercept=1,
+                slope=0 * u.Unit('1/Angstrom'), intercept=1 * u.Unit(""),
                 fixed={'slope': True, 'intercept': True})
 
             logging.debug("Default continuum set to a Linear1D model.")
@@ -124,7 +125,7 @@ class Spectrum1D:
             fixed={'factor': True})
         cm = self._continuum_model
 
-        return (dc | rs | cm | ss).rename("Continuum Model")
+        return (rs | cm | ss).rename("Continuum Model")
 
     @continuum.setter
     def continuum(self, value):
@@ -158,6 +159,10 @@ class Spectrum1D:
         return self._line_model
 
     @property
+    def line_models(self):
+        return [x for x in self.line_model] if self.line_model.n_submodels() > 1 else [self.line_model]
+
+    @property
     def n_components(self):
         """Return the number of identified lines in this spectrum."""
         return len(self.line_model)
@@ -173,8 +178,8 @@ class Spectrum1D:
 
         Returns
         -------
-        : `~spectacle.core.spectrum.Spectrum1D`
-            The spectrum compound model including the new line.
+        : `~spectacle.modeling.profiles.TauProfile`
+            The new tau profile line model.
         """
         kwargs.setdefault('lambda_0', self._center if name is None else None)
 
@@ -183,7 +188,7 @@ class Spectrum1D:
         self._line_model = tau_prof if self._line_model is None \
             else self._line_model + tau_prof
 
-        return self
+        return tau_prof
 
     @property
     def lsf(self):
@@ -210,7 +215,19 @@ class Spectrum1D:
         if issubclass(value.__class__, Fittable1DModel) or value is None:
             self._lsf_model = value
         else:
-            logging.error("LSF model must be a subclass of `Fittable1DModel`.")
+            raise ValueError("LSF model must be a subclass of `Fittable1DModel`.")
+
+    def resample(self, x):
+        """
+        Returns a new `~spectacle.core.spectrum.Spectrum1D` model with a
+        resample matrix model as part of the compound spectrum model.
+
+        Returns
+        -------
+        x : array-like
+            Dispersion to which the model will be resampled.
+        """
+        self._resample_model = Resample()
 
     @property
     def noise(self):
@@ -239,10 +256,6 @@ class Spectrum1D:
         else:
             logging.error("Noise model must be a subclass of `Fittable1DModel`.")
 
-    def _rebuild_compound_model(self, comp_mod):
-        comp_mod.input_units = comp_mod[0].input_units
-        comp_mod.input_units_equivalencies = comp_mod[0].input_units_equivalencies
-
     @property
     def optical_depth(self):
         """
@@ -255,14 +268,14 @@ class Spectrum1D:
             fixed={'factor': True})
         lm = self._line_model
 
-        comp_mod = (dc | rs | lm | ss) if lm is not None else (dc | rs | ss)
+        comp_mod = (rs | lm | ss) if lm is not None else (dc | rs | ss)
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return model_factory(comp_mod, 'OpticalDepth')
+        return comp_mod.rename("TauModel")
 
     @property
     def flux(self):
@@ -278,14 +291,14 @@ class Spectrum1D:
         lm = self._line_model
         fc = FluxConvert()
 
-        comp_mod = (dc | rs | (cm + (lm | ss | fc))) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = (rs | (cm + (lm | ss | fc))) if lm is not None else (dc | rs | cm | ss)
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return model_factory(comp_mod, 'Flux')
+        return comp_mod.rename("FluxModel")
 
     @property
     def flux_decrement(self):
@@ -301,17 +314,17 @@ class Spectrum1D:
             1. / (1 + self._redshift_model.z),
             fixed={'factor': True})
 
-        comp_mod = (dc | rs | (cm + (lm | ss | fd))) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = (rs | (cm + (lm | ss | fd))) if lm is not None else (dc | rs | cm | ss)
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return model_factory(comp_mod, 'FluxDecrement')
+        return comp_mod.rename("FluxDecrementModel")
 
 
-def model_factory(bases, name="BaseModel"):
+def model_factory(bases, center, name="BaseModel"):
     from ..modeling.converters import WavelengthConvert, VelocityConvert
     from collections import OrderedDict
 
@@ -322,14 +335,10 @@ def model_factory(bases, name="BaseModel"):
         input_units_strict = True
         input_units_allow_dimensionless = True
 
-        input_units = {'x': u.Unit('Angstrom')}
-        output_units = {'y': u.Unit('')}
+        # input_units = {'x': u.Unit('Angstrom')}
+        # output_units = {'y': u.Unit('')}
 
-        input_units_equivalencies = {'x': [
-                (u.Unit('km/s'), u.Unit('Angstrom'),
-                 lambda x: WavelengthConvert(bases[0].center)(u.Quantity(x, 'km/s')),
-                 lambda x: VelocityConvert(bases[0].center)(u.Quantity(x, 'Angstrom')))
-            ]}
+        input_units_equivalencies = {'x': wave_to_vel_equiv(center)}
 
         def _parameter_units_for_data_units(self, input_units, output_units):
             return OrderedDict()

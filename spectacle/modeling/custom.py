@@ -63,7 +63,6 @@ class Masker(Fittable2DModel):
     inputs = ('x', 'y')
     outputs = ('z')
     input_units_strict = True
-    input_units = {'x': u.Unit('Angstrom')}
 
     # The center parameter should be tied to the compound model's dispersion
     center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
@@ -106,13 +105,6 @@ class Masker(Fittable2DModel):
         self._abs_tol = abs_tol
 
     def evaluate(self, x, y):
-        # Store the input unit of the dispersion array. This requires that we
-        # do not set the `input_units` attribute, or else the array will
-        # always be the input unit defined in the attribute.
-        # self.output_units = {'x': x.unit}
-
-        x = x.to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
-
         continuum = self._continuum if self._continuum is not None else np.zeros(
             y.shape)
 

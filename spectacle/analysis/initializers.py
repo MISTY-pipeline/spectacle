@@ -68,6 +68,13 @@ class Voigt1DInitializer(object):
         sum_y = np.sum((y[1:]) * delta_x)
         height = sum_y / (fwhm / 2.355 * np.sqrt( 2 * np.pi))
 
+        # Estimate the doppler b parameter
+        v_dop = 0.60056120439322491 * fwhm
+
+        # Estimate the column density
+        col_dens = (np.trapz(line(self._x.value), self._x.value) * u.Unit(
+                'kg/(s2 * Angstrom)') * SIGMA * f_value * center.to('Angstrom')).to('1/cm2')
+
         _setattr(instance, 'amplitude_L', height * self._factor)
         _setattr(instance, 'x_0', centroid)
         _setattr(instance, 'fwhm_G', fwhm)

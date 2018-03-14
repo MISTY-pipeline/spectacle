@@ -19,6 +19,9 @@ class LineRegistry(Table):
             name = self.correct(name)
             ion = next((row for row in self if row['name'] == name), None)
 
+            if ion is None:
+                raise LookupError("No such line with name '{}' in ion database.".format(name))
+
         return ion
 
     def with_lambda(self, lambda_0):
@@ -29,7 +32,7 @@ class LineRegistry(Table):
 
     def correct(self, name):
         _corrector = SpellCorrector(list(self['name']))
-        correct_name = _corrector.correction(name.upper())
+        correct_name = _corrector.correction(name)
 
         if correct_name != name:
             logging.info(

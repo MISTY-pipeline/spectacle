@@ -1,9 +1,12 @@
 from collections import OrderedDict
 
+import logging
 import astropy.units as u
 import numpy as np
 from astropy.constants import c
 from astropy.modeling import Fittable1DModel, Parameter
+
+from ..utils import wave_to_vel_equiv
 
 __all__ = ['VelocityConvert', 'WavelengthConvert',
            'DispersionConvert', 'FluxConvert', 'FluxDecrementConvert']
@@ -28,11 +31,9 @@ class VelocityConvert(Fittable1DModel):
     outputs = ('x',)
     input_units_strict = True
 
-    center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
+    input_units = {'x': u.Unit('Angstrom')}
 
-    @property
-    def input_units(self, *args, **kwargs):
-        return {'x': u.Unit('Angstrom')}
+    center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
 
     @staticmethod
     def evaluate(x, center):
@@ -63,11 +64,9 @@ class WavelengthConvert(Fittable1DModel):
     outputs = ('x',)
     input_units_strict = True
 
-    center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
+    input_units = {'x': u.Unit('km/s')}
 
-    @property
-    def input_units(self, *args, **kwargs):
-        return {'x': u.Unit('km/s')}
+    center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
 
     @staticmethod
     def evaluate(x, center):
@@ -80,29 +79,24 @@ class DispersionConvert(Fittable1DModel):
     inputs = ('x',)
     outputs = ('x',)
 
-    input_units = {'x': u.Unit('Angstrom')}
+    input_units_strict = True
 
     center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
 
     @property
     def input_units_equivalencies(self):
-        return {'x': [
-            (u.Unit('km/s'), u.Unit('Angstrom'),
-             lambda x: WavelengthConvert(self.center)(u.Quantity(x, 'km/s')),
-             lambda x: VelocityConvert(self.center)(u.Quantity(x, 'Angstrom')))
-        ]}
+        return {'x': wave_to_vel_equiv(self.center)}
 
     def evaluate(self, x, center):
-        # Astropy fitters strip modeling of their unit information. However, the
-        # first iterate of a fitter includes the quantity arrays passed to the
-        # call method. If the input array is a quantity, immediately store the
-        # quantity unit as a reference for future iterations.
-        if isinstance(x, u.Quantity):
-            self.input_units = {'x': x.unit}
-        else:
-            x = u.Quantity(x, self.input_units['x'])
+        with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
+            if x.unit.physical_type == 'speed':
+                return x.to('Angstrom')
+            elif x.unit.physical_type == 'length':
+                return x.to('km/s')
 
-        return x.to('Angstrom', equivalencies=self.input_units_equivalencies['x'])
+        logging.warning("Unrecognized input units '{}'.".format(x.unit))
+
+        return x
 
     def _parameter_units_for_data_units(self, input_units, output_units):
         return OrderedDict()
@@ -116,6 +110,9 @@ class FluxConvert(Fittable1DModel):
     def evaluate(y):
         return np.exp(-y) - 1
 
+    def _parameter_units_for_data_units(self, input_units, output_units):
+        return OrderedDict()
+
 
 class FluxDecrementConvert(Fittable1DModel):
     inputs = ('y',)
@@ -124,3 +121,6 @@ class FluxDecrementConvert(Fittable1DModel):
     @staticmethod
     def evaluate(y):
         return 1 - np.exp(-y) - 1
+
+    def _parameter_units_for_data_units(self, input_units, output_units):
+        return OrderedDict()

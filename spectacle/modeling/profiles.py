@@ -11,7 +11,7 @@ from scipy import special
 from scipy.integrate import quad
 
 from ..io.registries import line_registry
-from ..utils import find_nearest
+from ..utils import find_nearest, wave_to_vel_equiv
 from .converters import VelocityConvert, WavelengthConvert
 from ..analysis.statistics import delta_v_90, equivalent_width
 
@@ -66,18 +66,18 @@ class TauProfile(Fittable1DModel):
     """
     inputs = ('x',)
     outputs = ('y',)
-    input_units_strict = True
 
-    input_units = {'x': u.Unit('Angstrom')}
+    input_units_strict = True
+    input_units = {'x': u.AA}
 
     lambda_0 = Parameter(fixed=True, min=0, unit=u.Unit('Angstrom'))
     f_value = Parameter(fixed=True, min=0, max=2.0, default=0)
     gamma = Parameter(fixed=True, min=0, default=0)
-    v_doppler = Parameter(default=1e5, min=0, unit=u.Unit('cm/s'))
+    v_doppler = Parameter(default=1e6, min=1e5, unit=u.Unit('cm/s'))
     column_density = Parameter(
-        default=1e13, min=0, max=1e25, unit=u.Unit('1/cm2'))
-    delta_v = Parameter(default=0, fixed=False, unit=u.Unit('cm/s'))
-    delta_lambda = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
+        default=1e13, min=1e8, max=1e25, unit=u.Unit('1/cm2'))
+    delta_v = Parameter(default=0, min=0, fixed=False, unit=u.Unit('cm/s'))
+    delta_lambda = Parameter(default=0, fixed=False, unit=u.Unit('Angstrom'))
 
     def __init__(self, name=None, lambda_0=None, line_list=None, *args, **kwargs):
         line_mask = np.in1d(line_registry['name'],
@@ -120,9 +120,7 @@ class TauProfile(Fittable1DModel):
 
     @property
     def input_units_equivalencies(self):
-        return {'x': [(u.Unit('km/s'), u.Unit('Angstrom'),
-                        lambda x: WavelengthConvert(self.lambda_0)(x * u.Unit('km/s')),
-                        lambda x: VelocityConvert(self.lambda_0)(x * u.Unit('Angstrom')))]}
+        return {'x': wave_to_vel_equiv(self.lambda_0)}
 
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
@@ -131,6 +129,10 @@ class TauProfile(Fittable1DModel):
         # then added back to the parameters once the fitting is complete. This
         # is terrible for modeling that take advantage of parameter units. Thus,
         # units need to be guaranteed.
+        # if isinstance(x, u.Quantity):
+        #     logging.info("Avoiding astropy bug: forcing units on 'x' to be '{}' for fitting.".format(x.unit))
+        #     self.input_units['x'] = x.unit
+
         x = u.Quantity(x, self.input_units['x'])
 
         lambda_0 = u.Quantity(lambda_0, 'Angstrom')
@@ -142,6 +144,9 @@ class TauProfile(Fittable1DModel):
         # shift lambda_0 by delta_v
         shifted_lambda = lambda_0 * (1 + delta_v / c.cgs) + delta_lambda
 
+        # Convert shifted_lamba to input units
+        shifted_dispersion = shifted_lambda.to(x.unit, equivalencies=self.input_units_equivalencies['x'])
+
         # conversions
         nudop = (v_doppler / shifted_lambda).to('Hz')  # doppler width in Hz
 
@@ -150,7 +155,7 @@ class TauProfile(Fittable1DModel):
         tau0 = (tau_x * lambda_0).decompose()
 
         # dimensionless frequency offset in units of doppler freq
-        x = c.cgs / v_doppler * (shifted_lambda / x - 1.0)
+        x = c.cgs / v_doppler * (shifted_dispersion / x - 1.0)
         a = gamma / (4.0 * np.pi * nudop)  # damping parameter
         phi = self.voigt(a, x)  # line profile
         tau_phi = tau0 * phi  # profile scaled with tau0

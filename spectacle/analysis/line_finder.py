@@ -3,7 +3,6 @@ from collections import OrderedDict
 
 import astropy.units as u
 import numpy as np
-import peakutils
 import scipy.integrate as integrate
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel, Parameter
@@ -15,6 +14,7 @@ from ..modeling import *
 from ..modeling.fitters import MCMCFitter
 from ..io.registries import line_registry
 from ..core.region_finder import find_regions
+from ..utils import peak_finder, wave_to_vel_equiv
 
 from .initializers import Voigt1DInitializer
 
@@ -49,20 +49,17 @@ class LineFinder(Fittable2DModel):
     outputs = ('y',)
 
     input_units_strict = True
-    input_units_allow_dimensionless = True
 
     center = Parameter(default=0, min=0, unit=u.Unit('Angstrom'), fixed=True)
     redshift = Parameter(default=0, min=0, fixed=True)
-    threshold = Parameter(default=0.01, min=0)
-    min_distance = Parameter(default=30, min=0.1)
-    # rel_tol = Parameter(default=1e-2, min=1e-10, max=1)
-    # abs_tol = Parameter(default=1e-4, min=1e-10, max=1)
+    threshold = Parameter(default=0.1, min=0)
+    min_distance = Parameter(default=2, min=0.1)
     width = Parameter(default=15, min=2)
 
-    input_units = {}
+    input_units = {'x': u.Unit('Angstrom')}
 
-    def __init__(self, x, y, ion_name=None, data_type='optical_depth',
-                 defaults=None, *args, **kwargs):
+    def __init__(self, ion_name=None, data_type='optical_depth',
+                 defaults=None, max_iter=2000, *args, **kwargs):
         super(LineFinder, self).__init__(*args, **kwargs)
 
         if data_type not in ('optical_depth', 'flux', 'flux_decrement'):
@@ -73,11 +70,7 @@ class LineFinder(Fittable2DModel):
             self._data_type = data_type
 
         self._result_model = None
-        self._estimated_model = None
         self._regions = None
-        self._x = x
-        self.input_units['x'] = x.unit
-        self._y = y
         self._line_defaults = defaults or {}
 
         if 'lambda_0' in self._line_defaults:
@@ -87,96 +80,130 @@ class LineFinder(Fittable2DModel):
             self._ion_info = line_registry.with_name(ion_name)
             self.center = self._ion_info['wave'] * line_registry['wave'].unit
 
+        self.max_iter = max_iter
+
     @property
     def input_units_equivalencies(self):
-        """
-        Unit equivalencies used by `LineFinder`.
-        """
-        vel_to_wave = (u.Unit('km/s'), u.Unit('Angstrom'),
-                       lambda x: WavelengthConvert(
-                           self.center)(x * u.Unit('km/s')),
-                       lambda x: VelocityConvert(self.center)(
-                           x * u.Unit('Angstrom')))
+        return {'x': wave_to_vel_equiv(self.center)}
 
-        u.set_enabled_equivalencies([vel_to_wave])
+    def __call__(self, *args, **kwargs):
+        super(LineFinder, self).__call__(*args, **kwargs)
 
-        return {'x': [vel_to_wave]}
+        return self._result_model
 
     def evaluate(self, x, y, center, redshift, threshold, min_distance, width):
         """
         Evaluate `LineFinder` model.
         """
-        # Astropy fitters strip modeling of their unit information. However, the
-        # first iterate of a fitter includes the quantity arrays passed to the
-        # call method. If the input array is a quantity, immediately store the
-        # quantity unit as a reference for future iterations.
-        if not isinstance(x, u.Quantity):
-            x = u.Quantity(x, self._x.unit)
+        # Units are stripped in the evaluate methods of models
+        # x = u.Quantity(x, unit=self.input_units['x'])
+        logging.info("Input units: {}".format(x.unit))
+        center = center[0]
 
-        if self._data_type != 'optical_depth':
-            y = max(y) - y
+        # Convert the min_distance from dispersion units to data elements
+        min_ind = (np.abs(x.value - (x[0].value + min_distance))).argmin()
 
-        indexes = peakutils.indexes(y, thres=threshold, min_dist=min_distance)
+        logging.info("Min distance: %i elements.", min_ind)
 
-        abs_lines = Linear1D(slope=0,
-                             intercept=0 if self._data_type == 'optical_depth' else 1,
-                             fixed={'slope': True, 'intercept': True})
+        # Take a first iteration of the minima finder
+        indicies = peak_finder.indexes(
+            np.max(y) - y if self._data_type != 'optical_depth' else y,
+            thres=threshold, min_dist=min_ind)
 
-        # Get the interesting regions within the data provided. Don't bother
-        # calculating more than once, since y doesn't change.
-        # if self._regions is None:
-        #     logging.info("Finding regions...")
-        #     self._regions = find_regions(y, rel_tol=rel_tol, abs_tol=abs_tol)
-        #     logging.info(self._regions)
+        logging.info("Found %i minima.", len(indicies))
 
-        for ind in indexes:
-            peak = u.Quantity(x[ind], x.unit)
-            # Given the peak found by the peak finder, select the corresponding
-            # region found in the region finder
-            # filt_reg = [(rl, rr) for rl, rr in self._regions
-            #             if x[rl] <= peak <= x[rr]]
+        # Given each minima in the finder, construct a new spectrum object with
+        # absorption lines at the given indicies.
+        spectrum = Spectrum1D(center=self.center.value,
+                              redshift=self.redshift.value,
+                              continuum=Linear1D(slope=u.Quantity(0, 1 / x.unit),
+                                                 intercept=(
+                                                     0 if self._data_type == 'optical_depth' else 1) * u.Unit(""),
+                                                 fixed={'slope': True, 'intercept': True}))
 
-            # Create the mask that can be applied to the original data to produce
-            # data only with the particular region we're interested in
-            # mask = np.logical_or.reduce([(x > x[rl]) & (x <= x[rr])
-            #                              for rl, rr in filt_reg])
-            mask = ((x > x[ind - int(width)]) & (x < x[ind + int(width)]))
+        # Calculate the regions in the raw data
+        regions = find_regions(y, rel_tol=1e-2, abs_tol=1e-4,
+                               continuum=spectrum._continuum_model(x).value)
 
-            # Estimate the voigt parameters
-            voigt = ExtendedVoigt1D()
-            initializer = Voigt1DInitializer()
-            init_voigt = initializer.initialize(voigt,
-                                                x[mask].value,
-                                                y[mask])
+        # Convert regions to a dictionary where the keys are the tuple of the
+        # indicies
+        reg_dict = {(reg[0], reg[1]): [] for reg in regions}
 
-            # Fit the spectral line to the voigt line we initialized above
-            fitter = LevMarLSQFitter()
+        logging.info("Found %i absorption regions.", len(reg_dict))
 
-            fit_line = fitter(init_voigt, x[mask].value, y[mask], maxiter=200)
+        for ind in indicies:
+            redshifted_peak = u.Quantity(x[ind], x.unit)
+            deredshifted_peak = spectrum._redshift_model.inverse(
+                redshifted_peak)
 
-            abs_lines = abs_lines + fit_line
+            # Get the index of this line model's centroid
+            ind = (np.abs(x.value - redshifted_peak.value)).argmin()
 
-        # Fit the spectrum mode to the given data
-        # fitter = LevMarLSQFitter()
+            # Construct a dictionary with all of the true values for this
+            # absorption line.
+            line_kwargs = dict(lambda_0=center)
 
-        # fitter(spectrum.optical_depth, x, y, maxiter=1000)
-        self._estimated_model = abs_lines
+            # Based on the dispersion type, calculate the lambda or velocity
+            # deltas.
+            with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
+                if x.unit.physical_type == 'length':
+                    line_kwargs['delta_lambda'] = deredshifted_peak.to('Angstrom') - center.to(
+                        'Angstrom')
+                    line_kwargs['fixed'] = {
+                        'delta_lambda': False,
+                        'delta_v': True
+                    }
+                elif x.unit.physical_type == 'speed':
+                    line_kwargs['delta_v'] = deredshifted_peak.to(
+                        'km/s') - center.to('km/s')
+                    line_kwargs['fixed'] = {
+                        'delta_lambda': True,
+                        'delta_v': False
+                    }
+                else:
+                    raise ValueError("Could not get physical type of "
+                                     "dispersion axis unit.")
 
-        return getattr(self._estimate_voigt(), self._data_type)(x)
+            # Calculate some initial parameters for velocity and col density
+            vel = x.to(
+                'km/s', equivalencies=self.input_units_equivalencies['x'])
+
+            line_kwargs.update(estimate_line_parameters(vel, y, ind, min_ind, center, spectrum._continuum_model(x).value if self._data_type == 'flux' else None))
+            # line_kwargs.update({'v_doppler': 1e6 * u.Unit('cm/s'),
+            #                     'column_density': 1e14 * u.Unit('1/cm2')})
+
+            # Create a line profile model and add it to the spectrum object
+            line = spectrum.add_line(**line_kwargs)
+
+            # Add this line to the region dictionary
+            for k in reg_dict.keys():
+                mn, mx = x[k[0]], x[k[1]]
+
+                if mn <= redshifted_peak <= mx:
+                    reg_dict[k].append(line)
+
+        logging.debug("Begin fitting...")
+
+        # Attempt to fit this new spectrum object to the data
+        fitter = LevMarLSQFitter()
+        fit_spec_mod = fitter(
+            getattr(spectrum, self._data_type), x, y, maxiter=self.max_iter)
+
+        # Update spectrum line model parameters with fitted results
+        fit_line_mods = [x for x in fit_spec_mod if hasattr(x, 'lambda_0')]
+        spectrum._line_model = np.sum(fit_line_mods)
+
+        logging.debug("End fitting.")
+
+        self._result_model = spectrum
+
+        # Set the region dictionary on the spectrum model object
+        spectrum.regions = reg_dict
+
+        return getattr(self._result_model, self._data_type)(x)
 
     def _parameter_units_for_data_units(self, input_units, output_units):
         return OrderedDict()
-
-    @property
-    def result_model(self):
-        """
-        Returns the resultant spectrum model that is constructed by the
-        `LineFinder`.
-        """
-        if self._result_model is None:
-            self._result_model = self._estimate_voigt()
-
-        return self._result_model
 
     def find_regions(self):
         """
@@ -185,97 +212,32 @@ class LineFinder(Fittable2DModel):
         """
         return find_regions(self._y, rel_tol=1e-2, abs_tol=1e-4)
 
-    def fit(self, *args, **kwargs):
-        fitter = LevMarLSQFitter()  # MCMCFitter() #
-        fit_finder = fitter(self, self._x, self._y, self._y)
 
-        return fit_finder.result_model
+def estimate_line_parameters(x, y, ind, min_ind, center, continuum):
+    # bound_low = max(0, min(ind - min_ind, x.size - 1))
+    # bound_up = max(0, min(ind + min_ind, x.size - 1))
+    # mask = ((x > x[bound_low]) & (x < x[bound_up]))
 
-    def _estimate_voigt(self):
-        spectrum = Spectrum1D(center=self.center, redshift=self.redshift)
+    # x = x[mask]
+    # y = y[mask]
 
-        # Iterate over the found lines only if they exist
-        logging.debug("Model has %s submodels." %
-                      self._estimated_model.n_submodels())
+    if continuum is not None:
+        y = continuum - y
 
-        # Calculate the regions in the raw data
-        regions = find_regions(self._y, rel_tol=1e-2, abs_tol=1e-4,
-                               continuum=self._estimated_model[0](self._x.value))
+    # width can be estimated by the weighted 2nd moment of the x coordinate.
+    dx = x - np.mean(x)
+    fwhm = 2 * np.sqrt(np.sum((dx * dx) * y) / np.sum(y))
 
-        # Convert regions to a dictionary where the keys are the tuple of the
-        # indicies
-        reg_dict = {(reg[0], reg[1]): [] for reg in regions}
+    # amplitude is derived from area.
+    delta_x = x[1:] - x[:-1]
+    sum_y = np.sum((y[1:]) * delta_x)
+    height = sum_y / (fwhm / 2.355 * np.sqrt(2 * np.pi))
 
-        logging.debug("Found {} absorption regions.".format(len(reg_dict)))
+    # Estimate the doppler b parameter
+    v_dop = 0.60056120439322491 * fwhm
 
-        if self._estimated_model.n_submodels() > 1:
-            for line in [x for x in self._estimated_model][1:]:
-                center = self.center.value * self.center.unit
-                redshifted_center = spectrum._redshift_model(center)
-                line_kwargs = {'lambda_0': center}
+    # Estimate the column density
+    f_value = line_registry.with_lambda(center)['osc_str']
+    col_dens = (sum_y * u.Unit('kg/(km * s * Angstrom)') * SIGMA * f_value * center).to('1/cm2') / v_dop.value
 
-                # Store the peak of this absorption feature, note that this is not
-                # the center of the ion
-                peak = line.x_0.value * self._x.unit
-                deredshifted_peak = spectrum._redshift_model.inverse(peak)
-
-                # Get the index of this line model's centroid
-                ind = (np.abs(self._x.value - peak.value)).argmin()
-
-                if self._x.unit.physical_type == 'length':
-                    line_kwargs['delta_lambda'] = deredshifted_peak.to('Angstrom') - center.to(
-                        'Angstrom')
-                elif self._x.unit.physical_type == 'speed':
-                    line_kwargs['delta_v'] = deredshifted_peak.to(
-                        'km/s') - center.to('km/s')
-                else:
-                    logging.error(
-                        "Could not get physical type of dispersion axis unit.")
-
-                # Estimate the doppler b parameter
-                fwhm_L = line.fwhm_L * self._x.unit
-                fwhm = line.fwhm * self._x.unit
-
-                # v_dop = (c.cgs * fwhm_L / (2 * fwhm * peak_lambda.value)).to('cm/s')
-                # v_dop = (np.sqrt(
-                #     1729929 * fwhm_L ** 2 - 26730000 * fwhm_L * fwhm + 25000000 * fwhm ** 2) / (
-                #     5000 * np.sqrt(np.log(16))))
-                v_dop = np.sqrt(0.0249576 * fwhm_L ** 2 - 0.385632 * fwhm_L *
-                                fwhm + 0.360674 * fwhm ** 2)
-
-                if self._x.unit.physical_type == 'length':
-                    v_dop = (v_dop * c.cgs) / center
-
-                # Estimate the column density
-                f_value = self._line_defaults.get('f_value',
-                                                  self._ion_info['osc_str'])
-
-                # col_dens = (self._y[ind] / (TAU_FACTOR * f_value * deredshifted_peak
-                #                        * line(self._x[ind].value) * u.Unit('s/km'))).to(
-                #     '1/cm2') * 5
-                col_dens = (np.trapz(line(self._x.value), self._x.value) * u.Unit(
-                    'kg/(s2 * Angstrom)') * SIGMA * f_value * center.to('Angstrom')).to('1/cm2')
-
-                line_kwargs.update({'v_doppler': v_dop,
-                                    'column_density': col_dens})
-
-                line_kwargs.update(self._line_defaults)
-
-                # Add the line to the spectrum object
-                line = TauProfile(**line_kwargs)
-
-                spectrum.add_line(model=line)
-
-                # Add this line to the region dictionary
-                for k in reg_dict.keys():
-                    mn, mx = self._x[k[0]], self._x[k[1]]
-
-                    if mn <= peak <= mx:
-                        reg_dict[k].append(line)
-
-            # Set the region dictionary on the spectrum model object
-            spectrum.regions = reg_dict
-        else:
-            logging.info("No absorption features found using line finder.")
-
-        return spectrum
+    return dict(v_doppler=v_dop, column_density=col_dens)

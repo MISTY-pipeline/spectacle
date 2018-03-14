@@ -6,11 +6,10 @@ import numpy as np
 from pandas import DataFrame
 from scipy.integrate import simps
 
-from ..modeling import VelocityConvert, WavelengthConvert
-from ..utils import find_nearest
+from ..utils import find_nearest, wave_to_vel_equiv
 
 
-@u.quantity_input(x=['length', 'speed'], center=['length'])
+@u.quantity_input(x=['length', 'speed'], center=u.Unit('Angstrom'))
 def delta_v_90(x, y, center=None, continuum=None, ion_name=None):
     """
     Calculate the dispersion that encompasses the central 90 percent of the
@@ -28,11 +27,7 @@ def delta_v_90(x, y, center=None, continuum=None, ion_name=None):
     center : :class:~`astropy.units.Quantity`
         The centroid of the ion.
     """
-    equivalencies = [(u.Unit('km/s'), u.Unit('Angstrom'),
-                      lambda x: WavelengthConvert(center)(x * u.Unit('km/s')),
-                      lambda x: VelocityConvert(center)(x * u.Unit('Angstrom')))]
-
-    x = x.to(u.Unit('km/s'), equivalencies=equivalencies)
+    x = x.to('km/s', equivalencies=wave_to_vel_equiv(center))
 
     if continuum is not None:
         y = continuum - y
