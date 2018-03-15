@@ -3,18 +3,15 @@ import os
 
 import numpy as np
 import astropy.units as u
-from astropy.modeling import Fittable1DModel, Parameter, Fittable2DModel
 
 __all__ = ['Resample']
 
 
-class Resample(Fittable2DModel):
+class Resample(object):
     """
     Resample model which can be used with compound model objects.
     """
-    inputs = ('x', 'y')
-    outputs = ('y',)
-
+    
     def __init__(self, new_dispersion):
         self._new_dispersion = new_dispersion
 
