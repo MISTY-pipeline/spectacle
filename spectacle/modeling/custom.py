@@ -3,7 +3,7 @@ from collections import OrderedDict
 import astropy.units as u
 import numpy as np
 from astropy.modeling import Fittable1DModel, Fittable2DModel, Parameter
-from astropy.modeling.models import RedshiftScaleFactor, Scale
+from astropy.modeling.models import RedshiftScaleFactor, Scale, Linear1D
 
 from ..core.region_finder import find_regions
 from ..modeling.converters import VelocityConvert, WavelengthConvert
@@ -40,6 +40,11 @@ class SmartScale(Scale):
         else:
             return factor * x
 
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
+        return OrderedDict()
+
+
+class Linear(Linear1D):
     def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
 

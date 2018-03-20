@@ -6,7 +6,6 @@ import numpy as np
 import scipy.integrate as integrate
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel, Parameter
-from astropy.modeling.models import Linear1D
 from astropy.modeling.fitting import LevMarLSQFitter
 
 from ..core.spectrum import Spectrum1D
@@ -119,10 +118,10 @@ class LineFinder(Fittable2DModel):
         # absorption lines at the given indicies.
         spectrum = Spectrum1D(center=self.center.value,
                               redshift=self.redshift.value,
-                              continuum=Linear1D(slope=u.Quantity(0, 1 / x.unit),
-                                                 intercept=(
-                                                     0 if self._data_type == 'optical_depth' else 1) * u.Unit(""),
-                                                 fixed={'slope': True, 'intercept': True}))
+                              continuum=Linear(slope=u.Quantity(0, 1 / x.unit),
+                                               intercept=(
+                                                   0 if self._data_type == 'optical_depth' else 1) * u.Unit(""),
+                                               fixed={'slope': True, 'intercept': True}))
 
         # Calculate the regions in the raw data
         regions = find_regions(y, rel_tol=1e-2, abs_tol=1e-4,

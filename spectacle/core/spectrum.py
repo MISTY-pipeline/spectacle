@@ -3,13 +3,12 @@ from collections import OrderedDict
 
 import astropy.units as u
 from astropy.modeling import Fittable1DModel, models
-from astropy.modeling.models import Linear1D
 
 from ..analysis.resample import Resample
 from ..io.registries import line_registry
 from ..modeling.converters import (DispersionConvert, FluxConvert,
                                    FluxDecrementConvert)
-from ..modeling.custom import Redshift, SmartScale
+from ..modeling.custom import Redshift, SmartScale, Linear
 from ..modeling.profiles import TauProfile
 from ..utils import wave_to_vel_equiv
 
@@ -39,11 +38,11 @@ class Spectrum1D:
         if continuum is not None and isinstance(continuum, Fittable1DModel):
             self._continuum_model = continuum
         else:
-            self._continuum_model = Linear1D(
+            self._continuum_model = Linear(
                 slope=0 * u.Unit('1/Angstrom'), intercept=1 * u.Unit(""),
                 fixed={'slope': True, 'intercept': True})
 
-            logging.debug("Default continuum set to a Linear1D model.")
+            logging.debug("Default continuum set to a Linear model.")
 
         self._regions = {}
 
