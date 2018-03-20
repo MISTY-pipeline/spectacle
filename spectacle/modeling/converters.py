@@ -84,8 +84,20 @@ class DispersionConvert(Fittable1DModel):
     center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
 
     @property
+    def input_units(self):
+        return {'x': u.Unit('Angstrom')}
+
+    @property
     def input_units_equivalencies(self):
         return {'x': wave_to_vel_equiv(self.center)}
+
+    def __call__(self, x, *args, **kwargs):
+        if isinstance(x, u.Quantity):
+            self.input_units['x'] = x.unit
+        else:
+            logging.warning("Input 'x' is not a quantity.")
+
+        return super(DispersionConvert, self).__call__(x, *args, **kwargs)
 
     def evaluate(self, x, center):
         with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
