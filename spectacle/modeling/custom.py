@@ -45,8 +45,13 @@ class SmartScale(Scale):
 
 
 class Linear(Linear1D):
+    def __call__(self, x, *args, **kwargs):
+        self.input_units = {'x': x.unit}
+        return super(Linear, self).__call__(x, *args, **kwargs)
+
     def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
-        return OrderedDict()
+        return OrderedDict([('slope', 1/inputs_unit['x']),
+                            ('intercept', u.Unit(""))])
 
 
 class Masker(Fittable2DModel):
