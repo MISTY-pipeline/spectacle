@@ -45,8 +45,12 @@ class SmartScale(Scale):
 
 
 class Linear(Linear1D):
+    @property
+    def input_units(self):
+        return {'x': self._input_units['x']}
+
     def __call__(self, x, *args, **kwargs):
-        self.input_units = {'x': x.unit}
+        self._input_units = {'x': x.unit}
         return super(Linear, self).__call__(x, *args, **kwargs)
 
     def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
