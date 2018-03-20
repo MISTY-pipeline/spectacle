@@ -55,7 +55,9 @@ class LineFinder(Fittable2DModel):
     min_distance = Parameter(default=2, min=0.1)
     width = Parameter(default=15, min=2)
 
-    input_units = {'x': u.Unit('Angstrom')}
+    @property
+    def input_units(self):
+        return {'x': u.Unit('Angstrom')}
 
     def __init__(self, ion_name=None, data_type='optical_depth',
                  defaults=None, max_iter=2000, *args, **kwargs):
@@ -85,8 +87,13 @@ class LineFinder(Fittable2DModel):
     def input_units_equivalencies(self):
         return {'x': wave_to_vel_equiv(self.center)}
 
-    def __call__(self, *args, **kwargs):
-        super(LineFinder, self).__call__(*args, **kwargs)
+    def __call__(self, x, *args, **kwargs):
+        super(LineFinder, self).__call__(x, *args, **kwargs)
+
+        if isinstance(x, u.Quantity):
+            self.input_units['x'] = x.unit
+        else:
+            logging.warning("Input 'x' is not a quantity.")
 
         return self._result_model
 
@@ -95,7 +102,7 @@ class LineFinder(Fittable2DModel):
         Evaluate `LineFinder` model.
         """
         # Units are stripped in the evaluate methods of models
-        # x = u.Quantity(x, unit=self.input_units['x'])
+        x = u.Quantity(x, unit=self.input_units['x'])
         logging.info("Input units: {}".format(x.unit))
         center = center[0]
 
