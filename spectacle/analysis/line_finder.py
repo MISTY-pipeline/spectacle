@@ -108,7 +108,10 @@ class LineFinder(Fittable2DModel):
         # Take a first iteration of the minima finder
         indicies = peak_finder.indexes(
             np.max(y) - y if self._data_type != 'optical_depth' else y,
-            thres=threshold, min_dist=min_ind)
+            thres=threshold,
+            min_dist=min_ind,
+            min_thresh=0 if self._data_type != 'optical_depth' else None,
+            max_thresh=1 if self._data_type != 'optical_depth' else None)
 
         logging.info("Found %i minima.", len(indicies))
 
