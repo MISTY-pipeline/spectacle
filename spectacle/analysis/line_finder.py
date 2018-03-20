@@ -88,12 +88,12 @@ class LineFinder(Fittable2DModel):
         return {'x': wave_to_vel_equiv(self.center)}
 
     def __call__(self, x, *args, **kwargs):
-        super(LineFinder, self).__call__(x, *args, **kwargs)
-
         if isinstance(x, u.Quantity):
             self.input_units['x'] = x.unit
         else:
             logging.warning("Input 'x' is not a quantity.")
+
+        super(LineFinder, self).__call__(x, *args, **kwargs)
 
         return self._result_model
 

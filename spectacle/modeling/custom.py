@@ -26,7 +26,12 @@ class SmartScale(Scale):
 
     @property
     def input_units(self):
-        return {'x': u.Unit('Angstrom')}
+        return self._input_units
+
+    def __call__(self, x, *args, **kwargs):
+        self._input_units = {'x': x.unit}
+
+        return super(SmartScale, self).__call__(x, *args, **kwargs)
 
     @staticmethod
     def evaluate(x, factor):
@@ -45,18 +50,27 @@ class SmartScale(Scale):
 
 
 class Linear(Linear1D):
+    input_units_strict = True
+
     @property
     def input_units(self):
-        return {'x': self._input_units['x']}
+        return self._input_units
 
     def __call__(self, x, *args, **kwargs):
         self._input_units = {'x': x.unit}
+
         return super(Linear, self).__call__(x, *args, **kwargs)
+
+    def evaluate(self, x, slope, intercept):
+        x = u.Quantity(x, self.input_units['x'])
+        slope = u.Quantity(slope, 1/self.input_units['x'])
+        intercept = u.Quantity(intercept, u.Unit(""))
+
+        return super(Linear, self).evaluate(x, slope, intercept)
 
     def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict([('slope', 1/inputs_unit['x']),
                             ('intercept', u.Unit(""))])
-
 
 class Masker(Fittable2DModel):
     """
