@@ -1,16 +1,16 @@
 import logging
+from collections import OrderedDict
 
 import astropy.units as u
-from astropy.modeling import models, Fittable1DModel
+from astropy.modeling import Fittable1DModel, models
 from astropy.modeling.models import Linear1D
 
+from ..analysis.resample import Resample
+from ..io.registries import line_registry
 from ..modeling.converters import (DispersionConvert, FluxConvert,
                                    FluxDecrementConvert)
-from ..modeling.custom import SmartScale, Redshift
+from ..modeling.custom import Redshift, SmartScale
 from ..modeling.profiles import TauProfile
-# from ..modeling.resample import ResampleModel
-
-from ..io.registries import line_registry
 from ..utils import wave_to_vel_equiv
 
 
@@ -325,7 +325,6 @@ class Spectrum1D:
 
 
 def model_factory(bases, center, name="BaseModel"):
-    from ..modeling.converters import WavelengthConvert, VelocityConvert
     from collections import OrderedDict
 
     class BaseSpectrumModel(bases.__class__):
@@ -335,12 +334,10 @@ def model_factory(bases, center, name="BaseModel"):
         input_units_strict = True
         input_units_allow_dimensionless = True
 
-        # input_units = {'x': u.Unit('Angstrom')}
-        # output_units = {'y': u.Unit('')}
-
+        input_units = {'x': 'Angstrom'}
         input_units_equivalencies = {'x': wave_to_vel_equiv(center)}
 
-        def _parameter_units_for_data_units(self, input_units, output_units):
+        def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
             return OrderedDict()
 
-    return BaseSpectrumModel().rename(name)
+    return BaseSpectrumModel.rename(name)

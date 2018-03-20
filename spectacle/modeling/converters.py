@@ -98,7 +98,7 @@ class DispersionConvert(Fittable1DModel):
 
         return x
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
 
 
@@ -110,7 +110,7 @@ class FluxConvert(Fittable1DModel):
     def evaluate(y):
         return np.exp(-y) - 1
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
 
 
@@ -122,5 +122,5 @@ class FluxDecrementConvert(Fittable1DModel):
     def evaluate(y):
         return 1 - np.exp(-y) - 1
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()

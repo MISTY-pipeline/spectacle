@@ -168,9 +168,9 @@ class LineFinder(Fittable2DModel):
             vel = x.to(
                 'km/s', equivalencies=self.input_units_equivalencies['x'])
 
-            line_kwargs.update(estimate_line_parameters(vel, y, ind, min_ind, center, spectrum._continuum_model(x).value if self._data_type == 'flux' else None))
-            # line_kwargs.update({'v_doppler': 1e6 * u.Unit('cm/s'),
-            #                     'column_density': 1e14 * u.Unit('1/cm2')})
+            line_kwargs.update(
+                estimate_line_parameters(vel, y, ind, min_ind, center,
+                    spectrum._continuum_model(x).value if self._data_type == 'flux' else None))
 
             # Create a line profile model and add it to the spectrum object
             line = spectrum.add_line(**line_kwargs)
@@ -190,7 +190,7 @@ class LineFinder(Fittable2DModel):
             getattr(spectrum, self._data_type), x, y, maxiter=self.max_iter)
 
         # Update spectrum line model parameters with fitted results
-        fit_line_mods = [x for x in fit_spec_mod if hasattr(x, 'lambda_0')]
+        fit_line_mods = [smod for smod in fit_spec_mod if hasattr(smod, 'lambda_0')]
         spectrum._line_model = np.sum(fit_line_mods)
 
         logging.debug("End fitting.")
@@ -199,18 +199,10 @@ class LineFinder(Fittable2DModel):
 
         # Set the region dictionary on the spectrum model object
         spectrum.regions = reg_dict
-
         return getattr(self._result_model, self._data_type)(x)
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
-
-    def find_regions(self):
-        """
-        Returns the list of tuples specifying the beginning and end indices of
-        identified absorption/emission regions.
-        """
-        return find_regions(self._y, rel_tol=1e-2, abs_tol=1e-4)
 
 
 def estimate_line_parameters(x, y, ind, min_ind, center, continuum):

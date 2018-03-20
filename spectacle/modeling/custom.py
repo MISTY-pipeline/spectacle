@@ -15,7 +15,7 @@ __all__ = ['Redshift', 'SmartScale', 'Masker']
 class Redshift(RedshiftScaleFactor):
     z = Parameter(default=0, min=0, fixed=True)
 
-    def _parameter_units_for_data_units(self, *args, **kargs):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
 
 
@@ -40,7 +40,7 @@ class SmartScale(Scale):
         else:
             return factor * x
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
 
 
