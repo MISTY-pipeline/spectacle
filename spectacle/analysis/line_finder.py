@@ -8,13 +8,13 @@ from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel, Parameter
 from astropy.modeling.fitting import LevMarLSQFitter
 
-from ..core.spectrum import Spectrum1D
-from ..modeling import *
-from ..modeling.fitters import MCMCFitter
-from ..io.registries import line_registry
 from ..core.region_finder import find_regions
+from ..core.spectrum import Spectrum1D
+from ..io.registries import line_registry
+from ..modeling import *
+from ..modeling.custom import Linear
+from ..modeling.fitters import MCMCFitter
 from ..utils import peak_finder, wave_to_vel_equiv
-
 from .initializers import Voigt1DInitializer
 
 # (np.pi * np.exp(2)) / (m_e.cgs * c.cgs) * 0.001
