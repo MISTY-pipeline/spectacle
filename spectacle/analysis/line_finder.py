@@ -200,7 +200,9 @@ class LineFinder(Fittable2DModel):
 
         # Update spectrum line model parameters with fitted results
         fit_line_mods = [smod for smod in fit_spec_mod if hasattr(smod, 'lambda_0')]
-        spectrum._line_model = np.sum(fit_line_mods)
+
+        if len(fit_line_mods) > 0:
+            spectrum._line_model = np.sum(fit_line_mods)
 
         logging.debug("End fitting.")
 

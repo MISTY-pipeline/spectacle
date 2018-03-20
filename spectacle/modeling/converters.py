@@ -85,7 +85,7 @@ class DispersionConvert(Fittable1DModel):
 
     @property
     def input_units(self):
-        return {'x': u.Unit('Angstrom')}
+        return self._input_units
 
     @property
     def input_units_equivalencies(self):
@@ -93,7 +93,7 @@ class DispersionConvert(Fittable1DModel):
 
     def __call__(self, x, *args, **kwargs):
         if isinstance(x, u.Quantity):
-            self.input_units['x'] = x.unit
+            self._input_units = {'x': x.unit}
         else:
             logging.warning("Input 'x' is not a quantity.")
 
@@ -123,6 +123,9 @@ class FluxConvert(Fittable1DModel):
 
     @staticmethod
     def evaluate(y):
+        if isinstance(y, u.Quantity):
+            y = y.value
+
         return np.exp(-y) - 1
 
     def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
@@ -135,6 +138,9 @@ class FluxDecrementConvert(Fittable1DModel):
 
     @staticmethod
     def evaluate(y):
+        if isinstance(y, u.Quantity):
+            y = y.value
+
         return 1 - np.exp(-y) - 1
 
     def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):

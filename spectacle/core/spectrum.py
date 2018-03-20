@@ -39,7 +39,8 @@ class Spectrum1D:
             self._continuum_model = continuum
         else:
             self._continuum_model = Linear(
-                slope=0 * u.Unit('1/Angstrom'), intercept=1 * u.Unit(""),
+                slope=0 * u.Unit('1/Angstrom'),
+                intercept=1 * u.Unit(""),
                 fixed={'slope': True, 'intercept': True})
 
             logging.debug("Default continuum set to a Linear model.")
@@ -159,7 +160,12 @@ class Spectrum1D:
 
     @property
     def line_models(self):
-        return [x for x in self.line_model] if self.line_model.n_submodels() > 1 else [self.line_model]
+        if self._line_model is None:
+            return []
+        elif self.line_model.n_submodels() > 1:
+            return [x for x in self.line_model]
+
+        return [self.line_model]
 
     @property
     def n_components(self):
@@ -290,7 +296,7 @@ class Spectrum1D:
         lm = self._line_model
         fc = FluxConvert()
 
-        comp_mod = (rs | (cm + (lm | ss | fc))) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = (rs | (cm + (lm | ss | fc))) if lm is not None else (rs | cm + (ss | fc))
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
