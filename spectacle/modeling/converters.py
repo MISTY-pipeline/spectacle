@@ -100,6 +100,9 @@ class DispersionConvert(Fittable1DModel):
         return super(DispersionConvert, self).__call__(x, *args, **kwargs)
 
     def evaluate(self, x, center):
+        # Units are stripped in the evaluate methods of models
+        x = u.Quantity(x, unit=self.input_units['x'])
+
         with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
             if x.unit.physical_type == 'speed':
                 return x.to('Angstrom')
