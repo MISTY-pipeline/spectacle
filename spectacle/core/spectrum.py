@@ -1,16 +1,15 @@
 import logging
+from collections import OrderedDict
 
 import astropy.units as u
-from astropy.modeling import models, Fittable1DModel
-from astropy.modeling.models import Linear1D
+from astropy.modeling import Fittable1DModel, models
 
+from ..analysis.resample import Resample
+from ..io.registries import line_registry
 from ..modeling.converters import (DispersionConvert, FluxConvert,
                                    FluxDecrementConvert)
-from ..modeling.custom import SmartScale, Redshift
+from ..modeling.custom import Redshift, SmartScale, Linear
 from ..modeling.profiles import TauProfile
-# from ..modeling.resample import ResampleModel
-
-from ..io.registries import line_registry
 from ..utils import wave_to_vel_equiv
 
 
@@ -39,11 +38,12 @@ class Spectrum1D:
         if continuum is not None and isinstance(continuum, Fittable1DModel):
             self._continuum_model = continuum
         else:
-            self._continuum_model = Linear1D(
-                slope=0 * u.Unit('1/Angstrom'), intercept=1 * u.Unit(""),
+            self._continuum_model = Linear(
+                slope=0 * u.Unit('1/Angstrom'),
+                intercept=1 * u.Unit(""),
                 fixed={'slope': True, 'intercept': True})
 
-            logging.debug("Default continuum set to a Linear1D model.")
+            logging.debug("Default continuum set to a Linear model.")
 
         self._regions = {}
 
@@ -160,7 +160,12 @@ class Spectrum1D:
 
     @property
     def line_models(self):
-        return [x for x in self.line_model] if self.line_model.n_submodels() > 1 else [self.line_model]
+        if self._line_model is None:
+            return []
+        elif self.line_model.n_submodels() > 1:
+            return [x for x in self.line_model]
+
+        return [self.line_model]
 
     @property
     def n_components(self):
@@ -291,7 +296,7 @@ class Spectrum1D:
         lm = self._line_model
         fc = FluxConvert()
 
-        comp_mod = (rs | (cm + (lm | ss | fc))) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = (rs | (cm + (lm | ss | fc))) if lm is not None else (rs | cm + (ss | fc))
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
@@ -325,7 +330,6 @@ class Spectrum1D:
 
 
 def model_factory(bases, center, name="BaseModel"):
-    from ..modeling.converters import WavelengthConvert, VelocityConvert
     from collections import OrderedDict
 
     class BaseSpectrumModel(bases.__class__):
@@ -335,12 +339,10 @@ def model_factory(bases, center, name="BaseModel"):
         input_units_strict = True
         input_units_allow_dimensionless = True
 
-        # input_units = {'x': u.Unit('Angstrom')}
-        # output_units = {'y': u.Unit('')}
-
+        input_units = {'x': 'Angstrom'}
         input_units_equivalencies = {'x': wave_to_vel_equiv(center)}
 
-        def _parameter_units_for_data_units(self, input_units, output_units):
+        def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
             return OrderedDict()
 
-    return BaseSpectrumModel().rename(name)
+    return BaseSpectrumModel.rename(name)

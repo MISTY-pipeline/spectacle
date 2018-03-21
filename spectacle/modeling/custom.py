@@ -3,7 +3,7 @@ from collections import OrderedDict
 import astropy.units as u
 import numpy as np
 from astropy.modeling import Fittable1DModel, Fittable2DModel, Parameter
-from astropy.modeling.models import RedshiftScaleFactor, Scale
+from astropy.modeling.models import RedshiftScaleFactor, Scale, Linear1D
 
 from ..core.region_finder import find_regions
 from ..modeling.converters import VelocityConvert, WavelengthConvert
@@ -15,7 +15,7 @@ __all__ = ['Redshift', 'SmartScale', 'Masker']
 class Redshift(RedshiftScaleFactor):
     z = Parameter(default=0, min=0, fixed=True)
 
-    def _parameter_units_for_data_units(self, *args, **kargs):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
 
 
@@ -26,7 +26,12 @@ class SmartScale(Scale):
 
     @property
     def input_units(self):
-        return {'x': u.Unit('Angstrom')}
+        return self._input_units
+
+    def __call__(self, x, *args, **kwargs):
+        self._input_units = {'x': x.unit}
+
+        return super(SmartScale, self).__call__(x, *args, **kwargs)
 
     @staticmethod
     def evaluate(x, factor):
@@ -40,9 +45,32 @@ class SmartScale(Scale):
         else:
             return factor * x
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
 
+
+class Linear(Linear1D):
+    input_units_strict = True
+
+    @property
+    def input_units(self):
+        return self._input_units
+
+    def __call__(self, x, *args, **kwargs):
+        self._input_units = {'x': x.unit}
+
+        return super(Linear, self).__call__(x, *args, **kwargs)
+
+    def evaluate(self, x, slope, intercept):
+        x = u.Quantity(x, self.input_units['x'])
+        slope = u.Quantity(slope, 1/self.input_units['x'])
+        intercept = u.Quantity(intercept, u.Unit(""))
+
+        return super(Linear, self).evaluate(x, slope, intercept)
+
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
+        return OrderedDict([('slope', 1/inputs_unit['x']),
+                            ('intercept', u.Unit(""))])
 
 class Masker(Fittable2DModel):
     """

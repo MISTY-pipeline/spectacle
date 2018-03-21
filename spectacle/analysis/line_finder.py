@@ -6,16 +6,15 @@ import numpy as np
 import scipy.integrate as integrate
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel, Parameter
-from astropy.modeling.models import Linear1D
 from astropy.modeling.fitting import LevMarLSQFitter
 
-from ..core.spectrum import Spectrum1D
-from ..modeling import *
-from ..modeling.fitters import MCMCFitter
-from ..io.registries import line_registry
 from ..core.region_finder import find_regions
+from ..core.spectrum import Spectrum1D
+from ..io.registries import line_registry
+from ..modeling import *
+from ..modeling.custom import Linear
+from ..modeling.fitters import MCMCFitter
 from ..utils import peak_finder, wave_to_vel_equiv
-
 from .initializers import Voigt1DInitializer
 
 # (np.pi * np.exp(2)) / (m_e.cgs * c.cgs) * 0.001
@@ -56,7 +55,9 @@ class LineFinder(Fittable2DModel):
     min_distance = Parameter(default=2, min=0.1)
     width = Parameter(default=15, min=2)
 
-    input_units = {'x': u.Unit('Angstrom')}
+    @property
+    def input_units(self):
+        return {'x': u.Unit('Angstrom')}
 
     def __init__(self, ion_name=None, data_type='optical_depth',
                  defaults=None, max_iter=2000, *args, **kwargs):
@@ -86,8 +87,13 @@ class LineFinder(Fittable2DModel):
     def input_units_equivalencies(self):
         return {'x': wave_to_vel_equiv(self.center)}
 
-    def __call__(self, *args, **kwargs):
-        super(LineFinder, self).__call__(*args, **kwargs)
+    def __call__(self, x, *args, **kwargs):
+        if isinstance(x, u.Quantity):
+            self.input_units['x'] = x.unit
+        else:
+            logging.warning("Input 'x' is not a quantity.")
+
+        super(LineFinder, self).__call__(x, *args, **kwargs)
 
         return self._result_model
 
@@ -96,7 +102,7 @@ class LineFinder(Fittable2DModel):
         Evaluate `LineFinder` model.
         """
         # Units are stripped in the evaluate methods of models
-        # x = u.Quantity(x, unit=self.input_units['x'])
+        x = u.Quantity(x, unit=self.input_units['x'])
         logging.info("Input units: {}".format(x.unit))
         center = center[0]
 
@@ -108,7 +114,10 @@ class LineFinder(Fittable2DModel):
         # Take a first iteration of the minima finder
         indicies = peak_finder.indexes(
             np.max(y) - y if self._data_type != 'optical_depth' else y,
-            thres=threshold, min_dist=min_ind)
+            thres=threshold,
+            min_dist=min_ind,
+            min_thresh=0 if self._data_type != 'optical_depth' else None,
+            max_thresh=1 if self._data_type != 'optical_depth' else None)
 
         logging.info("Found %i minima.", len(indicies))
 
@@ -116,10 +125,10 @@ class LineFinder(Fittable2DModel):
         # absorption lines at the given indicies.
         spectrum = Spectrum1D(center=self.center.value,
                               redshift=self.redshift.value,
-                              continuum=Linear1D(slope=u.Quantity(0, 1 / x.unit),
-                                                 intercept=(
-                                                     0 if self._data_type == 'optical_depth' else 1) * u.Unit(""),
-                                                 fixed={'slope': True, 'intercept': True}))
+                              continuum=Linear(slope=u.Quantity(0, 1 / x.unit),
+                                               intercept=(
+                                                   0 if self._data_type == 'optical_depth' else 1) * u.Unit(""),
+                                               fixed={'slope': True, 'intercept': True}))
 
         # Calculate the regions in the raw data
         regions = find_regions(y, rel_tol=1e-2, abs_tol=1e-4,
@@ -168,9 +177,9 @@ class LineFinder(Fittable2DModel):
             vel = x.to(
                 'km/s', equivalencies=self.input_units_equivalencies['x'])
 
-            line_kwargs.update(estimate_line_parameters(vel, y, ind, min_ind, center, spectrum._continuum_model(x).value if self._data_type == 'flux' else None))
-            # line_kwargs.update({'v_doppler': 1e6 * u.Unit('cm/s'),
-            #                     'column_density': 1e14 * u.Unit('1/cm2')})
+            line_kwargs.update(
+                estimate_line_parameters(vel, y, ind, min_ind, center,
+                    spectrum._continuum_model(x).value if self._data_type == 'flux' else None))
 
             # Create a line profile model and add it to the spectrum object
             line = spectrum.add_line(**line_kwargs)
@@ -190,8 +199,10 @@ class LineFinder(Fittable2DModel):
             getattr(spectrum, self._data_type), x, y, maxiter=self.max_iter)
 
         # Update spectrum line model parameters with fitted results
-        fit_line_mods = [x for x in fit_spec_mod if hasattr(x, 'lambda_0')]
-        spectrum._line_model = np.sum(fit_line_mods)
+        fit_line_mods = [smod for smod in fit_spec_mod if hasattr(smod, 'lambda_0')]
+
+        if len(fit_line_mods) > 0:
+            spectrum._line_model = np.sum(fit_line_mods)
 
         logging.debug("End fitting.")
 
@@ -199,18 +210,10 @@ class LineFinder(Fittable2DModel):
 
         # Set the region dictionary on the spectrum model object
         spectrum.regions = reg_dict
-
         return getattr(self._result_model, self._data_type)(x)
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
-
-    def find_regions(self):
-        """
-        Returns the list of tuples specifying the beginning and end indices of
-        identified absorption/emission regions.
-        """
-        return find_regions(self._y, rel_tol=1e-2, abs_tol=1e-4)
 
 
 def estimate_line_parameters(x, y, ind, min_ind, center, continuum):

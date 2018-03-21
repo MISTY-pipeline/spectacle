@@ -174,7 +174,7 @@ class TauProfile(Fittable1DModel):
     def fit_deriv(x, x_0, b, gamma, f):
         return [0, 0, 0, 0]
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict([('lambda_0', u.Unit('Angstrom')),
                             ('f_value', None),
                             ('gamma', None),

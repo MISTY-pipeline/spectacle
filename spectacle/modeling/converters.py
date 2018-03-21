@@ -84,10 +84,25 @@ class DispersionConvert(Fittable1DModel):
     center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
 
     @property
+    def input_units(self):
+        return self._input_units
+
+    @property
     def input_units_equivalencies(self):
         return {'x': wave_to_vel_equiv(self.center)}
 
+    def __call__(self, x, *args, **kwargs):
+        if isinstance(x, u.Quantity):
+            self._input_units = {'x': x.unit}
+        else:
+            logging.warning("Input 'x' is not a quantity.")
+
+        return super(DispersionConvert, self).__call__(x, *args, **kwargs)
+
     def evaluate(self, x, center):
+        # Units are stripped in the evaluate methods of models
+        x = u.Quantity(x, unit=self.input_units['x'])
+
         with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
             if x.unit.physical_type == 'speed':
                 return x.to('Angstrom')
@@ -98,7 +113,7 @@ class DispersionConvert(Fittable1DModel):
 
         return x
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
 
 
@@ -108,9 +123,12 @@ class FluxConvert(Fittable1DModel):
 
     @staticmethod
     def evaluate(y):
+        if isinstance(y, u.Quantity):
+            y = y.value
+
         return np.exp(-y) - 1
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
 
 
@@ -120,7 +138,10 @@ class FluxDecrementConvert(Fittable1DModel):
 
     @staticmethod
     def evaluate(y):
+        if isinstance(y, u.Quantity):
+            y = y.value
+
         return 1 - np.exp(-y) - 1
 
-    def _parameter_units_for_data_units(self, input_units, output_units):
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
