@@ -69,6 +69,7 @@ class TauProfile(Fittable1DModel):
 
     input_units_strict = True
     input_units = {'x': u.AA}
+    input_units_allow_dimensionless = {'x': True}
 
     lambda_0 = Parameter(fixed=True, min=0, unit=u.Unit('Angstrom'))
     f_value = Parameter(fixed=True, min=0, max=2.0, default=0)

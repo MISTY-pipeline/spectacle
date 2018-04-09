@@ -280,7 +280,7 @@ class Spectrum1D:
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return comp_mod.rename("TauModel")
+        return model_factory(comp_mod, self._center, name="TauModel")()
 
     @property
     def flux(self):
@@ -303,7 +303,7 @@ class Spectrum1D:
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return comp_mod.rename("FluxModel")
+        return model_factory(comp_mod, self._center, name="FluxModel")()
 
     @property
     def flux_decrement(self):
@@ -326,23 +326,25 @@ class Spectrum1D:
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return comp_mod.rename("FluxDecrementModel")
+        return model_factory(comp_mod, self._center, name="FluxDecrementModel")()
 
 
 def model_factory(bases, center, name="BaseModel"):
     from collections import OrderedDict
+
 
     class BaseSpectrumModel(bases.__class__):
         inputs = ('x',)
         outputs = ('y',)
 
         input_units_strict = True
-        input_units_allow_dimensionless = True
+        input_units_allow_dimensionless = {'x': True}
 
-        input_units = {'x': 'Angstrom'}
+        input_units = {'x': u.AA}
         input_units_equivalencies = {'x': wave_to_vel_equiv(center)}
 
-        def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
-            return OrderedDict()
+        @property
+        def _supports_unit_fitting(self):
+            return True
 
     return BaseSpectrumModel.rename(name)
