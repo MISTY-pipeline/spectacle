@@ -8,6 +8,7 @@ from astropy.modeling.models import RedshiftScaleFactor, Scale, Linear1D
 from ..core.region_finder import find_regions
 from ..modeling.converters import VelocityConvert, WavelengthConvert
 from ..modeling.profiles import TauProfile
+from ..utils import wave_to_vel_equiv
 
 __all__ = ['Redshift', 'SmartScale', 'Masker']
 
@@ -21,17 +22,9 @@ class Redshift(RedshiftScaleFactor):
 
 class SmartScale(Scale):
     input_units_strict = True
+    input_units_allow_dimensionless = {'x': True}
 
     factor = Parameter(default=1, min=0, fixed=True)
-
-    @property
-    def input_units(self):
-        return self._input_units
-
-    def __call__(self, x, *args, **kwargs):
-        self._input_units = {'x': x.unit}
-
-        return super(SmartScale, self).__call__(x, *args, **kwargs)
 
     @staticmethod
     def evaluate(x, factor):
@@ -51,22 +44,21 @@ class SmartScale(Scale):
 
 class Linear(Linear1D):
     input_units_strict = True
+    input_units_allow_dimensionless = {'x': True}
 
     @property
     def input_units(self):
-        return self._input_units
+        if self.slope.unit is not None:
+            return {'x': 1/self.slope.unit}
 
-    def __call__(self, x, *args, **kwargs):
-        self._input_units = {'x': x.unit}
+        return None
 
-        return super(Linear, self).__call__(x, *args, **kwargs)
+    # def evaluate(self, x, slope, intercept):
+    #     x = u.Quantity(x, self.input_units['x'])
+    #     slope = u.Quantity(slope, 1/self.input_units['x'])
+    #     intercept = u.Quantity(intercept, u.Unit(""))
 
-    def evaluate(self, x, slope, intercept):
-        x = u.Quantity(x, self.input_units['x'])
-        slope = u.Quantity(slope, 1/self.input_units['x'])
-        intercept = u.Quantity(intercept, u.Unit(""))
-
-        return super(Linear, self).evaluate(x, slope, intercept)
+    #     return super(Linear, self).evaluate(x, slope, intercept)
 
     def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict([('slope', 1/inputs_unit['x']),

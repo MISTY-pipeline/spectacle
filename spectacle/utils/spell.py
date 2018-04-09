@@ -38,7 +38,8 @@ class SpellCorrector:
         transposes = [L + R[1] + R[0] + R[2:] for L, R in splits if len(R) > 1]
         replaces = [L + c + R[1:] for L, R in splits if R for c in letters]
         inserts = [L + c + R for L, R in splits for c in letters]
-        return set(deletes + transposes + replaces + inserts)
+        nonspaces = [''.join(re.findall(r'\w+', word))]
+        return set(deletes + transposes + replaces + inserts + nonspaces)
 
     def edits2(self, word):
         "All edits that are two edits away from `word`."

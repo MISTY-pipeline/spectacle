@@ -113,13 +113,21 @@ class LineFinder(Fittable2DModel):
 
         # Take a first iteration of the minima finder
         indicies = peak_finder.indexes(
-            np.max(y) - y if self._data_type != 'optical_depth' else y,
+            np.max(y) - y if self._data_type == 'flux' else y,
             thres=threshold,
             min_dist=min_ind,
             min_thresh=0 if self._data_type != 'optical_depth' else None,
             max_thresh=1 if self._data_type != 'optical_depth' else None)
 
+        # Enchance the peak detection using interpolation
+        # peaks = peak_finder.interpolate(x.value,
+        #                                 np.max(y) - y if self._data_type == 'flux' else y,
+        #                                 ind=indicies, width=min_ind)
+
         logging.info("Found %i minima.", len(indicies))
+
+        # for peak in peaks:
+        #     logging.info("\t%s", peak)
 
         # Given each minima in the finder, construct a new spectrum object with
         # absorption lines at the given indicies.
@@ -141,7 +149,8 @@ class LineFinder(Fittable2DModel):
         logging.info("Found %i absorption regions.", len(reg_dict))
 
         for ind in indicies:
-            redshifted_peak = u.Quantity(x[ind], x.unit)
+        # for peak in peaks:
+            redshifted_peak = x[ind]
             deredshifted_peak = spectrum._redshift_model.inverse(
                 redshifted_peak)
 
@@ -156,15 +165,15 @@ class LineFinder(Fittable2DModel):
             # deltas.
             with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
                 if x.unit.physical_type == 'length':
-                    line_kwargs['delta_lambda'] = deredshifted_peak.to('Angstrom') - center.to(
+                    line_kwargs['delta_lambda'] = center.to('Angstrom') - deredshifted_peak.to(
                         'Angstrom')
                     line_kwargs['fixed'] = {
                         'delta_lambda': False,
                         'delta_v': True
                     }
                 elif x.unit.physical_type == 'speed':
-                    line_kwargs['delta_v'] = deredshifted_peak.to(
-                        'km/s') - center.to('km/s')
+                    line_kwargs['delta_v'] = center.to(
+                        'km/s') - deredshifted_peak.to('km/s')
                     line_kwargs['fixed'] = {
                         'delta_lambda': True,
                         'delta_v': False
@@ -173,9 +182,8 @@ class LineFinder(Fittable2DModel):
                     raise ValueError("Could not get physical type of "
                                      "dispersion axis unit.")
 
-            # Calculate some initial parameters for velocity and col density
-            vel = x.to(
-                'km/s', equivalencies=self.input_units_equivalencies['x'])
+                # Calculate some initial parameters for velocity and col density
+                vel = x.to('km/s')
 
             line_kwargs.update(
                 estimate_line_parameters(vel, y, ind, min_ind, center,
@@ -210,6 +218,7 @@ class LineFinder(Fittable2DModel):
 
         # Set the region dictionary on the spectrum model object
         spectrum.regions = reg_dict
+
         return getattr(self._result_model, self._data_type)(x)
 
     def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
@@ -227,20 +236,24 @@ def estimate_line_parameters(x, y, ind, min_ind, center, continuum):
     if continuum is not None:
         y = continuum - y
 
-    # width can be estimated by the weighted 2nd moment of the x coordinate.
+    # Width can be estimated by the weighted 2nd moment of the x coordinate
     dx = x - np.mean(x)
     fwhm = 2 * np.sqrt(np.sum((dx * dx) * y) / np.sum(y))
 
-    # amplitude is derived from area.
+    # Amplitude is derived from area
     delta_x = x[1:] - x[:-1]
     sum_y = np.sum((y[1:]) * delta_x)
     height = sum_y / (fwhm / 2.355 * np.sqrt(2 * np.pi))
 
     # Estimate the doppler b parameter
-    v_dop = 0.60056120439322491 * fwhm
+    v_dop = 0.60056120439322491 * fwhm * sum_y.value
 
     # Estimate the column density
     f_value = line_registry.with_lambda(center)['osc_str']
-    col_dens = (sum_y * u.Unit('kg/(km * s * Angstrom)') * SIGMA * f_value * center).to('1/cm2') / v_dop.value
+    col_dens = (sum_y * u.Unit('kg/(km * s * Angstrom)') * SIGMA * f_value * center).to('1/cm2') #/ v_dop.value
+
+    logging.info("""Estimated intial values:
+    Column density: {:g}
+    Doppler width: {:g}""".format(col_dens, v_dop.to('cm/s')))
 
     return dict(v_doppler=v_dop, column_density=col_dens)
