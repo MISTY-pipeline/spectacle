@@ -33,7 +33,7 @@ class MCMCFitter:
     def lnlike(cls, theta, x, y, yerr, model):
         # Convert the array of parameter values back into model parameters
         _fitter_to_model_params(model, theta[:-1])
-        mod_y = model(x, y)
+        mod_y = model(x)
         inv_sigma2 = 1.0 / (yerr ** 2 + mod_y ** 2 * np.exp(2 * theta[-1]))
         res = -0.5 * (
             np.sum((y - mod_y) ** 2 * inv_sigma2 - np.log(inv_sigma2)))
@@ -64,11 +64,13 @@ class MCMCFitter:
         fit_params, fit_params_indices = _model_to_fit_params(model)
         fit_params = np.append(fit_params, 0.5)
 
+        print(fit_params)
+
         # Cache the number of dimensions of the problem, and walker count
         ndim = len(fit_params)
 
         # Initialize starting positions of walkers in a Gaussian ball
-        pos = [fit_params + fit_params * 0.1 * np.random.randn(ndim)
+        pos = [fit_params * (1 + 0.1 * np.random.randn(ndim))
                for i in range(nwalkers)]
         sampler = emcee.EnsembleSampler(nwalkers, ndim, self.lnprob,
                                         args=(x, y, yerr, model))

@@ -202,9 +202,9 @@ class LineFinder(Fittable2DModel):
         logging.debug("Begin fitting...")
 
         # Attempt to fit this new spectrum object to the data
-        fitter = LevMarLSQFitter()
+        fitter = MCMCFitter()
         fit_spec_mod = fitter(
-            getattr(spectrum, self._data_type), x, y, maxiter=self.max_iter)
+            getattr(spectrum, self._data_type), x, y) # maxiter=self.max_iter)
 
         # Update spectrum line model parameters with fitted results
         fit_line_mods = [smod for smod in fit_spec_mod if hasattr(smod, 'lambda_0')]
