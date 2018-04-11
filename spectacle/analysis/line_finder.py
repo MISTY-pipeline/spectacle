@@ -204,7 +204,7 @@ class LineFinder(Fittable2DModel):
         # Attempt to fit this new spectrum object to the data
         fitter = MCMCFitter()
         fit_spec_mod = fitter(
-            getattr(spectrum, self._data_type), x, y) # maxiter=self.max_iter)
+            getattr(spectrum, self._data_type), x, y, nwalkers=50, steps=250) # maxiter=self.max_iter)
 
         # Update spectrum line model parameters with fitted results
         fit_line_mods = [smod for smod in fit_spec_mod if hasattr(smod, 'lambda_0')]
@@ -256,4 +256,4 @@ def estimate_line_parameters(x, y, ind, min_ind, center, continuum):
     Column density: {:g}
     Doppler width: {:g}""".format(col_dens, v_dop.to('cm/s')))
 
-    return dict(v_doppler=v_dop, column_density=col_dens)
+    return dict(v_doppler=v_dop.to('cm/s'), column_density=col_dens)
