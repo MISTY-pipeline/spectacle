@@ -1,11 +1,13 @@
 import logging
 
 import numpy as np
-import peakutils
+import uuid
 from astropy.modeling.fitting import LevMarLSQFitter, Fitter, _model_to_fit_params, _fitter_to_model_params
 from astropy.modeling import Parameter
 from scipy import stats
 import emcee
+
+import matplotlib.pyplot as plt
 
 from ..utils import find_nearest
 
@@ -31,18 +33,18 @@ class MCMCFitter:
         return -np.inf
 
     @classmethod
-    def lnlike(cls, theta, x, y, yerr, model):
+    def lnlike(cls, theta, x, y, yerr, model, ax):
         # Convert the array of parameter values back into model parameters
         _fitter_to_model_params(model, theta[:-1])
 
         mod_y = model(x)
 
+        ax.plot(x, mod_y, color='k', alpha=0.2)
+
         inv_sigma2 = 1.0 / (yerr ** 2 + mod_y ** 2 * np.exp(2 * theta[-1]))
-        log_inv_sigma2 = np.log(inv_sigma2)
-        mod_diff = (y - mod_y) ** 2
 
         res = -0.5 * (
-            np.nansum(mod_diff * inv_sigma2 - log_inv_sigma2))
+            np.nansum((y - mod_y) ** 2 * inv_sigma2 - np.log(inv_sigma2)))
 
         if np.isnan(res):
             print(model)
@@ -56,14 +58,14 @@ class MCMCFitter:
         return res
 
     @classmethod
-    def lnprob(cls, theta, x, y, yerr, model):
+    def lnprob(cls, theta, x, y, yerr, model, ax):
         model = model.copy()
         lp = cls.lnprior(theta, model)
 
         if not np.isfinite(lp):
             return -np.inf
 
-        ll = cls.lnlike(theta, x, y, yerr, model)
+        ll = cls.lnlike(theta, x, y, yerr, model, ax)
 
         return lp + ll
 
@@ -82,18 +84,30 @@ class MCMCFitter:
         for name, value in zip(np.array(model.param_names)[fit_params_indices], fit_params):
             print("{:20}: {:g}".format(name, value))
 
-        fit_params = np.append(fit_params, 0.5)
+        fit_params = np.append(fit_params, np.log(0.5))
         fit_params_indices = np.array(fit_params_indices).astype(int)
 
         # Cache the number of dimensions of the problem, and walker count
         ndim = len(fit_params)
 
+
+
+        import matplotlib.pyplot as plt
+
+        f, ax = plt.subplots()
+
+        ax.plot(x, y)
+
+
         # Initialize starting positions of walkers in a Gaussian ball
-        pos = [fit_params * (1 + 0.1 * np.random.randn(ndim))
+        pos = [fit_params * (1 + 0.01 * np.random.randn(ndim))
                for i in range(nwalkers)]
         sampler = emcee.EnsembleSampler(nwalkers, ndim, MCMCFitter.lnprob,
-                                        args=(x, y, yerr, model))
+                                        args=(x, y, yerr, model, ax))
         sampler.run_mcmc(pos, steps, rstate0=np.random.get_state())
+
+
+        plt.show()
 
         print("Shape: ", sampler.chain.shape)
 
@@ -106,6 +120,7 @@ class MCMCFitter:
             ax2.plot(sampler.chain[i, :, 1])
             ax3.plot(sampler.chain[i, :, 2])
 
+        plt.tight_layout()
         plt.savefig("test.png")
 
         burnin = int(steps * 0.1)

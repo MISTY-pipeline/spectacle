@@ -104,16 +104,83 @@ class LineFinder(Fittable2DModel):
         # Units are stripped in the evaluate methods of models
         x = u.Quantity(x, unit=self.input_units['x'])
         logging.info("Input units: {}".format(x.unit))
-        center = center[0]
 
         # Convert the min_distance from dispersion units to data elements
         min_ind = (np.abs(x.value - (x[0].value + min_distance))).argmin()
 
         logging.info("Min distance: %i elements.", min_ind)
 
+        # Given each minima in the finder, construct a new spectrum object with
+        # absorption lines at the given indicies.
+        spectrum = Spectrum1D(center=self.center.value * self.center.unit,
+                              redshift=self.redshift.value,
+                              continuum=Linear(slope=u.Quantity(0, 1 / x.unit),
+                                               intercept=(
+                                                    0 if self._data_type == 'optical_depth' else 1) * u.Unit(""),
+                                               fixed={'slope': True, 'intercept': True}))
+
+        fit_spec_mod = self.generate(spectrum, x, y, np.max(y) - y if self._data_type == 'flux' else y, threshold, min_ind)
+        prev_num_sm = -1
+
+        # while len(fit_spec_mod._submodels) != prev_num_sm:
+        #     prev_num_sm = len(fit_spec_mod._submodels)
+
+        #     fit_spec_mod = self.generate(spectrum, x, y,
+        #                                  np.abs(fit_spec_mod(x) - y).value,
+        #                                  threshold, min_ind)
+
+        #     import matplotlib.pyplot as plt
+
+        #     f, ax = plt.subplots()
+
+        #     ax.plot(x, y)
+        #     ax.plot(x, fit_spec_mod(x))
+
+        #     plt.show()
+
+        #     print(prev_num_sm, len(fit_spec_mod._submodels))
+
+        # Remove any extraneous lines that do not contain any useful info
+        # fit_spec_mod, any_removed = remove_empty_lines(fit_spec_mod)
+
+        logging.debug("End fitting.")
+
+        self._result_model = spectrum
+
+        # Calculate the regions in the raw data
+        regions = find_regions(y, rel_tol=1e-2, abs_tol=1e-4,
+                               continuum=spectrum._continuum_model(x).value)
+
+        # Convert regions to a dictionary where the keys are the tuple of the
+        # indicies
+        reg_dict = {(reg[0], reg[1]): [] for reg in regions}
+
+        # Add this line to the region dictionary
+        for line in spectrum.line_models:
+            redshifted_peak = spectrum._redshift_model(line.lambda_0 +
+                                                       line.delta_lambda)
+
+            for k in reg_dict.keys():
+                mn, mx = x[k[0]], x[k[1]]
+
+                if mn <= redshifted_peak <= mx:
+                    reg_dict[k].append(line)
+
+        # Set the region dictionary on the spectrum model object
+        spectrum.regions = reg_dict
+
+        logging.info("Found %i absorption regions.", len(reg_dict))
+
+        return getattr(self._result_model, self._data_type)(x)
+
+    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
+        return OrderedDict()
+
+    def generate(self, spectrum, x, y, y_peaks, threshold, min_ind):
         # Take a first iteration of the minima finder
+        print(min(y_peaks), max(y_peaks))
         indicies = peak_finder.indexes(
-            np.max(y) - y if self._data_type == 'flux' else y,
+            y_peaks,
             thres=threshold,
             min_dist=min_ind,
             min_thresh=0 if self._data_type != 'optical_depth' else None,
@@ -126,27 +193,30 @@ class LineFinder(Fittable2DModel):
 
         logging.info("Found %i minima.", len(indicies))
 
-        # for peak in peaks:
-        #     logging.info("\t%s", peak)
+        # Generation spectrum model
+        self.find_lines(spectrum, indicies, x, y, threshold, min_ind)
 
-        # Given each minima in the finder, construct a new spectrum object with
-        # absorption lines at the given indicies.
-        spectrum = Spectrum1D(center=self.center.value,
-                              redshift=self.redshift.value,
-                              continuum=Linear(slope=u.Quantity(0, 1 / x.unit),
-                                               intercept=(
-                                                   0 if self._data_type == 'optical_depth' else 1) * u.Unit(""),
-                                               fixed={'slope': True, 'intercept': True}))
+        logging.debug("Begin fitting...")
 
-        # Calculate the regions in the raw data
-        regions = find_regions(y, rel_tol=1e-2, abs_tol=1e-4,
-                               continuum=spectrum._continuum_model(x).value)
+        # Attempt to fit this new spectrum object to the data
+        fitter = LevMarLSQFitter()
 
-        # Convert regions to a dictionary where the keys are the tuple of the
-        # indicies
-        reg_dict = {(reg[0], reg[1]): [] for reg in regions}
+        fit_spec_mod = fitter(
+            getattr(spectrum, self._data_type), x, y,
+            maxiter=self.max_iter
+            # nwalkers=50, steps=250
+            )
 
-        logging.info("Found %i absorption regions.", len(reg_dict))
+        # Update spectrum line model parameters with fitted results
+        fit_line_mods = [smod for smod in fit_spec_mod if hasattr(smod, 'lambda_0')]
+
+        if len(fit_line_mods) > 0:
+            spectrum._line_model = np.sum(fit_line_mods)
+
+        return fit_spec_mod
+
+    def find_lines(self, spectrum, indicies, x, y, threshold, min_ind):
+        center = self.center.value * self.center.unit
 
         for ind in indicies:
         # for peak in peaks:
@@ -180,7 +250,7 @@ class LineFinder(Fittable2DModel):
                     }
                 else:
                     raise ValueError("Could not get physical type of "
-                                     "dispersion axis unit.")
+                                        "dispersion axis unit.")
 
                 # Calculate some initial parameters for velocity and col density
                 vel = x.to('km/s')
@@ -190,39 +260,7 @@ class LineFinder(Fittable2DModel):
                     spectrum._continuum_model(x).value if self._data_type == 'flux' else None))
 
             # Create a line profile model and add it to the spectrum object
-            line = spectrum.add_line(**line_kwargs)
-
-            # Add this line to the region dictionary
-            for k in reg_dict.keys():
-                mn, mx = x[k[0]], x[k[1]]
-
-                if mn <= redshifted_peak <= mx:
-                    reg_dict[k].append(line)
-
-        logging.debug("Begin fitting...")
-
-        # Attempt to fit this new spectrum object to the data
-        fitter = MCMCFitter()
-        fit_spec_mod = fitter(
-            getattr(spectrum, self._data_type), x, y, nwalkers=50, steps=250) # maxiter=self.max_iter)
-
-        # Update spectrum line model parameters with fitted results
-        fit_line_mods = [smod for smod in fit_spec_mod if hasattr(smod, 'lambda_0')]
-
-        if len(fit_line_mods) > 0:
-            spectrum._line_model = np.sum(fit_line_mods)
-
-        logging.debug("End fitting.")
-
-        self._result_model = spectrum
-
-        # Set the region dictionary on the spectrum model object
-        spectrum.regions = reg_dict
-
-        return getattr(self._result_model, self._data_type)(x)
-
-    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
-        return OrderedDict()
+            spectrum.add_line(**line_kwargs)
 
 
 def estimate_line_parameters(x, y, ind, min_ind, center, continuum):
@@ -246,14 +284,29 @@ def estimate_line_parameters(x, y, ind, min_ind, center, continuum):
     height = sum_y / (fwhm / 2.355 * np.sqrt(2 * np.pi))
 
     # Estimate the doppler b parameter
-    v_dop = 0.60056120439322491 * fwhm * sum_y.value
+    v_dop = 0.60056120439322491 * fwhm
 
     # Estimate the column density
     f_value = line_registry.with_lambda(center)['osc_str']
-    col_dens = (sum_y * u.Unit('kg/(km * s * Angstrom)') * SIGMA * f_value * center).to('1/cm2') #/ v_dop.value
+    col_dens = (sum_y * u.Unit('kg/(km * s * Angstrom)') * SIGMA * f_value * center).to('1/cm2') / sum_y.value
 
     logging.info("""Estimated intial values:
     Column density: {:g}
     Doppler width: {:g}""".format(col_dens, v_dop.to('cm/s')))
 
     return dict(v_doppler=v_dop.to('cm/s'), column_density=col_dens)
+
+
+def remove_empty_lines(model):
+    sm_inds = [range(len(model._submodels))]
+
+    for i in [x for x in sm_inds]:
+        sm = model[i]
+
+        if hasattr(sm, 'lambda_0'):
+            if sm.equivalent_width() > sm.v_dopper:
+                sm_inds.remove(i)
+
+    new_mod = [x for i, x in enumerate(model) if i in sm_inds]
+
+    return np.sum(new_mod), len(sm_inds) < len(model._submodels)
