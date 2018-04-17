@@ -119,7 +119,7 @@ class LineFinder(Fittable2DModel):
                                                     0 if self._data_type == 'optical_depth' else 1) * u.Unit(""),
                                                fixed={'slope': True, 'intercept': True}))
 
-        fit_spec_mod = self.generate(spectrum, x, y, np.max(y) - y if self._data_type == 'flux' else y, threshold, min_ind)
+        fit_spec_mod = self.generate_model(spectrum, x, y, np.max(y) - y if self._data_type == 'flux' else y, threshold, min_ind)
         prev_num_sm = -1
 
         # while len(fit_spec_mod._submodels) != prev_num_sm:
@@ -176,9 +176,8 @@ class LineFinder(Fittable2DModel):
     def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
 
-    def generate(self, spectrum, x, y, y_peaks, threshold, min_ind):
+    def generate_model(self, spectrum, x, y, y_peaks, threshold, min_ind):
         # Take a first iteration of the minima finder
-        print(min(y_peaks), max(y_peaks))
         indicies = peak_finder.indexes(
             y_peaks,
             thres=threshold,
@@ -186,7 +185,7 @@ class LineFinder(Fittable2DModel):
             min_thresh=0 if self._data_type != 'optical_depth' else None,
             max_thresh=1 if self._data_type != 'optical_depth' else None)
 
-        # Enchance the peak detection using interpolation
+        # Enhance the peak detection using interpolation
         # peaks = peak_finder.interpolate(x.value,
         #                                 np.max(y) - y if self._data_type == 'flux' else y,
         #                                 ind=indicies, width=min_ind)
@@ -194,7 +193,7 @@ class LineFinder(Fittable2DModel):
         logging.info("Found %i minima.", len(indicies))
 
         # Generation spectrum model
-        self.find_lines(spectrum, indicies, x, y, threshold, min_ind)
+        self.compose_lines(spectrum, indicies, x, y, threshold, min_ind)
 
         logging.debug("Begin fitting...")
 
@@ -204,7 +203,16 @@ class LineFinder(Fittable2DModel):
         fit_spec_mod = fitter(
             getattr(spectrum, self._data_type), x, y,
             maxiter=self.max_iter
-            # nwalkers=50, steps=250
+            )
+
+        # fit_spec_mod = getattr(spectrum, self._data_type)
+
+        fitter = MCMCFitter() # LevMarLSQFitter()
+
+        fit_spec_mod = fitter(
+            fit_spec_mod, x, y,
+            # maxiter=self.max_iter
+            nwalkers=100, steps=500
             )
 
         # Update spectrum line model parameters with fitted results
@@ -215,11 +223,10 @@ class LineFinder(Fittable2DModel):
 
         return fit_spec_mod
 
-    def find_lines(self, spectrum, indicies, x, y, threshold, min_ind):
+    def compose_lines(self, spectrum, indicies, x, y, threshold, min_ind):
         center = self.center.value * self.center.unit
 
         for ind in indicies:
-        # for peak in peaks:
             redshifted_peak = x[ind]
             deredshifted_peak = spectrum._redshift_model.inverse(
                 redshifted_peak)
@@ -235,15 +242,15 @@ class LineFinder(Fittable2DModel):
             # deltas.
             with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
                 if x.unit.physical_type == 'length':
-                    line_kwargs['delta_lambda'] = center.to('Angstrom') - deredshifted_peak.to(
+                    line_kwargs['delta_lambda'] = deredshifted_peak.to('Angstrom') - center.to(
                         'Angstrom')
                     line_kwargs['fixed'] = {
                         'delta_lambda': False,
                         'delta_v': True
                     }
                 elif x.unit.physical_type == 'speed':
-                    line_kwargs['delta_v'] = center.to(
-                        'km/s') - deredshifted_peak.to('km/s')
+                    line_kwargs['delta_v'] = deredshifted_peak.to(
+                        'km/s') - center.to('km/s')
                     line_kwargs['fixed'] = {
                         'delta_lambda': True,
                         'delta_v': False
@@ -259,36 +266,59 @@ class LineFinder(Fittable2DModel):
                 estimate_line_parameters(vel, y, ind, min_ind, center,
                     spectrum._continuum_model(x).value if self._data_type == 'flux' else None))
 
+            line_kwargs.update(self._line_defaults)
+
             # Create a line profile model and add it to the spectrum object
             spectrum.add_line(**line_kwargs)
 
 
 def estimate_line_parameters(x, y, ind, min_ind, center, continuum):
-    # bound_low = max(0, min(ind - min_ind, x.size - 1))
-    # bound_up = max(0, min(ind + min_ind, x.size - 1))
-    # mask = ((x > x[bound_low]) & (x < x[bound_up]))
-
-    # x = x[mask]
-    # y = y[mask]
+    bound_low = max(0, min(ind - int(min_ind * 0.5), x.size - 1))
+    bound_up = max(0, min(ind + int(min_ind * 0.5), x.size - 1))
+    mask = ((x > x[bound_low]) & (x < x[bound_up]))
 
     if continuum is not None:
         y = continuum - y
 
+    mx = x[mask]
+    my = y[mask]
+
     # Width can be estimated by the weighted 2nd moment of the x coordinate
-    dx = x - np.mean(x)
-    fwhm = 2 * np.sqrt(np.sum((dx * dx) * y) / np.sum(y))
+    dx = mx - np.mean(mx)
+    fwhm = 2 * np.sqrt(np.sum((dx * dx) * my) / np.sum(my))
+    centroid = np.sum(mx * my) / np.sum(my)
+    sigma = fwhm / 2.355
 
     # Amplitude is derived from area
-    delta_x = x[1:] - x[:-1]
-    sum_y = np.sum((y[1:]) * delta_x)
-    height = sum_y / (fwhm / 2.355 * np.sqrt(2 * np.pi))
+    delta_x = mx[1:] - mx[:-1]
+    sum_y = np.sum(my[1:] * delta_x)
+    height = sum_y / (sigma * np.sqrt(2 * np.pi))
+
+    from astropy.modeling.models import Gaussian1D
+    from astropy.modeling.fitting import LevMarLSQFitter
+
+    g = Gaussian1D(amplitude=height, mean=centroid, stddev=sigma)
+    g_fit = LevMarLSQFitter()(g, mx, my)
+
+    new_dx = x - np.mean(mx)
+    new_delta_x = x[1:] - x[:-1]
+    new_y = g_fit(x)
+    new_fwhm = 2 * np.sqrt(np.sum((new_dx * new_dx) * new_y) / np.sum(new_y))
+    new_sum_y = np.sum(new_y[1:] * new_delta_x)
+
+    # import matplotlib.pyplot as plt
+    # f, ax = plt.subplots()
+
+    # ax.plot(x, y)
+    # ax.plot(x, g(x))
+    # ax.plot(x, g_fit(x))
 
     # Estimate the doppler b parameter
-    v_dop = 0.60056120439322491 * fwhm
+    v_dop = 0.60056120439322491 * new_fwhm
 
     # Estimate the column density
     f_value = line_registry.with_lambda(center)['osc_str']
-    col_dens = (sum_y * u.Unit('kg/(km * s * Angstrom)') * SIGMA * f_value * center).to('1/cm2') / sum_y.value
+    col_dens = (new_sum_y * u.Unit('kg/(cm * s * Angstrom)') * SIGMA * f_value * center).to('1/cm2')
 
     logging.info("""Estimated intial values:
     Column density: {:g}

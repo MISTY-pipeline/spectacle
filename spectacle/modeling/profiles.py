@@ -74,11 +74,11 @@ class TauProfile(Fittable1DModel):
     lambda_0 = Parameter(fixed=True, min=0, unit=u.Unit('Angstrom'))
     f_value = Parameter(fixed=True, min=0, max=2.0, default=0)
     gamma = Parameter(fixed=True, min=0, default=0)
-    v_doppler = Parameter(default=1e6, min=1e5, unit=u.Unit('cm/s'))
+    v_doppler = Parameter(default=1e6, min=1e5, max=1e10, unit=u.Unit('cm/s'))
     column_density = Parameter(
         default=1e13, min=1e8, max=1e25, unit=u.Unit('1/cm2'))
     delta_v = Parameter(default=0, min=0, fixed=False, unit=u.Unit('cm/s'))
-    delta_lambda = Parameter(default=0, fixed=False, unit=u.Unit('Angstrom'))
+    delta_lambda = Parameter(default=0, min=-100, max=100, fixed=False, unit=u.Unit('Angstrom'))
 
     def __init__(self, name=None, lambda_0=None, line_list=None, *args, **kwargs):
         line_mask = np.in1d(line_registry['name'],
