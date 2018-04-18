@@ -47,12 +47,12 @@ class MCMCFitter:
 
         mod_y = model(x)
         # inv_sigma2 = 1.0 / (yerr ** 2 + mod_y ** 2)# * np.exp(2 * theta[-1]))
-        # res = -0.5 * (np.sum((y - mod_y) ** 2 * inv_sigma2 - np.log(inv_sigma2)))
-        from scipy.stats import chisquare
+        res = -0.5 * (np.nansum((y - mod_y) ** 2/mod_y))# * inv_sigma2 - np.log(inv_sigma2)))
+        # from scipy.stats import chisquare
 
-        chi2 = chisquare(y, f_exp=mod_y)
-
-        return -chi2[0]
+        # chi2 = chisquare(y, f_exp=mod_y)[0]
+        # print(chi2)
+        return res
 
     @classmethod
     def lnprob(cls, theta, x, y, yerr):
@@ -68,7 +68,7 @@ class MCMCFitter:
     def __call__(self, model, x, y, yerr=None, nwalkers=100, steps=500):
         # If no errors are provided, assume all errors are normalized
         if yerr is None:
-            yerr = np.empty(shape=x.shape)
+            yerr = np.zeros(shape=x.shape)
             yerr.fill(1e-20)
 
         # model.parameters = [-0.6667330132962619, 0.0, 1.0, 919.3514, 0.0012,
@@ -119,7 +119,7 @@ class MCMCFitter:
 
         import matplotlib.pyplot as plt
 
-        f, axes = plt.subplots(ndim - 1, 1)
+        f, axes = plt.subplots(ndim, 1)
 
         for i, ax in enumerate(axes):
             ax.plot(sampler.chain[:, :, i].T, color='k', alpha=0.25)
@@ -131,7 +131,7 @@ class MCMCFitter:
         samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))
 
         # Compute the quantiles.
-        samples[:, -1] = np.exp(samples[:, -1])
+        # samples[:, -1] = np.exp(samples[:, -1])
 
         res = map(lambda v: (v[1], v[2] - v[1], v[1] - v[0]),
                   zip(*np.percentile(samples, [16, 50, 84], axis=0)))

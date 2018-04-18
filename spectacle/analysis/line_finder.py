@@ -14,7 +14,8 @@ from ..io.registries import line_registry
 from ..modeling import *
 from ..modeling.custom import Linear
 from ..modeling.fitters import MCMCFitter
-from ..utils import peak_finder, wave_to_vel_equiv
+from ..utils import find_nearest, peak_detect, peak_finder, wave_to_vel_equiv
+from ..utils.peak_detect import detect_peaks, region_bounds
 from .initializers import Voigt1DInitializer
 
 # (np.pi * np.exp(2)) / (m_e.cgs * c.cgs) * 0.001
@@ -119,26 +120,41 @@ class LineFinder(Fittable2DModel):
                                                     0 if self._data_type == 'optical_depth' else 1) * u.Unit(""),
                                                fixed={'slope': True, 'intercept': True}))
 
-        fit_spec_mod = self.generate_model(spectrum, x, y, np.max(y) - y if self._data_type == 'flux' else y, threshold, min_ind)
-        prev_num_sm = -1
+        # Calculate the bounds on each absorption feature
+        reg_bounds = region_bounds(y)
 
-        # while len(fit_spec_mod._submodels) != prev_num_sm:
-        #     prev_num_sm = len(fit_spec_mod._submodels)
+        logging.info("Found %i minima.", len(reg_bounds))
 
-        #     fit_spec_mod = self.generate(spectrum, x, y,
-        #                                  np.abs(fit_spec_mod(x) - y).value,
-        #                                  threshold, min_ind)
+        # Generation spectrum model
+        for bounds in reg_bounds:
+            self.compose_line(spectrum, bounds, x, y)
 
-        #     import matplotlib.pyplot as plt
+        logging.debug("Begin fitting...")
 
-        #     f, ax = plt.subplots()
+        # Attempt to fit this new spectrum object to the data
+        fitter = LevMarLSQFitter()
 
-        #     ax.plot(x, y)
-        #     ax.plot(x, fit_spec_mod(x))
+        fit_spec_mod = fitter(
+            getattr(spectrum, self._data_type), x, y,
+            maxiter=self.max_iter
+            )
 
-        #     plt.show()
+        # fit_spec_mod = getattr(spectrum, self._data_type)
 
-        #     print(prev_num_sm, len(fit_spec_mod._submodels))
+        # fitter = MCMCFitter()
+
+        # fit_spec_mod = fitter(
+        #     getattr(spectrum, self._data_type), x, y,
+        #     # maxiter=self.max_iter
+        #     nwalkers=100, steps=500
+        #     )
+
+        # Update spectrum line model parameters with fitted results
+        fit_line_mods = [smod for smod in fit_spec_mod
+                         if hasattr(smod, 'lambda_0')]
+
+        if len(fit_line_mods) > 0:
+            spectrum._line_model = np.sum(fit_line_mods)
 
         # Remove any extraneous lines that do not contain any useful info
         # fit_spec_mod, any_removed = remove_empty_lines(fit_spec_mod)
@@ -176,109 +192,69 @@ class LineFinder(Fittable2DModel):
     def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
         return OrderedDict()
 
-    def generate_model(self, spectrum, x, y, y_peaks, threshold, min_ind):
-        # Take a first iteration of the minima finder
-        indicies = peak_finder.indexes(
-            y_peaks,
-            thres=threshold,
-            min_dist=min_ind,
-            min_thresh=0 if self._data_type != 'optical_depth' else None,
-            max_thresh=1 if self._data_type != 'optical_depth' else None)
+    def compose_line(self, spectrum, bounds, x, y):
+        center = spectrum.center
 
-        # Enhance the peak detection using interpolation
-        # peaks = peak_finder.interpolate(x.value,
-        #                                 np.max(y) - y if self._data_type == 'flux' else y,
-        #                                 ind=indicies, width=min_ind)
+        # Calculate the centroid of this absorption region
+        centroid = x[bounds[0]] + (x[bounds[1]] - x[bounds[0]]) * 0.5
+        ind = find_nearest(x, centroid)
 
-        logging.info("Found %i minima.", len(indicies))
+        # Store the actual peak value from the dispersion array
+        redshifted_peak = x[ind]
+        deredshifted_peak = spectrum._redshift_model.inverse(redshifted_peak)
+        dered_bounds_values = (spectrum._redshift_model.inverse(x[bounds[0]]),
+                               spectrum._redshift_model.inverse(x[bounds[1]]))
 
-        # Generation spectrum model
-        self.compose_lines(spectrum, indicies, x, y, threshold, min_ind)
+        # Construct a dictionary with all of the true values for this
+        # absorption line.
+        line_kwargs = dict(lambda_0=center)
 
-        logging.debug("Begin fitting...")
+        # Based on the dispersion type, calculate the lambda or velocity
+        # deltas.
+        with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
+            if x.unit.physical_type == 'length':
+                line_kwargs['delta_lambda'] = deredshifted_peak.to(
+                    'Angstrom') - center.to('Angstrom')
+                line_kwargs['fixed'] = {
+                    'delta_lambda': False,
+                    'delta_v': True}
+                line_kwargs['bounds'] = {
+                    'delta_lambda': (dered_bounds_values[0].value - center.value,
+                                     dered_bounds_values[1].value - center.value)
+                }
+                logging.info("Bounds: {:10g} - {:10g}".format(*line_kwargs['bounds']['delta_lambda']))
+            elif x.unit.physical_type == 'speed':
+                line_kwargs['delta_v'] = deredshifted_peak.to(
+                    'km/s') - center.to('km/s')
+                line_kwargs['fixed'] = {
+                    'delta_lambda': True,
+                    'delta_v': False}
+                line_kwargs['bounds'] = {
+                    'delta_v': (dered_bounds_values[0].value - center.value,
+                                dered_bounds_values[1].value - center.value)
+                }
+            else:
+                raise ValueError("Could not get physical type of "
+                                    "dispersion axis unit.")
 
-        # Attempt to fit this new spectrum object to the data
-        fitter = LevMarLSQFitter()
+            # Calculate some initial parameters for velocity and col density
+            vel = x.to('km/s')
 
-        fit_spec_mod = fitter(
-            getattr(spectrum, self._data_type), x, y,
-            maxiter=self.max_iter
-            )
+        line_kwargs.update(
+            estimate_line_parameters(bounds, vel, y, center, self._data_type))
 
-        # fit_spec_mod = getattr(spectrum, self._data_type)
+        line_kwargs.update(self._line_defaults)
 
-        fitter = MCMCFitter() # LevMarLSQFitter()
-
-        fit_spec_mod = fitter(
-            fit_spec_mod, x, y,
-            # maxiter=self.max_iter
-            nwalkers=100, steps=500
-            )
-
-        # Update spectrum line model parameters with fitted results
-        fit_line_mods = [smod for smod in fit_spec_mod if hasattr(smod, 'lambda_0')]
-
-        if len(fit_line_mods) > 0:
-            spectrum._line_model = np.sum(fit_line_mods)
-
-        return fit_spec_mod
-
-    def compose_lines(self, spectrum, indicies, x, y, threshold, min_ind):
-        center = self.center.value * self.center.unit
-
-        for ind in indicies:
-            redshifted_peak = x[ind]
-            deredshifted_peak = spectrum._redshift_model.inverse(
-                redshifted_peak)
-
-            # Get the index of this line model's centroid
-            ind = (np.abs(x.value - redshifted_peak.value)).argmin()
-
-            # Construct a dictionary with all of the true values for this
-            # absorption line.
-            line_kwargs = dict(lambda_0=center)
-
-            # Based on the dispersion type, calculate the lambda or velocity
-            # deltas.
-            with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
-                if x.unit.physical_type == 'length':
-                    line_kwargs['delta_lambda'] = deredshifted_peak.to('Angstrom') - center.to(
-                        'Angstrom')
-                    line_kwargs['fixed'] = {
-                        'delta_lambda': False,
-                        'delta_v': True
-                    }
-                elif x.unit.physical_type == 'speed':
-                    line_kwargs['delta_v'] = deredshifted_peak.to(
-                        'km/s') - center.to('km/s')
-                    line_kwargs['fixed'] = {
-                        'delta_lambda': True,
-                        'delta_v': False
-                    }
-                else:
-                    raise ValueError("Could not get physical type of "
-                                        "dispersion axis unit.")
-
-                # Calculate some initial parameters for velocity and col density
-                vel = x.to('km/s')
-
-            line_kwargs.update(
-                estimate_line_parameters(vel, y, ind, min_ind, center,
-                    spectrum._continuum_model(x).value if self._data_type == 'flux' else None))
-
-            line_kwargs.update(self._line_defaults)
-
-            # Create a line profile model and add it to the spectrum object
-            spectrum.add_line(**line_kwargs)
+        # Create a line profile model and add it to the spectrum object
+        spectrum.add_line(**line_kwargs)
 
 
-def estimate_line_parameters(x, y, ind, min_ind, center, continuum):
-    bound_low = max(0, min(ind - int(min_ind * 0.5), x.size - 1))
-    bound_up = max(0, min(ind + int(min_ind * 0.5), x.size - 1))
+def estimate_line_parameters(bounds, x, y, center, data_type):
+    bound_low, bound_up = bounds
     mask = ((x > x[bound_low]) & (x < x[bound_up]))
 
-    if continuum is not None:
-        y = continuum - y
+    if data_type == 'flux':
+        y = np.max(y) - y
 
     mx = x[mask]
     my = y[mask]
@@ -303,8 +279,9 @@ def estimate_line_parameters(x, y, ind, min_ind, center, continuum):
     new_dx = x - np.mean(mx)
     new_delta_x = x[1:] - x[:-1]
     new_y = g_fit(x)
-    new_fwhm = 2 * np.sqrt(np.sum((new_dx * new_dx) * new_y) / np.sum(new_y))
+    new_fwhm = g_fit.fwhm
     new_sum_y = np.sum(new_y[1:] * new_delta_x)
+    tot_sum_y = np.sum(y[1:] * new_delta_x)
 
     # import matplotlib.pyplot as plt
     # f, ax = plt.subplots()
@@ -318,7 +295,9 @@ def estimate_line_parameters(x, y, ind, min_ind, center, continuum):
 
     # Estimate the column density
     f_value = line_registry.with_lambda(center)['osc_str']
-    col_dens = (new_sum_y * u.Unit('kg/(cm * s * Angstrom)') * SIGMA * f_value * center).to('1/cm2')
+    #col_dens = ((new_sum_y.value * 5e7) ** 1.625 / v_dop.value ** 1.5) * u.Unit('1/cm2')
+    # col_dens = ((new_sum_y.value * 5e10 * v_dop.value) * tot_sum_y.value) * u.Unit('1/cm2')
+    col_dens = ((new_sum_y.value * 2e8 * v_dop.value ** 1.5) * tot_sum_y.value ** 3) * u.Unit('1/cm2')
 
     logging.info("""Estimated intial values:
     Column density: {:g}
