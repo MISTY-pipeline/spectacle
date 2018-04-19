@@ -7,6 +7,7 @@ import scipy.integrate as integrate
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel, Parameter
 from astropy.modeling.fitting import LevMarLSQFitter
+from astropy.modeling.models import Gaussian1D
 
 from ..core.region_finder import find_regions
 from ..core.spectrum import Spectrum1D
@@ -220,9 +221,7 @@ class LineFinder(Fittable2DModel):
                     'delta_v': True}
                 line_kwargs['bounds'] = {
                     'delta_lambda': (dered_bounds_values[0].value - center.value,
-                                     dered_bounds_values[1].value - center.value)
-                }
-                logging.info("Bounds: {:10g} - {:10g}".format(*line_kwargs['bounds']['delta_lambda']))
+                                     dered_bounds_values[1].value - center.value)}
             elif x.unit.physical_type == 'speed':
                 line_kwargs['delta_v'] = deredshifted_peak.to(
                     'km/s') - center.to('km/s')
@@ -231,8 +230,7 @@ class LineFinder(Fittable2DModel):
                     'delta_v': False}
                 line_kwargs['bounds'] = {
                     'delta_v': (dered_bounds_values[0].value - center.value,
-                                dered_bounds_values[1].value - center.value)
-                }
+                                dered_bounds_values[1].value - center.value)}
             else:
                 raise ValueError("Could not get physical type of "
                                     "dispersion axis unit.")
@@ -270,13 +268,10 @@ def estimate_line_parameters(bounds, x, y, center, data_type):
     sum_y = np.sum(my[1:] * delta_x)
     height = sum_y / (sigma * np.sqrt(2 * np.pi))
 
-    from astropy.modeling.models import Gaussian1D
-    from astropy.modeling.fitting import LevMarLSQFitter
-
     g = Gaussian1D(amplitude=height, mean=centroid, stddev=sigma)
     g_fit = LevMarLSQFitter()(g, mx, my)
 
-    new_dx = x - np.mean(mx)
+    # new_dx = x - np.mean(mx)
     new_delta_x = x[1:] - x[:-1]
     new_y = g_fit(x)
     new_fwhm = g_fit.fwhm
@@ -294,7 +289,7 @@ def estimate_line_parameters(bounds, x, y, center, data_type):
     v_dop = 0.60056120439322491 * new_fwhm
 
     # Estimate the column density
-    f_value = line_registry.with_lambda(center)['osc_str']
+    # f_value = line_registry.with_lambda(center)['osc_str']
     #col_dens = ((new_sum_y.value * 5e7) ** 1.625 / v_dop.value ** 1.5) * u.Unit('1/cm2')
     # col_dens = ((new_sum_y.value * 5e10 * v_dop.value) * tot_sum_y.value) * u.Unit('1/cm2')
     col_dens = ((new_sum_y.value * 2e8 * v_dop.value ** 1.5) * tot_sum_y.value ** 3) * u.Unit('1/cm2')
