@@ -251,7 +251,7 @@ class LineFinder(Fittable2DModel):
 
 def estimate_line_parameters(bounds, x, y, center, data_type, delta_lambda, delta_v):
     bound_low, bound_up = bounds
-    mask = ((x > x[bound_low]) & (x < x[bound_up]))
+    mask = ((x >= x[bound_low]) & (x <= x[bound_up]))
 
     if data_type == 'flux':
         y = np.max(y) - y
