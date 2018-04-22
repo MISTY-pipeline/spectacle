@@ -135,13 +135,13 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
     return ind
 
 
-def region_bounds(y):
+def region_bounds(y, height=0.001, distance=0.001):
     # Take a first iteration of the minima finder
     diff = np.diff(y)
 
     reg_inds = np.append(
-        detect_peaks(diff, mph=0.01, mpd=.001),
-        detect_peaks(diff, mph=0.01, mpd=.001, valley=True))
+        detect_peaks(diff, mph=height, mpd=distance),
+        detect_peaks(diff, mph=height, mpd=distance, valley=True))
 
     reg_inds = np.sort(reg_inds)
     tmp_reg_inds = reg_inds.copy()

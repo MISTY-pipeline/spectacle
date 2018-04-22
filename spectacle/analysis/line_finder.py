@@ -7,7 +7,7 @@ import scipy.integrate as integrate
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel, Parameter
 from astropy.modeling.fitting import LevMarLSQFitter
-from astropy.modeling.models import Gaussian1D
+from astropy.modeling.models import Gaussian1D, Const1D
 
 from ..core.region_finder import find_regions
 from ..core.spectrum import Spectrum1D
@@ -62,7 +62,7 @@ class LineFinder(Fittable2DModel):
         return {'x': u.Unit('Angstrom')}
 
     def __init__(self, ion_name=None, data_type='optical_depth',
-                 defaults=None, max_iter=2000, *args, **kwargs):
+                 defaults=None, max_iter=4000, *args, **kwargs):
         super(LineFinder, self).__init__(*args, **kwargs)
 
         if data_type not in ('optical_depth', 'flux', 'flux_decrement'):
@@ -145,7 +145,7 @@ class LineFinder(Fittable2DModel):
         # fitter = MCMCFitter()
 
         # fit_spec_mod = fitter(
-        #     getattr(spectrum, self._data_type), x, y,
+        #     fit_spec_mod, x, y,
         #     # maxiter=self.max_iter
         #     nwalkers=100, steps=500
         #     )
@@ -208,7 +208,9 @@ class LineFinder(Fittable2DModel):
 
         # Construct a dictionary with all of the true values for this
         # absorption line.
-        line_kwargs = dict(lambda_0=center)
+        line_kwargs = dict(lambda_0=center,
+                           delta_lambda=0 * u.AA,
+                           delta_v=0 * u.Unit('km/s'))
 
         # Based on the dispersion type, calculate the lambda or velocity
         # deltas.
@@ -239,7 +241,7 @@ class LineFinder(Fittable2DModel):
             vel = x.to('km/s')
 
         line_kwargs.update(
-            estimate_line_parameters(bounds, vel, y, center, self._data_type))
+            estimate_line_parameters(bounds, vel, y, center, self._data_type, line_kwargs['delta_lambda'], line_kwargs['delta_v']))
 
         line_kwargs.update(self._line_defaults)
 
@@ -247,7 +249,7 @@ class LineFinder(Fittable2DModel):
         spectrum.add_line(**line_kwargs)
 
 
-def estimate_line_parameters(bounds, x, y, center, data_type):
+def estimate_line_parameters(bounds, x, y, center, data_type, delta_lambda, delta_v):
     bound_low, bound_up = bounds
     mask = ((x > x[bound_low]) & (x < x[bound_up]))
 
@@ -268,15 +270,20 @@ def estimate_line_parameters(bounds, x, y, center, data_type):
     sum_y = np.sum(my[1:] * delta_x)
     height = sum_y / (sigma * np.sqrt(2 * np.pi))
 
-    g = Gaussian1D(amplitude=height, mean=centroid, stddev=sigma)
+    g = Gaussian1D(amplitude=height, mean=centroid, stddev=sigma,
+                   bounds={'mean': (mx[0].value, mx[-1].value),
+                           'stddev': (None, 4 * sigma.value)
+                   })
+    # g = Const1D(1, fixed={'amplitude': True}) + (g | FluxDecrementConvert())
+    # g = ExtendedVoigt1D(x_0=centroid, amplitiude_L=height, fwhm_G=fwhm,
+    #                     bounds={'x_0': (mx[0].value, mx[-1].value)})
     g_fit = LevMarLSQFitter()(g, mx, my)
-
     # new_dx = x - np.mean(mx)
     new_delta_x = x[1:] - x[:-1]
     new_y = g_fit(x)
     new_fwhm = g_fit.fwhm
     new_sum_y = np.sum(new_y[1:] * new_delta_x)
-    tot_sum_y = np.sum(y[1:] * new_delta_x)
+    # tot_sum_y = np.sum(y[1:] * new_delta_x)
 
     # import matplotlib.pyplot as plt
     # f, ax = plt.subplots()
@@ -286,13 +293,13 @@ def estimate_line_parameters(bounds, x, y, center, data_type):
     # ax.plot(x, g_fit(x))
 
     # Estimate the doppler b parameter
-    v_dop = 0.60056120439322491 * new_fwhm
+    v_dop = new_fwhm / 1.665
+    shifted_lambda = center * (1 + delta_v / c.cgs) + delta_lambda
 
     # Estimate the column density
-    # f_value = line_registry.with_lambda(center)['osc_str']
-    #col_dens = ((new_sum_y.value * 5e7) ** 1.625 / v_dop.value ** 1.5) * u.Unit('1/cm2')
-    # col_dens = ((new_sum_y.value * 5e10 * v_dop.value) * tot_sum_y.value) * u.Unit('1/cm2')
-    col_dens = ((new_sum_y.value * 2e8 * v_dop.value ** 1.5) * tot_sum_y.value ** 3) * u.Unit('1/cm2')
+    f_value = line_registry.with_lambda(center)['osc_str']
+    # gamma = line_registry.with_lambda(center)['gamma']
+    col_dens = new_sum_y.value * (v_dop / shifted_lambda).to('Hz') / (TAU_FACTOR * f_value)
 
     logging.info("""Estimated intial values:
     Column density: {:g}
