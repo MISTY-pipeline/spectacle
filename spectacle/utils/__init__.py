@@ -31,7 +31,7 @@ def unit_validator(equivalencies=None, **dwargs):
 
 def wave_to_vel_equiv(center):
     from ..modeling.converters import WavelengthConvert, VelocityConvert
-    
+
     return [(u.Unit('km/s'),
              u.Unit('Angstrom'),
              lambda x: WavelengthConvert(center)(x * u.Unit('km/s')),
