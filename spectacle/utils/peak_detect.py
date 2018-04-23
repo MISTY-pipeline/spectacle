@@ -135,13 +135,20 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
     return ind
 
 
-def region_bounds(y, height=0.001, distance=0.001):
+def region_bounds(y, height=0.001, distance=0.001, relative=False):
     # Take a first iteration of the minima finder
     diff = np.diff(y)
 
+    # Normalize the diff array so the height check can be equivalent to a check
+    # on the normalized flux
+    diff = diff / np.linalg.norm(diff)
+
+    peak_height = np.max(diff) * height if relative else height
+    valley_height = np.abs(np.min(diff)) * height if relative else height
+
     reg_inds = np.append(
-        detect_peaks(diff, mph=height, mpd=distance),
-        detect_peaks(diff, mph=height, mpd=distance, valley=True))
+        detect_peaks(diff, mph=peak_height, mpd=distance),
+        detect_peaks(diff, mph=valley_height, mpd=distance, valley=True))
 
     reg_inds = np.sort(reg_inds)
     tmp_reg_inds = reg_inds.copy()
