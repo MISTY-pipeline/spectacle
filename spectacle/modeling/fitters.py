@@ -46,12 +46,8 @@ class MCMCFitter:
         model.parameters[fit_params_indices] = theta
 
         mod_y = model(x)
-        # inv_sigma2 = 1.0 / (yerr ** 2 + mod_y ** 2)# * np.exp(2 * theta[-1]))
-        res = -0.5 * (np.sum((y - mod_y) ** 2/mod_y))# * inv_sigma2 - np.log(inv_sigma2)))
-        # from scipy.stats import chisquare
-
-        # chi2 = chisquare(y, f_exp=mod_y)[0]
-        # print(chi2)
+        inv_sigma2 = 1.0 / (yerr ** 2 + mod_y ** 2)
+        res = -0.5 * (np.nansum((y - mod_y) ** 2 * inv_sigma2 - np.log(inv_sigma2)))
         return res
 
     @classmethod
@@ -83,7 +79,7 @@ class MCMCFitter:
         ndim = len(fit_params)
 
         # Initialize starting positions of walkers in a Gaussian ball
-        pos = [fit_params + fit_params * 2 * np.random.randn(ndim)
+        pos = [fit_params + fit_params * 0.01 * np.random.randn(ndim)
                for i in range(nwalkers)]
         sampler = emcee.EnsembleSampler(nwalkers, ndim, MCMCFitter.lnprob,
                                         args=(x, y, yerr), threads=8)
