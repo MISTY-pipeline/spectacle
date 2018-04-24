@@ -122,9 +122,12 @@ class LineFinder(Fittable2DModel):
                                                fixed={'slope': True, 'intercept': True}))
 
         # Calculate the bounds on each absorption feature
-        reg_bounds = region_bounds(y, height=threshold[0], distance=min_ind)
+        reg_bounds = []
+        
+        if (np.max(y) - np.min(y)) > threshold[0]:
+            reg_bounds = region_bounds(y, height=threshold[0], distance=min_ind)
 
-        logging.info("Found %i minima.", len(reg_bounds))
+            logging.info("Found %i minima.", len(reg_bounds))
 
         # Generation spectrum model
         for bounds in reg_bounds:
