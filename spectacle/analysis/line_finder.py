@@ -123,9 +123,10 @@ class LineFinder(Fittable2DModel):
 
         # Calculate the bounds on each absorption feature
         reg_bounds = []
-        
+
         if (np.max(y) - np.min(y)) > threshold[0]:
-            reg_bounds = region_bounds(y, height=threshold[0], distance=min_ind)
+            reg_bounds = region_bounds(y, height=threshold[0], distance=min_ind,
+                                       smooth=True)
 
             logging.info("Found %i minima.", len(reg_bounds))
 
