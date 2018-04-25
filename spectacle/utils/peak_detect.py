@@ -162,4 +162,9 @@ def region_bounds(y, height=0.001, distance=0.001, relative=False):
     reg_bounds = [(reg_inds[i], reg_inds[i+1])
                     for i in range(0, len(reg_inds[:-1]), 2)]
 
+    # If any bounds tuple is too close, remove them
+    for bnds in [x for x in reg_bounds]:
+        if bnds[1] - bnds[0] < 10:
+            reg_bounds.remove(bnds)
+
     return reg_bounds
