@@ -3,6 +3,7 @@ from collections import OrderedDict
 
 import astropy.units as u
 from astropy.modeling import Fittable1DModel, models
+from astropy.table import Table
 
 from ..analysis.resample import Resample
 from ..io.registries import line_registry
@@ -153,6 +154,21 @@ class Spectrum1D:
         profiles.
         """
         self._regions = value
+
+    @property
+    def lines(self):
+        tab = Table(names=['name'] + list(TauProfile.param_names),
+                    dtype=['S10'] + ['f8'] * len(TauProfile.param_names))
+
+        for l in self.line_models:
+            tab.add_row([l.name] + list(l.parameters))
+
+        params = [getattr(TauProfile, n) for n in TauProfile.param_names]
+
+        for i, n in enumerate(TauProfile.param_names):
+            tab[n].unit = params[i].unit
+
+        return tab
 
     @property
     def line_model(self):
