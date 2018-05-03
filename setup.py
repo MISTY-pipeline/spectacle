@@ -30,7 +30,7 @@ test_requirements = [
 
 setup(
     name='spectacle',
-    version='0.1.0',
+    version='0.2.0',
     description="Spectroscopic analysis package for simulated or observed spectra",
     long_description=readme + '\n\n' + history,
     author="Nicholas Earl",
