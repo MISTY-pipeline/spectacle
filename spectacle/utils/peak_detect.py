@@ -146,7 +146,7 @@ def region_bounds(y, height=0.001, distance=0.001, relative=False, smooth=False)
 
     # Ensure that the diff array is smoothed to avoid jagged spikes
     if smooth:
-        window = int(len(diff) * 0.1) + 1
+        window = int(len(diff) * 0.01)
         window = window + 1 if window % 2 == 0 else window
         diff = savgol_filter(diff, window, 2)
 
