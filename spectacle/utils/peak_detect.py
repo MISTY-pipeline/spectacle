@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.signal import savgol_filter
 
 __author__ = "Marcos Duarte, https://github.com/demotu/BMC"
 __version__ = "1.0.4"
@@ -135,13 +136,19 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
     return ind
 
 
-def region_bounds(y, height=0.001, distance=0.001, relative=False):
+def region_bounds(y, height=0.001, distance=0.001, relative=False, smooth=False):
     # Take a first iteration of the minima finder
     diff = np.diff(y)
 
     # Normalize the diff array so the height check can be equivalent to a check
     # on the normalized flux
     diff = diff / np.linalg.norm(diff)
+
+    # Ensure that the diff array is smoothed to avoid jagged spikes
+    if smooth:
+        window = int(len(diff) * 0.01)
+        window = window + 1 if window % 2 == 0 else window
+        diff = savgol_filter(diff, window, 2)
 
     peak_height = np.max(diff) * height if relative else height
     valley_height = np.abs(np.min(diff)) * height if relative else height

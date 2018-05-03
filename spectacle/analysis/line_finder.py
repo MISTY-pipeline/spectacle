@@ -7,7 +7,7 @@ import scipy.integrate as integrate
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel, Parameter
 from astropy.modeling.fitting import LevMarLSQFitter
-from astropy.modeling.models import Gaussian1D, Const1D
+from astropy.modeling.models import Gaussian1D, Const1D, Scale
 
 from ..core.region_finder import find_regions
 from ..core.spectrum import Spectrum1D
@@ -123,9 +123,10 @@ class LineFinder(Fittable2DModel):
 
         # Calculate the bounds on each absorption feature
         reg_bounds = []
-        
+
         if (np.max(y) - np.min(y)) > threshold[0]:
-            reg_bounds = region_bounds(y, height=threshold[0], distance=min_ind)
+            reg_bounds = region_bounds(y, height=threshold[0], distance=min_ind,
+                                       smooth=True)
 
             logging.info("Found %i minima.", len(reg_bounds))
 
@@ -197,8 +198,6 @@ class LineFinder(Fittable2DModel):
         return OrderedDict()
 
     def compose_line(self, spectrum, bounds, x, y):
-        center = spectrum.center
-
         # Calculate the centroid of this absorption region
         centroid = x[bounds[0]] + (x[bounds[1]] - x[bounds[0]]) * 0.5
         ind = find_nearest(x, centroid)
@@ -209,6 +208,12 @@ class LineFinder(Fittable2DModel):
         dered_bounds_values = (spectrum._redshift_model.inverse(x[bounds[0]]),
                                spectrum._redshift_model.inverse(x[bounds[1]]))
 
+        if spectrum.center == 0:
+            lamb_row = line_registry.with_lambda(deredshifted_peak)
+            center = lamb_row['wave'] * line_registry['wave'].unit
+        else:
+            center = spectrum.center
+
         # Construct a dictionary with all of the true values for this
         # absorption line.
         line_kwargs = dict(lambda_0=center,
@@ -217,7 +222,7 @@ class LineFinder(Fittable2DModel):
 
         # Based on the dispersion type, calculate the lambda or velocity
         # deltas.
-        with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
+        with u.set_enabled_equivalencies(wave_to_vel_equiv(center)):
             if x.unit.physical_type == 'length':
                 line_kwargs['delta_lambda'] = deredshifted_peak.to(
                     'Angstrom') - center.to('Angstrom')
@@ -244,15 +249,24 @@ class LineFinder(Fittable2DModel):
             vel = x.to('km/s')
 
         line_kwargs.update(
-            estimate_line_parameters(bounds, vel, y, center, self._data_type, centroid))
+            estimate_line_parameters(bounds, vel, y, center, self._data_type, centroid, spectrum.redshift.value))
 
         line_kwargs.update(self._line_defaults)
+        line_kwargs.update({'bounds': {
+            'v_doppler': (line_kwargs['v_doppler'].value * 0.01,
+                            line_kwargs['v_doppler'].value * 100),
+            'column_density': (line_kwargs['column_density'].value * 0.01,
+                                line_kwargs['column_density'].value * 100)
+        }
+        })
+
+        # print(line_kwargs)
 
         # Create a line profile model and add it to the spectrum object
         spectrum.add_line(**line_kwargs)
 
 
-def estimate_line_parameters(bounds, x, y, lambda_0, data_type, centroid):
+def estimate_line_parameters(bounds, x, y, lambda_0, data_type, centroid, redshift):
     # Note: centroid is equivalent to the `shifted_lambda` calculation in the
     # voigt profile model
     bound_low, bound_up = bounds
@@ -275,34 +289,29 @@ def estimate_line_parameters(bounds, x, y, lambda_0, data_type, centroid):
     sum_y = np.sum(my[1:] * delta_x)
     height = sum_y / (sigma * np.sqrt(2 * np.pi))
 
-    g = Gaussian1D(amplitude=height, mean=center, stddev=sigma,
+    g = Gaussian1D(amplitude=height,
+                   mean=center,
+                   stddev=sigma,
                    bounds={'mean': (mx[0].value, mx[-1].value),
                            'stddev': (None, 4 * sigma.value),
                         #    'amplitude': (None, height)
                    })
+
     g_fit = LevMarLSQFitter()(g, mx, my)
 
     new_delta_x = x[1:] - x[:-1]
     new_y = g_fit(x)
     new_fwhm = g_fit.fwhm
 
-    from numpy import trapz
-    new_sum_y = trapz(new_y, dx=new_delta_x) # np.sum(new_y[1:] * new_delta_x)
-
-    # import matplotlib.pyplot as plt
-    # f, ax = plt.subplots()
-
-    # ax.plot(x, y)
-    # ax.plot(x, g(x))
-    # ax.plot(x, g_fit(x))
+    new_sum_y = np.sum(new_y[1:] * new_delta_x)
 
     # Estimate the doppler b parameter
-    v_dop = new_fwhm / 1.665
+    v_dop = new_fwhm / 2.355
 
     # Estimate the column density
     f_value = line_registry.with_lambda(lambda_0)['osc_str']
-    # gamma = line_registry.with_lambda(center)['gamma']
-    col_dens = (new_sum_y.value * (v_dop / centroid).to('Hz') / (TAU_FACTOR * f_value)).to('1/cm2')
+    col_dens = (new_sum_y.value * (v_dop / lambda_0).to('Hz') / (TAU_FACTOR *
+                f_value)).to('1/cm2') * (0.01 + redshift)
 
     logging.info("""Estimated intial values:
     Column density: {:g}

@@ -34,7 +34,7 @@ class COSLSFModel(Fittable1DModel):
     def evaluate(y):
         kernel = COSKernel1D()
 
-        return convolve(y, kernel)
+        return convolve(y, kernel, boundary='extend')
 
 
 class GaussianLSFModel(Fittable1DModel):
