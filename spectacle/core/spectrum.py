@@ -170,6 +170,19 @@ class Spectrum1D:
 
         return tab
 
+    @u.quantity_input(x=['length', 'speed'])
+    def stats(self, x, y):
+        from ..analysis import statistics as stats
+
+        tab = Table()
+
+        for l in self.line_models:
+            ew = stats.equivalent_width(x, l(x))
+            dv90 = stats.delta_v_90(x, l(x))
+            tab[l.name] = [ew.value, dv90.value]
+
+        return tab
+
     @property
     def line_model(self):
         return self._line_model
