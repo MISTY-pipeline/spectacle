@@ -2,14 +2,16 @@ import logging
 from collections import OrderedDict
 
 import astropy.units as u
+from astropy.constants import c
 from astropy.modeling import Fittable1DModel, models
-from astropy.table import Table
+from astropy.table import Row, Table
 
+from ..analysis import statistics as stats
 from ..analysis.resample import Resample
 from ..io.registries import line_registry
 from ..modeling.converters import (DispersionConvert, FluxConvert,
                                    FluxDecrementConvert)
-from ..modeling.custom import Redshift, SmartScale, Linear
+from ..modeling.custom import Linear, Redshift, SmartScale
 from ..modeling.profiles import TauProfile
 from ..utils import wave_to_vel_equiv
 
@@ -170,6 +172,27 @@ class Spectrum1D:
 
         return tab
 
+    @u.quantity_input(x=['length', 'speed'])
+    def stats(self, x, y, data_type):
+        tab = Table(names=['Name', 'Centroid', 'Equivalent Width', 'Delta v90'],
+                    dtype=('S10', 'f8', 'f8', 'f8'))
+
+        for sl in self.single_line_spectra:
+            spec = getattr(sl, data_type)
+            line = sl.line_model
+            cont = sl.continuum(x) if sl.continuum is not None else None
+
+            ew = stats.equivalent_width(x, spec(x), continuum=cont)
+            dv90 = stats.delta_v_90(x, spec(x),
+                                    center=line.lambda_0.value * line.lambda_0.unit,
+                                    continuum=cont)
+
+            centroid = line.lambda_0 * (1 + line.delta_v / c.cgs) + line.delta_lambda
+            centroid = sl._redshift_model(centroid)
+            tab.add_row([line.name, centroid.value, ew.value, dv90.value])
+
+        return tab
+
     @property
     def line_model(self):
         return self._line_model
@@ -182,6 +205,17 @@ class Spectrum1D:
             return [x for x in self.line_model]
 
         return [self.line_model]
+
+    @property
+    def single_line_spectra(self):
+        single_lines = []
+
+        for l in self.line_models:
+            spec = self.copy()
+            spec._line_model = l
+            single_lines.append(spec)
+
+        return single_lines
 
     @property
     def n_components(self):

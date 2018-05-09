@@ -158,20 +158,21 @@ def region_bounds(y, height=0.001, distance=0.001, relative=False, smooth=False)
         detect_peaks(diff, mph=valley_height, mpd=distance, valley=True))
 
     reg_inds = np.sort(reg_inds)
-    tmp_reg_inds = reg_inds.copy()
+    new_inds = []
 
-    for i in range(len(tmp_reg_inds[:-1])):
-        if np.sign(diff[tmp_reg_inds[i]]) == np.sign(diff[tmp_reg_inds[i+1]]):
+    for i in range(len(reg_inds[:-1])):
+        if np.sign(diff[reg_inds[i]]) == np.sign(diff[reg_inds[i+1]]):
             nind = int(reg_inds[i] + (reg_inds[i+1] - reg_inds[i]) * 0.5)
-            reg_inds = np.append(reg_inds, nind)
+            new_inds.append(nind)
 
+    reg_inds = np.append(reg_inds, new_inds).astype(int)
     reg_inds = np.sort(reg_inds)
     reg_bounds = [(reg_inds[i], reg_inds[i+1])
                     for i in range(0, len(reg_inds[:-1]), 2)]
 
     # If any bounds tuple is too close, remove them
-    for bnds in [x for x in reg_bounds]:
-        if bnds[1] - bnds[0] < 10:
-            reg_bounds.remove(bnds)
+    # for bnds in [x for x in reg_bounds]:
+    #     if bnds[1] - bnds[0] < 10:
+    #         reg_bounds.remove(bnds)
 
     return reg_bounds
