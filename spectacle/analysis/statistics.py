@@ -32,7 +32,7 @@ def delta_v_90(x, y, center=None, continuum=None, ion_name=None):
     if continuum is not None:
         y = continuum - y
 
-    mask = [y > 1e-5]
+    mask = (y > 1e-5)
     y = y[mask]
     x = x[mask]
 
@@ -44,7 +44,7 @@ def delta_v_90(x, y, center=None, continuum=None, ion_name=None):
         v5 = x[find_nearest(y, y5)]
     else:
         logging.warning("No reasonable amount of optical depth found in "
-                        "spectrum, aborting dv90 calculation.")
+                        "feature at %s, aborting dv90 calculation.", center)
 
         return u.Quantity(0)
 

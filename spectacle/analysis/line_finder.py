@@ -252,12 +252,11 @@ class LineFinder(Fittable2DModel):
             estimate_line_parameters(bounds, vel, y, center, self._data_type, centroid, spectrum.redshift.value))
 
         line_kwargs.update(self._line_defaults)
-        line_kwargs.update({'bounds': {
+        line_kwargs.get('bounds', {}).update({
             'v_doppler': (line_kwargs['v_doppler'].value * 0.01,
                             line_kwargs['v_doppler'].value * 100),
             'column_density': (line_kwargs['column_density'].value * 0.01,
                                 line_kwargs['column_density'].value * 100)
-        }
         })
 
         # print(line_kwargs)
@@ -289,24 +288,16 @@ def estimate_line_parameters(bounds, x, y, lambda_0, data_type, centroid, redshi
     sum_y = np.sum(my[1:] * delta_x)
     height = sum_y / (sigma * np.sqrt(2 * np.pi))
 
+    g = Gaussian1D(amplitude=height,
+                mean=center,
+                stddev=sigma,
+                bounds={'mean': (mx[0].value, mx[-1].value),
+                        'stddev': (None, 4 * sigma.value),
+                        #    'amplitude': (None, height)
+                })
+
     if data_type == 'flux':
-        g = Const1D(amplitude=1, fixed={'amplitude': True}) + (
-            Gaussian1D(amplitude=height,
-                    mean=center,
-                    stddev=sigma,
-                    bounds={'mean': (mx[0].value, mx[-1].value),
-                            'stddev': (None, 4 * sigma.value),
-                            #    'amplitude': (None, height)
-                    }) | FluxDecrementConvert())
-    elif data_type == 'optical_depth':
-        g = Const1D(amplitude=0, fixed={'amplitude': True}) + \
-            Gaussian1D(amplitude=height,
-                    mean=center,
-                    stddev=sigma,
-                    bounds={'mean': (mx[0].value, mx[-1].value),
-                            'stddev': (None, 4 * sigma.value),
-                            #    'amplitude': (None, height)
-                    })
+        g = Const1D(amplitude=1, fixed={'amplitude': True}) + (g | FluxDecrementConvert())
 
     g_fit = LevMarLSQFitter()(g, mx, my)
 
