@@ -289,19 +289,30 @@ def estimate_line_parameters(bounds, x, y, lambda_0, data_type, centroid, redshi
     sum_y = np.sum(my[1:] * delta_x)
     height = sum_y / (sigma * np.sqrt(2 * np.pi))
 
-    g = Gaussian1D(amplitude=height,
-                   mean=center,
-                   stddev=sigma,
-                   bounds={'mean': (mx[0].value, mx[-1].value),
-                           'stddev': (None, 4 * sigma.value),
-                        #    'amplitude': (None, height)
-                   })
+    if data_type == 'flux':
+        g = Const1D(amplitude=1, fixed={'amplitude': True}) + (
+            Gaussian1D(amplitude=height,
+                    mean=center,
+                    stddev=sigma,
+                    bounds={'mean': (mx[0].value, mx[-1].value),
+                            'stddev': (None, 4 * sigma.value),
+                            #    'amplitude': (None, height)
+                    }) | FluxDecrementConvert())
+    elif data_type == 'optical_depth':
+        g = Const1D(amplitude=0, fixed={'amplitude': True}) + \
+            Gaussian1D(amplitude=height,
+                    mean=center,
+                    stddev=sigma,
+                    bounds={'mean': (mx[0].value, mx[-1].value),
+                            'stddev': (None, 4 * sigma.value),
+                            #    'amplitude': (None, height)
+                    })
 
     g_fit = LevMarLSQFitter()(g, mx, my)
 
     new_delta_x = x[1:] - x[:-1]
     new_y = g_fit(x)
-    new_fwhm = g_fit.fwhm
+    new_fwhm = g_fit[1].fwhm
 
     new_sum_y = np.sum(new_y[1:] * new_delta_x)
 
