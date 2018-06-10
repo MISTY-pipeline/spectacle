@@ -139,20 +139,20 @@ class LineFinder(Fittable2DModel):
         fit_spec_mod = getattr(spectrum, self._data_type)
 
         # Attempt to fit this new spectrum object to the data
-        fitter = LevMarLSQFitter()
-
-        fit_spec_mod = fitter(
-            fit_spec_mod, x, y,
-            maxiter=self.max_iter
-            )
-
-        # fitter = MCMCFitter()
+        # fitter = LevMarLSQFitter()
 
         # fit_spec_mod = fitter(
         #     fit_spec_mod, x, y,
-        #     # maxiter=self.max_iter
-        #     nwalkers=200, steps=500
+        #     maxiter=self.max_iter
         #     )
+
+        fitter = MCMCFitter()
+
+        fit_spec_mod = fitter(
+            fit_spec_mod, x, y,
+            # maxiter=self.max_iter
+            nwalkers=200, steps=500
+            )
 
         # Update spectrum line model parameters with fitted results
         fit_line_mods = [smod for smod in fit_spec_mod
@@ -289,12 +289,12 @@ def estimate_line_parameters(bounds, x, y, lambda_0, data_type, centroid, redshi
     height = sum_y / (sigma * np.sqrt(2 * np.pi))
 
     g = Gaussian1D(amplitude=height,
-                mean=center,
-                stddev=sigma,
-                bounds={'mean': (mx[0].value, mx[-1].value),
-                        'stddev': (None, 4 * sigma.value),
+                   mean=center,
+                   stddev=sigma,
+                   bounds={'mean': (mx[0].value, mx[-1].value),
+                           'stddev': (None, 4 * sigma.value),
                         #    'amplitude': (None, height)
-                })
+                   })
 
     if data_type == 'flux':
         g = Const1D(amplitude=1, fixed={'amplitude': True}) + (g | FluxDecrementConvert())

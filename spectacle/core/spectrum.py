@@ -14,6 +14,7 @@ from ..modeling.converters import (DispersionConvert, FluxConvert,
 from ..modeling.custom import Linear, Redshift, SmartScale
 from ..modeling.profiles import TauProfile
 from ..utils import wave_to_vel_equiv
+from copy import deepcopy
 
 
 class SpectrumModelNotImplemented(Exception):
@@ -56,14 +57,7 @@ class Spectrum1D:
         self._resample_model = None
 
     def copy(self):
-        new_spectrum = Spectrum1D(center=self.center.value * self.center.unit)
-        new_spectrum._redshift_model = self._redshift_model.copy()
-        new_spectrum._continuum_model = self._continuum_model.copy()
-
-        if self._line_model is not None:
-            new_spectrum._line_model = self._line_model.copy()
-
-        return new_spectrum
+        return deepcopy(self)
 
     @property
     def center(self):
