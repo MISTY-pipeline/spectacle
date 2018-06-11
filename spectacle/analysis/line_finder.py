@@ -87,7 +87,7 @@ class LineFinder(Fittable2DModel):
 
     @property
     def input_units_equivalencies(self):
-        return {'x': wave_to_vel_equiv(self.center)}
+        return {'x': u.equivalencies.doppler_relativistic(self.center.value * self.center.unit)}
 
     def __call__(self, x, *args, **kwargs):
         if isinstance(x, u.Quantity):
