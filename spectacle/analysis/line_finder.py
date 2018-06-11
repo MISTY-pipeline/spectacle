@@ -313,7 +313,7 @@ def estimate_line_parameters(bounds, x, y, lambda_0, data_type, centroid, redshi
     # Estimate the column density
     f_value = line_registry.with_lambda(lambda_0)['osc_str']
     col_dens = (new_sum_y.value * (v_dop / lambda_0).to('Hz') / (TAU_FACTOR *
-                f_value)).to('1/cm2') * (0.01 + redshift)
+                f_value)).to('1/cm2')
 
     logging.info("""Estimated intial values:
     Column density: {:g}
