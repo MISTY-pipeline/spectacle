@@ -139,7 +139,7 @@ class LineFinder(Fittable2DModel):
         fit_spec_mod = getattr(spectrum, self._data_type)
 
         # Attempt to fit this new spectrum object to the data
-        # fitter = LevMarLSQFitter()
+        fitter = LevMarLSQFitter()
 
         # fit_spec_mod = fitter(
         #     fit_spec_mod, x, y,
