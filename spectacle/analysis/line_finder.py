@@ -141,18 +141,19 @@ class LineFinder(Fittable2DModel):
         # Attempt to fit this new spectrum object to the data
         fitter = LevMarLSQFitter()
 
-        # fit_spec_mod = fitter(
-        #     fit_spec_mod, x, y,
-        #     maxiter=self.max_iter
-        #     )
-
-        fitter = MCMCFitter()
-
         fit_spec_mod = fitter(
             fit_spec_mod, x, y,
             # maxiter=self.max_iter
             nwalkers=200, steps=500
             )
+
+        # fitter = MCMCFitter()
+
+        # fit_spec_mod = fitter(
+        #     fit_spec_mod, x, y,
+        #     # maxiter=self.max_iter
+        #     nwalkers=200, steps=500
+        #     )
 
         # Update spectrum line model parameters with fitted results
         fit_line_mods = [smod for smod in fit_spec_mod
