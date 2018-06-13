@@ -206,12 +206,13 @@ class LineFinder(Fittable2DModel):
 
         # Store the actual peak value from the dispersion array
         redshifted_peak = x[ind]
-        deredshifted_peak = spectrum._redshift_model.inverse(redshifted_peak)
+        dered_dispersion = spectrum._redshift_model.inverse(x)
+        dered_peak = spectrum._redshift_model.inverse(redshifted_peak)
         dered_bounds_values = (spectrum._redshift_model.inverse(x[bounds[0]]),
                                spectrum._redshift_model.inverse(x[bounds[1]]))
 
         if spectrum.center == 0:
-            lamb_row = line_registry.with_lambda(deredshifted_peak)
+            lamb_row = line_registry.with_lambda(dered_peak)
             center = lamb_row['wave'] * line_registry['wave'].unit
         else:
             center = spectrum.center
@@ -224,9 +225,9 @@ class LineFinder(Fittable2DModel):
 
         # Based on the dispersion type, calculate the lambda or velocity
         # deltas.
-        with u.set_enabled_equivalencies(wave_to_vel_equiv(center)):
+        with u.set_enabled_equivalencies(u.equivalencies.doppler_relativistic(center)):
             if x.unit.physical_type == 'length':
-                line_kwargs['delta_lambda'] = deredshifted_peak.to(
+                line_kwargs['delta_lambda'] = dered_peak.to(
                     'Angstrom') - center.to('Angstrom')
                 line_kwargs['fixed'] = {
                     'delta_lambda': False,
@@ -235,7 +236,7 @@ class LineFinder(Fittable2DModel):
                     'delta_lambda': (dered_bounds_values[0].value - center.value,
                                      dered_bounds_values[1].value - center.value)}
             elif x.unit.physical_type == 'speed':
-                line_kwargs['delta_v'] = deredshifted_peak.to(
+                line_kwargs['delta_v'] = dered_peak.to(
                     'km/s') - center.to('km/s')
                 line_kwargs['fixed'] = {
                     'delta_lambda': True,
@@ -248,7 +249,7 @@ class LineFinder(Fittable2DModel):
                                     "dispersion axis unit.")
 
             # Calculate some initial parameters for velocity and col density
-            vel = x.to('km/s')
+            dered_vel = dered_dispersion.to('km/s')
 
         line_kwargs.update(
             estimate_line_parameters(bounds, vel, y, center, self._data_type, centroid, spectrum.redshift.value))
