@@ -190,6 +190,7 @@ class LineFinder(Fittable2DModel):
 
         # Set the region dictionary on the spectrum model object
         spectrum.regions = reg_dict
+        spectrum.bounds = reg_bounds
 
         logging.info("Found %i absorption regions.", len(reg_dict))
 
