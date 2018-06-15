@@ -143,8 +143,7 @@ class LineFinder(Fittable2DModel):
 
         fit_spec_mod = fitter(
             fit_spec_mod, x, y,
-            # maxiter=self.max_iter
-            nwalkers=200, steps=500
+            maxiter=self.max_iter
             )
 
         # fitter = MCMCFitter()
@@ -251,8 +250,15 @@ class LineFinder(Fittable2DModel):
             # Calculate some initial parameters for velocity and col density
             dered_vel = dered_dispersion.to('km/s')
 
+        # Estimate the parameters but do so in de-redshifted space
         line_kwargs.update(
-            estimate_line_parameters(bounds, vel, y, center, self._data_type, centroid, spectrum.redshift.value))
+            estimate_line_parameters(bounds,
+                                     dered_vel,
+                                     y,
+                                     center,
+                                     self._data_type,
+                                     centroid,
+                                     spectrum.redshift))
 
         line_kwargs.update(self._line_defaults)
         line_kwargs.get('bounds', {}).update({
@@ -272,10 +278,12 @@ def estimate_line_parameters(bounds, x, y, lambda_0, data_type, centroid, redshi
     # Note: centroid is equivalent to the `shifted_lambda` calculation in the
     # voigt profile model
     bound_low, bound_up = bounds
-    mask = ((x >= x[bound_low]) & (x <= x[bound_up]))
+    mid_diff = int((bound_up - bound_low) * 0.5)
+    mask = ((x >= x[bound_low - mid_diff]) & (x <= x[bound_up + mid_diff]))
 
     if data_type == 'flux':
         y = np.max(y) - y
+        # y *= (1 + redshift)   # Descale flux based on redshift
 
     mx = x[mask]
     my = y[mask]
