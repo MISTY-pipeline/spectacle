@@ -9,8 +9,8 @@ from scipy.integrate import simps
 from ..utils import find_nearest, wave_to_vel_equiv
 
 
-@u.quantity_input(x=['length', 'speed'], center=u.Unit('Angstrom'))
-def delta_v_90(x, y, center=None, continuum=None, ion_name=None):
+@u.quantity_input(x=['length', 'speed'])
+def delta_v_90(x, spectrum):
     """
     Calculate the dispersion that encompasses the central 90 percent of the
     apparant optical depth. Follows the formulation defined in Prochaska &
