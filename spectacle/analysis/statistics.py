@@ -27,10 +27,17 @@ def delta_v_90(x, spectrum):
     center : :class:~`astropy.units.Quantity`
         The centroid of the ion.
     """
-    x = x.to('km/s', equivalencies=wave_to_vel_equiv(center))
 
-    if continuum is not None:
-        y = continuum - y
+    with u.set_enabled_equivalencies(u.equivalencies.doppler_relativistic(spectrum.center)):
+        x = x.to('km/s')
+
+    # Remove redshift
+    spectrum = spectrum.copy()
+    spectrum.redshift = 0
+    y = spectrum.optical_depth(x)
+
+    print(x[0], x[-1])
+    print(np.max(y))
 
     mask = (y > 1e-5)
     y = y[mask]
