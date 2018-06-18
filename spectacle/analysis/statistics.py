@@ -36,9 +36,6 @@ def delta_v_90(x, spectrum):
     spectrum.redshift = 0
     y = spectrum.optical_depth(x)
 
-    print(x[0], x[-1])
-    print(np.max(y))
-
     mask = (y > 1e-5)
     y = y[mask]
     x = x[mask]
@@ -51,7 +48,7 @@ def delta_v_90(x, spectrum):
         v5 = x[find_nearest(y, y5)]
     else:
         logging.warning("No reasonable amount of optical depth found in "
-                        "feature at %s, aborting dv90 calculation.", center)
+                        "feature at %s, aborting dv90 calculation.", spectrum.center)
 
         return u.Quantity(0)
 
