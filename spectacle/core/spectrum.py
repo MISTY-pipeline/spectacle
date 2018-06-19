@@ -364,9 +364,9 @@ class Spectrum1D:
         fd = FluxDecrementConvert()
         ss = SmartScale(
             1. / (1 + self._redshift_model.z),
-            fixed={'factor': True})
+            tied={'factor': lambda x: 1. / (1 + self._redshift_model.z)})
 
-        comp_mod = (rs | (cm + (lm | ss | fd))) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = cm + (rs | lm | ss | fd) if lm is not None else cm + (rs | ss | fd)
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
