@@ -183,6 +183,9 @@ class Spectrum1D:
 
             centroid = line.lambda_0 * (1 + line.delta_v / c.cgs) + line.delta_lambda
             centroid = sl._redshift_model(centroid)
+
+            ew = stats.equivalent_width(x, spec(x), continuum=cont)
+            dv90 = stats.delta_v_90(x, self)
             tab.add_row([line.name, centroid.value, ew.value, dv90.value])
 
         return tab
