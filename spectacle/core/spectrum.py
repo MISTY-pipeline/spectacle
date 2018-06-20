@@ -388,10 +388,17 @@ def model_factory(bases, center, name="BaseModel"):
         input_units_allow_dimensionless = {'x': True}
 
         input_units = {'x': u.AA}
-        input_units_equivalencies = {'x': wave_to_vel_equiv(center)}
+        input_units_equivalencies = {'x': u.equivalencies.doppler_relativistic(center)}
 
         @property
         def _supports_unit_fitting(self):
             return True
+
+        @property
+        def deredshift(self):
+            new_self = self.copy()
+            next((x for x in new_self if isinstance(x, Redshift))).z = 0
+
+            return new_self
 
     return BaseSpectrumModel.rename(name)
