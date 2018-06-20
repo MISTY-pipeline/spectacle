@@ -176,11 +176,6 @@ class Spectrum1D:
             line = sl.line_model
             cont = sl.continuum(x) if sl.continuum is not None else None
 
-            ew = stats.equivalent_width(x, spec(x), continuum=cont)
-            dv90 = stats.delta_v_90(x, spec(x),
-                                    center=line.lambda_0.value * line.lambda_0.unit,
-                                    continuum=cont)
-
             centroid = line.lambda_0 * (1 + line.delta_v / c.cgs) + line.delta_lambda
             centroid = sl._redshift_model(centroid)
 
@@ -317,10 +312,10 @@ class Spectrum1D:
         rs = self._redshift_model.inverse
         ss = SmartScale(
             1. / (1 + self._redshift_model.z),
-            fixed={'factor': True})
+            tied={'factor': lambda x: 1. / (1 + self._redshift_model.z)})
         lm = self._line_model
 
-        comp_mod = (rs | lm | ss) if lm is not None else (dc | rs | ss)
+        comp_mod = (rs | lm | ss) if lm is not None else (rs | ss)
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
@@ -338,12 +333,12 @@ class Spectrum1D:
         rs = self._redshift_model.inverse
         ss = SmartScale(
             1. / (1 + self._redshift_model.z),
-            fixed={'factor': True})
+            tied={'factor': lambda x: 1. / (1 + self._redshift_model.z)})
         cm = self._continuum_model
         lm = self._line_model
         fc = FluxConvert()
 
-        comp_mod = (rs | (cm + (lm | ss | fc))) if lm is not None else (rs | cm + (ss | fc))
+        comp_mod = cm + (rs | lm | ss | fc) if lm is not None else cm + (rs | ss | fc)
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
@@ -358,7 +353,7 @@ class Spectrum1D:
         Compound spectrum model in flux decrement space.
         """
         dc = DispersionConvert(self._center)
-        rs = self._redshift_model
+        rs = self._redshift_model.inverse
         cm = self._continuum_model
         lm = self._line_model
         fd = FluxDecrementConvert()
