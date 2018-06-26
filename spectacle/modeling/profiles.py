@@ -69,7 +69,7 @@ class TauProfile(Fittable1DModel):
 
     input_units_strict = True
     input_units = {'x': u.AA}
-    input_units_allow_dimensionless = {'x': True}
+    # input_units_allow_dimensionless = {'x': True}
 
     lambda_0 = Parameter(fixed=True, min=0, unit=u.Unit('Angstrom'))
     f_value = Parameter(fixed=True, min=0, max=2.0, default=0)
@@ -121,7 +121,7 @@ class TauProfile(Fittable1DModel):
 
     @property
     def input_units_equivalencies(self):
-        return {'x': wave_to_vel_equiv(self.lambda_0)}
+        return {'x': u.equivalencies.doppler_relativistic(self.lambda_0.value * self.lambda_0.unit)}
 
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
@@ -199,18 +199,6 @@ class TauProfile(Fittable1DModel):
         fwhm = fit_mod.fwhm
 
         return fwhm
-
-    @u.quantity_input(x=['length', 'speed'])
-    def delta_v_90(self, x=None):
-        x = x or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
-
-        return delta_v_90(x=x, y=self(x), center=self.lambda_0)
-
-    @u.quantity_input(x=['length', 'speed'])
-    def equivalent_width(self, x=None):
-        x = x or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
-
-        return equivalent_width(x=x, y=self(x))
 
     def mask_range(self):
         fwhm = self.fwhm() * u.Unit('km/s')
