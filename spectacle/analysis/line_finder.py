@@ -54,7 +54,7 @@ class LineFinder(Fittable2DModel):
     center = Parameter(default=0, min=0, unit=u.Unit('Angstrom'), fixed=True)
     redshift = Parameter(default=0, min=0, fixed=True)
     threshold = Parameter(default=0.1, min=0)
-    min_distance = Parameter(default=2, min=0.1)
+    min_distance = Parameter(default=2, min=0.1, unit=u.Unit('km/s'))
     width = Parameter(default=15, min=2)
 
     @property
