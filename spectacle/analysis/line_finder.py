@@ -59,7 +59,7 @@ class LineFinder(Fittable2DModel):
 
     @property
     def input_units(self):
-        return {'x': u.Unit('Angstrom')}
+        return {'x': u.Unit('km/s')}
 
     def __init__(self, ion_name=None, data_type='optical_depth',
                  defaults=None, max_iter=4000, *args, **kwargs):
@@ -327,8 +327,9 @@ def estimate_line_parameters(bounds, x, y, lambda_0, data_type, centroid, redshi
                 f_value)).to('1/cm2')
 
     logging.info("""Estimated intial values:
+    Center: {:g}
     Column density: {:g}
-    Doppler width: {:g}""".format(col_dens, v_dop.to('cm/s')))
+    Doppler width: {:g}""".format(center, col_dens, v_dop.to('cm/s')))
 
     return dict(v_doppler=v_dop.to('cm/s'), column_density=col_dens)
 
