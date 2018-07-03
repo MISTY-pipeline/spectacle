@@ -3,7 +3,8 @@ from collections import OrderedDict
 
 import astropy.units as u
 from astropy.constants import c
-from astropy.modeling import Fittable1DModel, models
+from astropy.modeling import Fittable1DModel
+from astropy.modeling.models import Const1D
 from astropy.table import Row, Table
 
 from ..analysis import statistics as stats
@@ -345,7 +346,9 @@ class Spectrum1D:
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return model_factory(comp_mod, self._center, name="FluxModel")()
+        return type('Flux1DModel',
+                    (comp_mod.__class__,),
+                    {})()
 
     @property
     def flux_decrement(self):
