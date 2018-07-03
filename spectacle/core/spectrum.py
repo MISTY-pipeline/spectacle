@@ -7,13 +7,13 @@ from astropy.modeling import Fittable1DModel
 from astropy.modeling.models import Const1D
 from astropy.table import Row, Table
 
+from ..modeling.custom import RedshiftScaleFactor, Scale
 from ..analysis import statistics as stats
 from ..analysis.resample import Resample
 from ..io.registries import line_registry
 from ..modeling.converters import (DispersionConvert, FluxConvert,
-                                   FluxDecrementConvert)
-from ..modeling.custom import Linear, Redshift, SmartScale
-from ..modeling.profiles import TauProfile
+                                   FluxDecrementConvert, DispersionConvert)
+from ..modeling.profiles import OpticalDepth1DModel
 from ..utils import wave_to_vel_equiv
 from copy import deepcopy
 
@@ -355,14 +355,11 @@ class Spectrum1D:
         """
         Compound spectrum model in flux decrement space.
         """
-        dc = DispersionConvert(self._center)
         rs = self._redshift_model.inverse
         cm = self._continuum_model
         lm = self._line_model
         fd = FluxDecrementConvert()
-        ss = SmartScale(
-            1. / (1 + self._redshift_model.z),
-            tied={'factor': lambda x: 1. / (1 + self._redshift_model.z)})
+        ss = Scale(1. / (1 + self.redshift), fixed={'factor': True})
 
         comp_mod = cm + (rs | lm | ss | fd) if lm is not None else cm + (rs | ss | fd)
 
@@ -371,32 +368,10 @@ class Spectrum1D:
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return model_factory(comp_mod, self._center, name="FluxDecrementModel")()
-
-
-def model_factory(bases, center, name="BaseModel"):
-    from collections import OrderedDict
-
-
-    class BaseSpectrumModel(bases.__class__):
-        inputs = ('x',)
-        outputs = ('y',)
-
-        input_units_strict = True
-        input_units_allow_dimensionless = {'x': True}
-
-        input_units = {'x': u.AA}
-        input_units_equivalencies = {'x': u.equivalencies.doppler_relativistic(center)}
-
-        @property
-        def _supports_unit_fitting(self):
-            return True
-
-        @property
-        def deredshift(self):
-            new_self = self.copy()
-            next((x for x in new_self if isinstance(x, Redshift))).z = 0
-
-            return new_self
-
-    return BaseSpectrumModel.rename(name)
+        return type('FluxDecrement1DModel',
+                    (comp_mod.__class__,),
+                    dict(input_units={'x': u.Unit('km/s')},
+                         input_units_allow_dimensionless=True,
+                         input_units_equivalencies={
+                             'x': u.equivalencies.doppler_relativistic(
+                                 self.rest_wavelength)}))
