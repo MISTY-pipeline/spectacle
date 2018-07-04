@@ -51,7 +51,7 @@ class Spectrum1DModel:
             logging.debug("Default continuum set to a 'Constant' model.")
 
         self._regions = {}
-
+        self._bounds = []
         self._line_model = None
         self._lsf_model = None
         self._noise_model = None
@@ -61,14 +61,14 @@ class Spectrum1DModel:
         return deepcopy(self)
 
     @property
-    def center(self):
+    def rest_wavelength(self):
         """
         The central wavelength value.
         """
-        return self._center
+        return self._rest_wavelength
 
-    @center.setter
-    def center(self, value):
+    @rest_wavelength.setter
+    def rest_wavelength(self, value):
         """
         Define the center wavelength for this spectrum model. The center
         dictates wavelength to velocity space dispersion conversions.
@@ -79,7 +79,7 @@ class Spectrum1DModel:
             Quantity object containing the center value and a unit of type
             *length*.
         """
-        self._center = value
+        self._rest_wavelength = value
 
     @property
     def redshift(self):
@@ -104,7 +104,7 @@ class Spectrum1DModel:
             The redshift value to use.
         """
         # TODO: include check on the input arguments
-        self._redshift_model = Redshift(z=value)
+        self._redshift_model = RedshiftScaleFactor(z=value)
 
     @property
     def continuum(self):
@@ -116,14 +116,7 @@ class Spectrum1DModel:
         : `~astropy.modeling.modeling.Fittable1DModel`
             The continuum model in the spectrum compound model.
         """
-        dc = DispersionConvert(self._center)
-        rs = self._redshift_model.inverse
-        ss = SmartScale(
-            1. / (1 + self._redshift_model.z),
-            fixed={'factor': True})
-        cm = self._continuum_model
-
-        return (rs | cm | ss).rename("Continuum Model")
+        return self._continuum_model
 
     @continuum.setter
     def continuum(self, value):
@@ -151,6 +144,14 @@ class Spectrum1DModel:
         profiles.
         """
         self._regions = value
+
+    @property
+    def bounds(self):
+        return self._bounds
+
+    @bounds.setter
+    def bounds(self, value):
+        self._bounds = value
 
     @property
     def lines(self):
