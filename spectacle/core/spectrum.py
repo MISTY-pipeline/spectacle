@@ -40,17 +40,15 @@ class Spectrum1DModel:
             ion_name = line_registry.with_name(ion_name)
             self._rest_wavelength = ion_name['wave'] * line_registry['wave'].unit
 
-        self._redshift_model = Redshift(**{'z': redshift or 0})
+        self._redshift_model = RedshiftScaleFactor(z=redshift, fixed={'z': True})
+        # self._redshift_model._parameter_units_for_data_units = lambda input_units, output_units: dict()
 
         if continuum is not None and isinstance(continuum, Fittable1DModel):
             self._continuum_model = continuum
         else:
-            self._continuum_model = Linear(
-                slope=0 * u.Unit('1/Angstrom'),
-                intercept=1 * u.Unit(""),
-                fixed={'slope': True, 'intercept': True})
+            self._continuum_model = Const1D(1, fixed={'amplitude': True})
 
-            logging.debug("Default continuum set to a Linear model.")
+            logging.debug("Default continuum set to a 'Constant' model.")
 
         self._regions = {}
 
