@@ -30,13 +30,15 @@ class NoLines(Exception):
     pass
 
 
-class Spectrum1D:
-    def __init__(self, center=None, ion=None, redshift=None, continuum=None):
-        self._center = u.Quantity(center or 0, 'Angstrom')
+class Spectrum1DModel:
+    @u.quantity_input(rest_wavelength=u.Unit('Angstrom'))
+    def __init__(self, rest_wavelength=None, ion_name=None, redshift=None,
+                 continuum=None):
+        self._rest_wavelength = u.Quantity(rest_wavelength or 0, 'Angstrom')
 
-        if ion is not None:
-            ion = line_registry.with_name(ion)
-            self._center = ion['wave'] * line_registry['wave'].unit
+        if ion_name is not None:
+            ion_name = line_registry.with_name(ion_name)
+            self._rest_wavelength = ion_name['wave'] * line_registry['wave'].unit
 
         self._redshift_model = Redshift(**{'z': redshift or 0})
 
