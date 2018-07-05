@@ -155,15 +155,15 @@ class Spectrum1DModel:
 
     @property
     def lines(self):
-        tab = Table(names=['name'] + list(TauProfile.param_names),
-                    dtype=['S10'] + ['f8'] * len(TauProfile.param_names))
+        tab = Table(names=['name'] + list(OpticalDepth1DModel.param_names),
+                    dtype=['S10'] + ['f8'] * len(OpticalDepth1DModel.param_names))
 
         for l in self.line_models:
             tab.add_row([l.name] + list(l.parameters))
 
-        params = [getattr(TauProfile, n) for n in TauProfile.param_names]
+        params = [getattr(OpticalDepth1DModel, n) for n in OpticalDepth1DModel.param_names]
 
-        for i, n in enumerate(TauProfile.param_names):
+        for i, n in enumerate(OpticalDepth1DModel.param_names):
             tab[n].unit = params[i].unit
 
         return tab
@@ -230,9 +230,9 @@ class Spectrum1DModel:
         : `~spectacle.modeling.profiles.TauProfile`
             The new tau profile line model.
         """
-        kwargs.setdefault('lambda_0', self._center if name is None else None)
+        kwargs.setdefault('lambda_0', self._rest_wavelength if name is None else None)
 
-        tau_prof = TauProfile(name=name, *args, **kwargs) if model is None else model
+        tau_prof = OpticalDepth1DModel(name=name, *args, **kwargs) if model is None else model
 
         self._line_model = tau_prof if self._line_model is None \
             else self._line_model + tau_prof
@@ -266,18 +266,6 @@ class Spectrum1DModel:
         else:
             raise ValueError("LSF model must be a subclass of `Fittable1DModel`.")
 
-    def resample(self, x):
-        """
-        Returns a new `~spectacle.core.spectrum.Spectrum1D` model with a
-        resample matrix model as part of the compound spectrum model.
-
-        Returns
-        -------
-        x : array-like
-            Dispersion to which the model will be resampled.
-        """
-        self._resample_model = Resample()
-
     @property
     def noise(self):
         """
@@ -310,11 +298,8 @@ class Spectrum1DModel:
         """
         Compound spectrum model in tau space.
         """
-        dc = DispersionConvert(self._center)
         rs = self._redshift_model.inverse
-        ss = SmartScale(
-            1. / (1 + self._redshift_model.z),
-            tied={'factor': lambda x: 1. / (1 + self._redshift_model.z)})
+        ss = Scale(1. / (1 + self.redshift), fixed={'factor': True})
         lm = self._line_model
 
         comp_mod = (rs | lm | ss) if lm is not None else (rs | ss)
@@ -324,23 +309,27 @@ class Spectrum1DModel:
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return model_factory(comp_mod, self._center, name="TauModel")()
+        return type('OpticalDepth1DModel',
+                    (comp_mod.__class__,),
+                    dict(input_units={'x': u.Unit('km/s')},
+                         input_units_allow_dimensionless=True,
+                         input_units_equivalencies={
+                             'x': u.equivalencies.doppler_relativistic(
+                                 self.rest_wavelength)}))()
 
     @property
     def flux(self):
         """
         Compound spectrum model in flux space.
         """
-        dc = DispersionConvert(self._center)
         rs = self._redshift_model.inverse
-        ss = SmartScale(
-            1. / (1 + self._redshift_model.z),
-            tied={'factor': lambda x: 1. / (1 + self._redshift_model.z)})
+        dc = DispersionConvert(self.rest_wavelength)
+        ss = Scale(1. / (1 + self.redshift), fixed={'factor': True})
         cm = self._continuum_model
         lm = self._line_model
         fc = FluxConvert()
 
-        comp_mod = cm + (rs | lm | ss | fc) if lm is not None else cm + (rs | ss | fc)
+        comp_mod = rs | dc | (cm + (lm | ss | fc)) if lm is not None else rs | dc | cm
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
