@@ -50,7 +50,7 @@ def delta_v_90(x, y, rest_wavelength=None, continuum=None, ion_name=None):
 
         return u.Quantity(0)
 
-return np.abs((v95 - v5).to('km/s'))
+    return np.abs((v95 - v5).to('km/s'))
 
 
 @u.quantity_input(x=['length', 'speed'])
