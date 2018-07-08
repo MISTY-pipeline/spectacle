@@ -28,7 +28,11 @@ class MCMCFitter:
         # reference their bounds information
         params = [getattr(model, x)
                   for x in np.array(model.param_names)[fit_params_indices]]
-
+        print("HERE")
+        print([x for x in theta])
+        print(all([(params[i].bounds[0] or -np.inf)
+                        <= theta[i] <= (params[i].bounds[1] or np.inf)
+                for i in range(len(theta))]))
         if all([(params[i].bounds[0] or -np.inf)
                         <= theta[i] <= (params[i].bounds[1] or np.inf)
                 for i in range(len(theta))]):
@@ -62,6 +66,44 @@ class MCMCFitter:
         return lp + ll
 
     def __call__(self, model, x, y, yerr=None, nwalkers=100, steps=500):
+        # If no errors are provided, assume all errors are normalized
+        if yerr is None:
+            yerr = np.zeros(shape=x.shape)
+            # yerr.fill(1e-20)
+
+        self.__class__.model = model
+
+        # Retrieve the parameters that are not considered fixed or tied
+        fit_params, fit_params_indices = _model_to_fit_params(model)
+
+        # fit_params = np.append(fit_params, np.log(1e-20))
+        fit_params_indices = np.array(fit_params_indices).astype(int)
+
+        # Cache the number of dimensions of the problem, and walker count
+        ndim = len(fit_params)
+
+        from pymultinest.solve import solve
+        import os
+
+        if not os.path.exists("chains"): os.mkdir("chains")
+
+        result = solve(LogLikelihood=self.lnlike, Prior=self.lnprior,
+                       n_dims=ndim, outputfiles_basename="chains/3-",
+                       verbose=True)
+
+        theta = [x.mean() for x in zip(fit_params, result['samples'].transpose())]
+
+        _fitter_to_model_params(model, theta)#[:-1])
+
+        # fit_params, fit_params_indices = _model_to_fit_params(model)
+        model.parameters[fit_params_indices] = theta
+
+        # for name, value in zip(np.array(model.param_names)[fit_params_indices], fit_params):
+        #     print("{:20}: {:g}".format(name, value))
+
+        return model
+
+    def __mcmccall__(self, model, x, y, yerr=None, nwalkers=100, steps=500):
         # If no errors are provided, assume all errors are normalized
         if yerr is None:
             yerr = np.zeros(shape=x.shape)

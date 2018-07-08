@@ -3,17 +3,19 @@ from collections import OrderedDict
 
 import astropy.units as u
 from astropy.constants import c
-from astropy.modeling import Fittable1DModel, models
+from astropy.modeling import Fittable1DModel
+from astropy.modeling.models import Const1D
 from astropy.table import Row, Table
 
+from ..modeling.custom import RedshiftScaleFactor, Scale
 from ..analysis import statistics as stats
 from ..analysis.resample import Resample
 from ..io.registries import line_registry
 from ..modeling.converters import (DispersionConvert, FluxConvert,
-                                   FluxDecrementConvert)
-from ..modeling.custom import Linear, Redshift, SmartScale
-from ..modeling.profiles import TauProfile
+                                   FluxDecrementConvert, DispersionConvert)
+from ..modeling.profiles import OpticalDepth1DModel
 from ..utils import wave_to_vel_equiv
+from copy import deepcopy
 
 
 class SpectrumModelNotImplemented(Exception):
@@ -28,52 +30,45 @@ class NoLines(Exception):
     pass
 
 
-class Spectrum1D:
-    def __init__(self, center=None, ion=None, redshift=None, continuum=None):
-        self._center = u.Quantity(center or 0, 'Angstrom')
+class Spectrum1DModel:
+    @u.quantity_input(rest_wavelength=u.Unit('Angstrom'))
+    def __init__(self, rest_wavelength=None, ion_name=None, redshift=None,
+                 continuum=None):
+        self._rest_wavelength = u.Quantity(rest_wavelength or 0, 'Angstrom')
 
-        if ion is not None:
-            ion = line_registry.with_name(ion)
-            self._center = ion['wave'] * line_registry['wave'].unit
+        if ion_name is not None:
+            ion_name = line_registry.with_name(ion_name)
+            self._rest_wavelength = ion_name['wave'] * line_registry['wave'].unit
 
-        self._redshift_model = Redshift(**{'z': redshift or 0})
+        self._redshift_model = RedshiftScaleFactor(z=redshift, fixed={'z': True})
+        # self._redshift_model._parameter_units_for_data_units = lambda input_units, output_units: dict()
 
         if continuum is not None and isinstance(continuum, Fittable1DModel):
             self._continuum_model = continuum
         else:
-            self._continuum_model = Linear(
-                slope=0 * u.Unit('1/Angstrom'),
-                intercept=1 * u.Unit(""),
-                fixed={'slope': True, 'intercept': True})
+            self._continuum_model = Const1D(1, fixed={'amplitude': True})
 
-            logging.debug("Default continuum set to a Linear model.")
+            logging.debug("Default continuum set to a 'Constant' model.")
 
         self._regions = {}
-
+        self._bounds = []
         self._line_model = None
         self._lsf_model = None
         self._noise_model = None
         self._resample_model = None
 
     def copy(self):
-        new_spectrum = Spectrum1D(center=self.center.value * self.center.unit)
-        new_spectrum._redshift_model = self._redshift_model.copy()
-        new_spectrum._continuum_model = self._continuum_model.copy()
-
-        if self._line_model is not None:
-            new_spectrum._line_model = self._line_model.copy()
-
-        return new_spectrum
+        return deepcopy(self)
 
     @property
-    def center(self):
+    def rest_wavelength(self):
         """
         The central wavelength value.
         """
-        return self._center
+        return self._rest_wavelength
 
-    @center.setter
-    def center(self, value):
+    @rest_wavelength.setter
+    def rest_wavelength(self, value):
         """
         Define the center wavelength for this spectrum model. The center
         dictates wavelength to velocity space dispersion conversions.
@@ -84,7 +79,7 @@ class Spectrum1D:
             Quantity object containing the center value and a unit of type
             *length*.
         """
-        self._center = value
+        self._rest_wavelength = value
 
     @property
     def redshift(self):
@@ -109,7 +104,7 @@ class Spectrum1D:
             The redshift value to use.
         """
         # TODO: include check on the input arguments
-        self._redshift_model = Redshift(z=value)
+        self._redshift_model = RedshiftScaleFactor(z=value)
 
     @property
     def continuum(self):
@@ -121,14 +116,7 @@ class Spectrum1D:
         : `~astropy.modeling.modeling.Fittable1DModel`
             The continuum model in the spectrum compound model.
         """
-        dc = DispersionConvert(self._center)
-        rs = self._redshift_model.inverse
-        ss = SmartScale(
-            1. / (1 + self._redshift_model.z),
-            fixed={'factor': True})
-        cm = self._continuum_model
-
-        return (rs | cm | ss).rename("Continuum Model")
+        return self._continuum_model
 
     @continuum.setter
     def continuum(self, value):
@@ -158,16 +146,24 @@ class Spectrum1D:
         self._regions = value
 
     @property
+    def bounds(self):
+        return self._bounds
+
+    @bounds.setter
+    def bounds(self, value):
+        self._bounds = value
+
+    @property
     def lines(self):
-        tab = Table(names=['name'] + list(TauProfile.param_names),
-                    dtype=['S10'] + ['f8'] * len(TauProfile.param_names))
+        tab = Table(names=['name'] + list(OpticalDepth1DModel.param_names),
+                    dtype=['S10'] + ['f8'] * len(OpticalDepth1DModel.param_names))
 
         for l in self.line_models:
             tab.add_row([l.name] + list(l.parameters))
 
-        params = [getattr(TauProfile, n) for n in TauProfile.param_names]
+        params = [getattr(OpticalDepth1DModel, n) for n in OpticalDepth1DModel.param_names]
 
-        for i, n in enumerate(TauProfile.param_names):
+        for i, n in enumerate(OpticalDepth1DModel.param_names):
             tab[n].unit = params[i].unit
 
         return tab
@@ -182,13 +178,11 @@ class Spectrum1D:
             line = sl.line_model
             cont = sl.continuum(x) if sl.continuum is not None else None
 
-            ew = stats.equivalent_width(x, spec(x), continuum=cont)
-            dv90 = stats.delta_v_90(x, spec(x),
-                                    center=line.lambda_0.value * line.lambda_0.unit,
-                                    continuum=cont)
-
             centroid = line.lambda_0 * (1 + line.delta_v / c.cgs) + line.delta_lambda
             centroid = sl._redshift_model(centroid)
+
+            ew = stats.equivalent_width(x, spec(x), continuum=cont)
+            dv90 = stats.delta_v_90(x, self)
             tab.add_row([line.name, centroid.value, ew.value, dv90.value])
 
         return tab
@@ -236,9 +230,9 @@ class Spectrum1D:
         : `~spectacle.modeling.profiles.TauProfile`
             The new tau profile line model.
         """
-        kwargs.setdefault('lambda_0', self._center if name is None else None)
+        kwargs.setdefault('lambda_0', self._rest_wavelength if name is None else None)
 
-        tau_prof = TauProfile(name=name, *args, **kwargs) if model is None else model
+        tau_prof = OpticalDepth1DModel(name=name, *args, **kwargs) if model is None else model
 
         self._line_model = tau_prof if self._line_model is None \
             else self._line_model + tau_prof
@@ -272,18 +266,6 @@ class Spectrum1D:
         else:
             raise ValueError("LSF model must be a subclass of `Fittable1DModel`.")
 
-    def resample(self, x):
-        """
-        Returns a new `~spectacle.core.spectrum.Spectrum1D` model with a
-        resample matrix model as part of the compound spectrum model.
-
-        Returns
-        -------
-        x : array-like
-            Dispersion to which the model will be resampled.
-        """
-        self._resample_model = Resample()
-
     @property
     def noise(self):
         """
@@ -316,85 +298,70 @@ class Spectrum1D:
         """
         Compound spectrum model in tau space.
         """
-        dc = DispersionConvert(self._center)
         rs = self._redshift_model.inverse
-        ss = SmartScale(
-            1. / (1 + self._redshift_model.z),
-            fixed={'factor': True})
+        ss = Scale(1. / (1 + self.redshift), fixed={'factor': True})
         lm = self._line_model
 
-        comp_mod = (rs | lm | ss) if lm is not None else (dc | rs | ss)
+        comp_mod = (rs | lm | ss) if lm is not None else (rs | ss)
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return model_factory(comp_mod, self._center, name="TauModel")()
+        return type('OpticalDepth1DModel',
+                    (comp_mod.__class__,),
+                    dict(input_units={'x': u.Unit('km/s')},
+                         input_units_allow_dimensionless=True,
+                         input_units_equivalencies={
+                             'x': u.equivalencies.doppler_relativistic(
+                                 self.rest_wavelength)}))()
 
     @property
     def flux(self):
         """
         Compound spectrum model in flux space.
         """
-        dc = DispersionConvert(self._center)
         rs = self._redshift_model.inverse
-        ss = SmartScale(
-            1. / (1 + self._redshift_model.z),
-            fixed={'factor': True})
+        dc = DispersionConvert(self.rest_wavelength)
+        ss = Scale(1. / (1 + self.redshift), fixed={'factor': True})
         cm = self._continuum_model
         lm = self._line_model
         fc = FluxConvert()
 
-        comp_mod = (rs | (cm + (lm | ss | fc))) if lm is not None else (rs | cm + (ss | fc))
+        comp_mod = rs | dc | (cm + (lm | ss | fc)) if lm is not None else rs | dc | cm
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return model_factory(comp_mod, self._center, name="FluxModel")()
+        return type('Flux1DModel',
+                    (comp_mod.__class__,),
+                    {})()
 
     @property
     def flux_decrement(self):
         """
         Compound spectrum model in flux decrement space.
         """
-        dc = DispersionConvert(self._center)
-        rs = self._redshift_model
+        rs = self._redshift_model.inverse
         cm = self._continuum_model
         lm = self._line_model
         fd = FluxDecrementConvert()
-        ss = SmartScale(
-            1. / (1 + self._redshift_model.z),
-            fixed={'factor': True})
+        ss = Scale(1. / (1 + self.redshift), fixed={'factor': True})
 
-        comp_mod = (rs | (cm + (lm | ss | fd))) if lm is not None else (dc | rs | cm | ss)
+        comp_mod = cm + (rs | lm | ss | fd) if lm is not None else cm + (rs | ss | fd)
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
         if self.lsf is not None:
             comp_mod = comp_mod | self.lsf
 
-        return model_factory(comp_mod, self._center, name="FluxDecrementModel")()
-
-
-def model_factory(bases, center, name="BaseModel"):
-    from collections import OrderedDict
-
-
-    class BaseSpectrumModel(bases.__class__):
-        inputs = ('x',)
-        outputs = ('y',)
-
-        input_units_strict = True
-        input_units_allow_dimensionless = {'x': True}
-
-        input_units = {'x': u.AA}
-        input_units_equivalencies = {'x': wave_to_vel_equiv(center)}
-
-        @property
-        def _supports_unit_fitting(self):
-            return True
-
-    return BaseSpectrumModel.rename(name)
+        return type('FluxDecrement1DModel',
+                    (comp_mod.__class__,),
+                    dict(input_units={'x': u.Unit('km/s')},
+                         input_units_allow_dimensionless=True,
+                         input_units_equivalencies={
+                             'x': u.equivalencies.doppler_relativistic(
+                                 self.rest_wavelength)}))

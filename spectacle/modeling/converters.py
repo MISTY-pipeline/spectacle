@@ -85,31 +85,16 @@ class DispersionConvert(Fittable1DModel):
 
     @property
     def input_units(self):
-        return self._input_units
+        return {'x': 'km/s'}
 
     @property
     def input_units_equivalencies(self):
-        return {'x': wave_to_vel_equiv(self.center)}
-
-    def __call__(self, x, *args, **kwargs):
-        if isinstance(x, u.Quantity):
-            self._input_units = {'x': x.unit}
-        else:
-            logging.warning("Input 'x' is not a quantity.")
-
-        return super(DispersionConvert, self).__call__(x, *args, **kwargs)
+        return {'x': u.equivalencies.doppler_relativistic(self.center.value * self.center.unit)}
 
     def evaluate(self, x, center):
         # Units are stripped in the evaluate methods of models
-        x = u.Quantity(x, unit=self.input_units['x'])
-
         with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
-            if x.unit.physical_type == 'speed':
-                return x.to('Angstrom')
-            elif x.unit.physical_type == 'length':
-                return x.to('km/s')
-
-        logging.warning("Unrecognized input units '{}'.".format(x.unit))
+            x = u.Quantity(x, 'km/s')
 
         return x
 

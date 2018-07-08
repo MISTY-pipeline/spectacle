@@ -23,6 +23,28 @@ class COSKernel1D(Kernel1D):
         super(COSKernel1D, self).__init__(array=table['value'])
 
 
+class LSFModel(Fittable1DModel):
+    inputs = ('x',)
+    outputs = ('y',)
+
+    def __init__(self, kernel=None, *args, **kwargs):
+        super(LSFModel, self).__init__(*args, **kwargs)
+
+        self._kernel = kernel
+
+    @property
+    def kernel(self):
+        return self._kernel
+
+    @kernel.setter
+    def kernel(self, value):
+        self._kernel = value
+
+    @staticmethod
+    def evaluate(y):
+        return convolve(y, self.kernel, boundary='extend')
+
+
 class COSLSFModel(Fittable1DModel):
     """
     COS LSF model which can be used with the compound model objects.

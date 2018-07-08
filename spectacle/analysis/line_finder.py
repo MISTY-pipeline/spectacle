@@ -54,12 +54,17 @@ class LineFinder(Fittable2DModel):
     center = Parameter(default=0, min=0, unit=u.Unit('Angstrom'), fixed=True)
     redshift = Parameter(default=0, min=0, fixed=True)
     threshold = Parameter(default=0.1, min=0)
-    min_distance = Parameter(default=2, min=0.1)
+    min_distance = Parameter(default=2, min=0.1, unit=u.Unit('km/s'))
     width = Parameter(default=15, min=2)
 
     @property
     def input_units(self):
-        return {'x': u.Unit('Angstrom')}
+        return {'x': u.Unit('km/s')}
+
+    @property
+    def input_units_equivalencies(self):
+        return {'x': u.equivalencies.doppler_relativistic(
+                self.center.value * self.center.unit)}
 
     def __init__(self, ion_name=None, data_type='optical_depth',
                  defaults=None, max_iter=4000, *args, **kwargs):
@@ -85,15 +90,11 @@ class LineFinder(Fittable2DModel):
 
         self.max_iter = max_iter
 
-    @property
-    def input_units_equivalencies(self):
-        return {'x': wave_to_vel_equiv(self.center)}
-
     def __call__(self, x, *args, **kwargs):
-        if isinstance(x, u.Quantity):
-            self.input_units['x'] = x.unit
-        else:
-            logging.warning("Input 'x' is not a quantity.")
+        # if isinstance(x, u.Quantity):
+        #     self.input_units['x'] = x.unit
+        # else:
+        #     logging.warning("Input 'x' is not a quantity.")
 
         super(LineFinder, self).__call__(x, *args, **kwargs)
 
@@ -104,17 +105,16 @@ class LineFinder(Fittable2DModel):
         Evaluate `LineFinder` model.
         """
         # Units are stripped in the evaluate methods of models
-        x = u.Quantity(x, unit=self.input_units['x'])
         logging.info("Input units: {}".format(x.unit))
 
         # Convert the min_distance from dispersion units to data elements
-        min_ind = (np.abs(x.value - (x[0].value + min_distance))).argmin()
+        min_ind = (np.abs(x - (x[0] + min_distance))).argmin()
 
         logging.info("Min distance: %i elements.", min_ind)
 
         # Given each minima in the finder, construct a new spectrum object with
         # absorption lines at the given indicies.
-        spectrum = Spectrum1D(center=self.center.value * self.center.unit,
+        spectrum = Spectrum1D(rest_wavelength=self.center.value * self.center.unit,
                               redshift=self.redshift.value,
                               continuum=Linear(slope=u.Quantity(0, 1 / x.unit),
                                                intercept=(
@@ -130,7 +130,7 @@ class LineFinder(Fittable2DModel):
 
             logging.info("Found %i minima.", len(reg_bounds))
 
-        # Generation spectrum model
+        # Generate spectrum model
         for bounds in reg_bounds:
             self.compose_line(spectrum, bounds, x, y)
 
@@ -177,18 +177,20 @@ class LineFinder(Fittable2DModel):
         reg_dict = {(reg[0], reg[1]): [] for reg in regions}
 
         # Add this line to the region dictionary
-        for line in spectrum.line_models:
-            redshifted_peak = spectrum._redshift_model(line.lambda_0 +
-                                                       line.delta_lambda)
+        with u.set_enabled_equivalencies(u.equivalencies.doppler_relativistic(center)):
+            for line in spectrum.line_models:
+                redshifted_peak = spectrum._redshift_model(line.lambda_0 +
+                                                        line.delta_lambda)
 
-            for k in reg_dict.keys():
-                mn, mx = x[k[0]], x[k[1]]
+                for k in reg_dict.keys():
+                    mn, mx = x[k[0]], x[k[1]]
 
-                if mn <= redshifted_peak <= mx:
-                    reg_dict[k].append(line)
+                    if mn <= redshifted_peak <= mx:
+                        reg_dict[k].append(line)
 
         # Set the region dictionary on the spectrum model object
         spectrum.regions = reg_dict
+        spectrum.bounds = reg_bounds
 
         logging.info("Found %i absorption regions.", len(reg_dict))
 
@@ -198,65 +200,52 @@ class LineFinder(Fittable2DModel):
         return OrderedDict()
 
     def compose_line(self, spectrum, bounds, x, y):
-        # Calculate the centroid of this absorption region
+        # Calculate the (potentially redshifted) centroid of this absorption region
         centroid = x[bounds[0]] + (x[bounds[1]] - x[bounds[0]]) * 0.5
-        ind = find_nearest(x, centroid)
+        centroid = x[find_nearest(x, centroid)]
 
-        # Store the actual peak value from the dispersion array
-        redshifted_peak = x[ind]
-        deredshifted_peak = spectrum._redshift_model.inverse(redshifted_peak)
-        dered_bounds_values = (spectrum._redshift_model.inverse(x[bounds[0]]),
-                               spectrum._redshift_model.inverse(x[bounds[1]]))
+        # Get the velocity centroid de-redshifted
+        vel_center = spectrum._redshift_model.inverse(centroid)
+        logging.info("Centroid: %s; %s", centroid, vel_center)
 
-        if spectrum.center == 0:
-            lamb_row = line_registry.with_lambda(deredshifted_peak)
-            center = lamb_row['wave'] * line_registry['wave'].unit
-        else:
-            center = spectrum.center
+        # Convert centroid to wavelength space
+        with u.set_enabled_equivalencies(u.equivalencies.doppler_relativistic(self.center.value * self.center.unit)):
+            center = vel_center.to('Angstrom')
+
+        # De-redshift the region bounds
+        vel_bounds = (spectrum._redshift_model.inverse(x[bounds[0]]),
+                      spectrum._redshift_model.inverse(x[bounds[1]]))
+
+        logging.info("Center: %s, %s", center, vel_center)
+
+        # if spectrum.center == 0:
+        #     lamb_row = line_registry.with_lambda(center)
+        #     center = lamb_row['wave'] * line_registry['wave'].unit
+        # else:
+        #     center = spectrum.center
 
         # Construct a dictionary with all of the true values for this
         # absorption line.
-        line_kwargs = dict(lambda_0=center,
-                           delta_lambda=0 * u.AA,
-                           delta_v=0 * u.Unit('km/s'))
+        line_kwargs = dict(lambda_0=center)
 
-        # Based on the dispersion type, calculate the lambda or velocity
-        # deltas.
-        with u.set_enabled_equivalencies(wave_to_vel_equiv(center)):
-            if x.unit.physical_type == 'length':
-                line_kwargs['delta_lambda'] = deredshifted_peak.to(
-                    'Angstrom') - center.to('Angstrom')
-                line_kwargs['fixed'] = {
-                    'delta_lambda': False,
-                    'delta_v': True}
-                line_kwargs['bounds'] = {
-                    'delta_lambda': (dered_bounds_values[0].value - center.value,
-                                     dered_bounds_values[1].value - center.value)}
-            elif x.unit.physical_type == 'speed':
-                line_kwargs['delta_v'] = deredshifted_peak.to(
-                    'km/s') - center.to('km/s')
-                line_kwargs['fixed'] = {
-                    'delta_lambda': True,
-                    'delta_v': False}
-                line_kwargs['bounds'] = {
-                    'delta_v': (dered_bounds_values[0].value - center.value,
-                                dered_bounds_values[1].value - center.value)}
-            else:
-                raise ValueError("Could not get physical type of "
-                                    "dispersion axis unit.")
+        line_kwargs['delta_v'] = vel_center
+        line_kwargs['fixed'] = {
+            'delta_lambda': True,
+            'delta_v': False}
+        line_kwargs['bounds'] = {
+            'delta_v': (vel_bounds[0] - vel_center,
+                        vel_bounds[1] - vel_center)}
 
-            # Calculate some initial parameters for velocity and col density
-            vel = x.to('km/s')
-
+        # Estimate the parameters but do so in de-redshifted space
         line_kwargs.update(
-            estimate_line_parameters(bounds, vel, y, center, self._data_type, centroid, spectrum.redshift.value))
+            estimate_line_parameters(bounds, x, y, center, self._data_type))
 
         line_kwargs.update(self._line_defaults)
         line_kwargs.get('bounds', {}).update({
-            'v_doppler': (line_kwargs['v_doppler'].value * 0.01,
-                            line_kwargs['v_doppler'].value * 100),
-            'column_density': (line_kwargs['column_density'].value * 0.01,
-                                line_kwargs['column_density'].value * 100)
+            'v_doppler': (line_kwargs['v_doppler'].value * 0.5,
+                            line_kwargs['v_doppler'].value * 1.5),
+            'column_density': (line_kwargs['column_density'].value * 0.5,
+                                line_kwargs['column_density'].value * 1.5)
         })
 
         # print(line_kwargs)
@@ -265,11 +254,12 @@ class LineFinder(Fittable2DModel):
         spectrum.add_line(**line_kwargs)
 
 
-def estimate_line_parameters(bounds, x, y, lambda_0, data_type, centroid, redshift):
+def estimate_line_parameters(bounds, x, y, lambda_0, data_type):
     # Note: centroid is equivalent to the `shifted_lambda` calculation in the
     # voigt profile model
     bound_low, bound_up = bounds
-    mask = ((x >= x[bound_low]) & (x <= x[bound_up]))
+    mid_diff = int((bound_up - bound_low) * 0.5)
+    mask = ((x >= x[bound_low - mid_diff]) & (x <= x[bound_up + mid_diff]))
 
     if data_type == 'flux':
         y = np.max(y) - y
@@ -289,12 +279,12 @@ def estimate_line_parameters(bounds, x, y, lambda_0, data_type, centroid, redshi
     height = sum_y / (sigma * np.sqrt(2 * np.pi))
 
     g = Gaussian1D(amplitude=height,
-                mean=center,
-                stddev=sigma,
-                bounds={'mean': (mx[0].value, mx[-1].value),
-                        'stddev': (None, 4 * sigma.value),
+                   mean=center,
+                   stddev=sigma,
+                   bounds={'mean': (mx[0].value, mx[-1].value),
+                           'stddev': (None, 4 * sigma.value),
                         #    'amplitude': (None, height)
-                })
+                   })
 
     if data_type == 'flux':
         g = Const1D(amplitude=1, fixed={'amplitude': True}) + (g | FluxDecrementConvert())
@@ -313,11 +303,12 @@ def estimate_line_parameters(bounds, x, y, lambda_0, data_type, centroid, redshi
     # Estimate the column density
     f_value = line_registry.with_lambda(lambda_0)['osc_str']
     col_dens = (new_sum_y.value * (v_dop / lambda_0).to('Hz') / (TAU_FACTOR *
-                f_value)).to('1/cm2') * (0.01 + redshift)
+                f_value)).to('1/cm2')
 
     logging.info("""Estimated intial values:
+    Center: {:g}
     Column density: {:g}
-    Doppler width: {:g}""".format(col_dens, v_dop.to('cm/s')))
+    Doppler width: {:g}""".format(center, col_dens, v_dop.to('cm/s')))
 
     return dict(v_doppler=v_dop.to('cm/s'), column_density=col_dens)
 
