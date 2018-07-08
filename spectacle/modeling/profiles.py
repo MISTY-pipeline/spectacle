@@ -30,7 +30,7 @@ class LineNotFound(Exception):
     pass
 
 
-class TauProfile(Fittable1DModel):
+class OpticalDepth1DModel(Fittable1DModel):
     """
     Implements a Voigt profile astropy model. This model generates optical
     depth profiles for absorption features.
@@ -44,11 +44,11 @@ class TauProfile(Fittable1DModel):
     gamma : float
        Absorption line gamma value.
     v_doppler : float
-       Doppler b-parameter in cm/s.
+       Doppler b-parameter in km/s.
     column_density : float
        Column density in cm^-2.
     delta_v : float
-       Velocity offset from lambda_0 in cm/s. Default: None (no shift).
+       Velocity offset from lambda_0 in km/s. Default: None (no shift).
     delta_lambda : float
         Wavelength offset in Angstrom. Default: None (no shift).
     lambda_bins : array-like
@@ -68,17 +68,15 @@ class TauProfile(Fittable1DModel):
     outputs = ('y',)
 
     input_units_strict = True
-    input_units = {'x': u.AA}
-    # input_units_allow_dimensionless = {'x': True}
+    input_units = {'x': u.Unit('km/s')}
 
     lambda_0 = Parameter(fixed=True, min=0, unit=u.Unit('Angstrom'))
     f_value = Parameter(fixed=True, min=0, max=2.0, default=0)
     gamma = Parameter(fixed=True, min=0, default=0)
-    v_doppler = Parameter(default=1e6, min=1e5, max=1e10, unit=u.Unit('cm/s'))
-    column_density = Parameter(
-        default=1e13, min=1e8, max=1e25, unit=u.Unit('1/cm2'))
-    delta_v = Parameter(default=0, min=0, fixed=False, unit=u.Unit('cm/s'))
-    delta_lambda = Parameter(default=0, min=-100, max=100, fixed=False, unit=u.Unit('Angstrom'))
+    v_doppler = Parameter(default=10, min=.1, max=1e5, unit=u.Unit('km/s'))
+    column_density = Parameter(default=13, min=8, max=25)
+    delta_v = Parameter(default=0, min=0, fixed=False, unit=u.Unit('km/s'))
+    delta_lambda = Parameter(default=0, min=-100, max=100, fixed=True, unit=u.Unit('Angstrom'))
 
     def __init__(self, name=None, lambda_0=None, line_list=None, *args, **kwargs):
         line_mask = np.in1d(line_registry['name'],
@@ -116,56 +114,42 @@ class TauProfile(Fittable1DModel):
                                                          self.lambda_0)]['gamma']
         })
 
-        super(TauProfile, self).__init__(name=name, lambda_0=lambda_0,
+        super(OpticalDepth1DModel, self).__init__(name=name, lambda_0=lambda_0,
                                          *args, **kwargs)
 
-    @property
-    def input_units_equivalencies(self):
-        return {'x': u.equivalencies.doppler_relativistic(self.lambda_0.value * self.lambda_0.unit)}
-
-    def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
+    @staticmethod
+    def evaluate(x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
-        # Astropy fitters do not fully support units on model parameters. In
-        # such cases, the units are striped while the model is evaluated, and
-        # then added back to the parameters once the fitting is complete. This
-        # is terrible for modeling that take advantage of parameter units. Thus,
-        # units need to be guaranteed.
-        # if isinstance(x, u.Quantity):
-        #     logging.info("Avoiding astropy bug: forcing units on 'x' to be '{}' for fitting.".format(x.unit))
-        #     self.input_units['x'] = x.unit
-
-        x = u.Quantity(x, self.input_units['x'])
-
         lambda_0 = u.Quantity(lambda_0, 'Angstrom')
-        v_doppler = u.Quantity(v_doppler, 'cm/s')
-        column_density = u.Quantity(column_density, '1/cm2')
+        v_doppler = u.Quantity(v_doppler, 'km/s')
+        column_density = u.Quantity(10 ** column_density, '1/cm2')
         delta_lambda = u.Quantity(delta_lambda, 'Angstrom')
-        delta_v = u.Quantity(delta_v, 'cm/s')
+        delta_v = u.Quantity(delta_v, 'km/s')
+
+        with u.set_enabled_equivalencies(u.equivalencies.doppler_relativistic(lambda_0)):
+            x = u.Quantity(x, 'km/s').to('Angstrom')
 
         # shift lambda_0 by delta_v
         shifted_lambda = lambda_0 * (1 + delta_v / c.cgs) + delta_lambda
-
-        # Convert shifted_lamba to input units
-        shifted_dispersion = shifted_lambda.to(x.unit, equivalencies=self.input_units_equivalencies['x'])
 
         # conversions
         nudop = (v_doppler / shifted_lambda).to('Hz')  # doppler width in Hz
 
         # tau_0
         tau_x = TAU_FACTOR * column_density * f_value / v_doppler
-        tau0 = (tau_x * lambda_0).decompose()
+        tau0 = (tau_x * lambda_0).decompose()[0]
 
         # dimensionless frequency offset in units of doppler freq
-        x = c.cgs / v_doppler * (shifted_dispersion / x - 1.0)
+        x = c.cgs / v_doppler.to('cm/s') * (shifted_lambda / x - 1.0)
         a = gamma / (4.0 * np.pi * nudop)  # damping parameter
-        phi = self.voigt(a, x)  # line profile
+        phi = OpticalDepth1DModel.voigt(a, x)  # line profile
         tau_phi = tau0 * phi  # profile scaled with tau0
         tau_phi = tau_phi.decompose().value
 
         return tau_phi
 
-    @classmethod
-    def voigt(cls, a, u):
+    @staticmethod
+    def voigt(a, u):
         x = np.asarray(u).astype(np.float64)
         y = np.asarray(a).astype(np.float64)
 
@@ -179,9 +163,9 @@ class TauProfile(Fittable1DModel):
         return OrderedDict([('lambda_0', u.Unit('Angstrom')),
                             ('f_value', None),
                             ('gamma', None),
-                            ('v_doppler', u.Unit('cm/s')),
-                            ('column_density', u.Unit('1/cm2')),
-                            ('delta_v', u.Unit('cm/s')),
+                            ('v_doppler', u.Unit('km/s')),
+                            ('column_density', None),
+                            ('delta_v', u.Unit('km/s')),
                             ('delta_lambda', u.Unit('Angstrom'))])
 
     def fwhm(self, x=None):
@@ -199,11 +183,6 @@ class TauProfile(Fittable1DModel):
         fwhm = fit_mod.fwhm
 
         return fwhm
-
-    def mask_range(self):
-        fwhm = self.fwhm() * u.Unit('km/s')
-
-        return (-fwhm, fwhm)
 
 
 class ExtendedVoigt1D(Voigt1D):
