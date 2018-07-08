@@ -12,7 +12,7 @@ from ..core.spectrum import Spectrum1DModel
 from ..io.registries import line_registry
 from ..modeling.converters import FluxConvert, FluxDecrementConvert
 from ..modeling.profiles import OpticalDepth1DModel
-from ..utils import find_nearest
+from ..utils import find_nearest, dict_merge
 from ..utils.peak_detect import detect_peaks, region_bounds
 
 PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
@@ -68,17 +68,6 @@ class LineFinder:
             vel = self._redshift_model.inverse(x).to('km/s')
             wav = self._redshift_model.inverse(x).to('Angstrom')
 
-        import matplotlib.pyplot as plt
-        f, (ax1, ax2, ax3) = plt.subplots(3, 1)
-        ax1.plot(x, y)
-        ax2.plot(wav, y)
-        ax3.plot(vel, y)
-
-        ax2.set_xlabel("Wavelength [Angstrom]")
-        ax3.set_xlabel("Velocity [km/s]")
-
-        f.tight_layout()
-
         # Convert the min_distance from dispersion units to data elements
         min_ind = (np.abs(vel - (vel[0] + self._min_distance))).argmin()
         logging.info("Min distance: %i elements.", min_ind)
@@ -101,8 +90,8 @@ class LineFinder:
             centroid = vel[mn_bnd] + (vel[mx_bnd] - vel[mn_bnd]) * 0.5
             centroid = vel[find_nearest(vel, centroid)]
 
-            logging.info("Found centroid at %s (%s)", centroid,
-                centroid.to('Angstrom', dop_rel_equiv(self.rest_wavelength)))
+            # logging.info("Found centroid at %s (%s)", centroid,
+            #     centroid.to('Angstrom', dop_rel_equiv(self.rest_wavelength)))
 
             # Estimate the doppler b and column densities for this line
             v_dop, col_dens = parameter_estimator(
@@ -110,8 +99,8 @@ class LineFinder:
                 self._continuum_model)
 
             # Create an optical depth profile for the line
-            vel_mn_bnd = vel[mn_bnd].value #self._redshift_model.inverse(vel[mn_bnd].value)
-            vel_mx_bnd = vel[mx_bnd].value #self._redshift_model.inverse(vel[mx_bnd].value)
+            vel_mn_bnd = vel[mn_bnd].value  # self._redshift_model.inverse(vel[mn_bnd].value)
+            vel_mx_bnd = vel[mx_bnd].value  # self._redshift_model.inverse(vel[mx_bnd].value)
 
             line_params = dict(
                 lambda_0=self.rest_wavelength,
@@ -119,12 +108,13 @@ class LineFinder:
                 column_density=col_dens,
                 delta_v=centroid,
                 bounds={
-                    'delta_v': (vel_mn_bnd + centroid.value * 0.5, vel_mx_bnd - centroid.value * 0.5),
+                    'delta_v': (vel_mn_bnd + centroid.value * 0.5,
+                                vel_mx_bnd - centroid.value * 0.5)
                     # 'v_doppler': (v_dop.value * 0.1, v_dop.value * 10),
                     # 'column_density': (col_dens - 1, col_dens + 1)
                 })
 
-            line_params.update(self._defaults)
+            dict_merge(line_params, self._defaults)
 
             # Add line to the spectrum model
             spec_mod.add_line(model=OpticalDepth1DModel(**line_params))
@@ -205,7 +195,7 @@ def parameter_estimator(bounds, x, y, rest_wavelength, continuum):
     col_dens = np.log10(col_dens.value)
 
     logging.info("""Estimated intial values:
-    Center: {:g}
+    Centroid: {:g}
     Column density: {:g}
     Doppler width: {:g}""".format(center, col_dens, v_dop))
 
