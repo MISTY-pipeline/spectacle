@@ -299,10 +299,11 @@ class Spectrum1DModel:
         Compound spectrum model in tau space.
         """
         rs = self._redshift_model.inverse
+        dc = DispersionConvert(self.rest_wavelength)
         ss = Scale(1. / (1 + self.redshift), fixed={'factor': True})
         lm = self._line_model
 
-        comp_mod = (rs | lm | ss) if lm is not None else (rs | ss)
+        comp_mod = rs | dc | (lm | ss) if lm is not None else rs | dc
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
@@ -311,11 +312,7 @@ class Spectrum1DModel:
 
         return type('OpticalDepth1DModel',
                     (comp_mod.__class__,),
-                    dict(input_units={'x': u.Unit('km/s')},
-                         input_units_allow_dimensionless=True,
-                         input_units_equivalencies={
-                             'x': u.equivalencies.doppler_relativistic(
-                                 self.rest_wavelength)}))()
+                    {})()
 
     @property
     def flux(self):
@@ -329,7 +326,7 @@ class Spectrum1DModel:
         lm = self._line_model
         fc = FluxConvert()
 
-        comp_mod = rs | dc | (cm + (lm | ss | fc)) if lm is not None else rs | dc | cm
+        comp_mod = rs | dc | (cm + (lm | ss | fc)) if lm is not None else rs | dc | cm | fc
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
@@ -346,12 +343,12 @@ class Spectrum1DModel:
         Compound spectrum model in flux decrement space.
         """
         rs = self._redshift_model.inverse
-        cm = self._continuum_model
+        dc = DispersionConvert(self.rest_wavelength)
         lm = self._line_model
         fd = FluxDecrementConvert()
         ss = Scale(1. / (1 + self.redshift), fixed={'factor': True})
 
-        comp_mod = cm + (rs | lm | ss | fd) if lm is not None else cm + (rs | ss | fd)
+        comp_mod = rs | dc | (lm | ss | fd) if lm is not None else rs | dc | fd
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
@@ -360,8 +357,4 @@ class Spectrum1DModel:
 
         return type('FluxDecrement1DModel',
                     (comp_mod.__class__,),
-                    dict(input_units={'x': u.Unit('km/s')},
-                         input_units_allow_dimensionless=True,
-                         input_units_equivalencies={
-                             'x': u.equivalencies.doppler_relativistic(
-                                 self.rest_wavelength)}))
+                    {})()
