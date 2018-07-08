@@ -21,6 +21,7 @@ TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /
 
 dop_rel_equiv = u.equivalencies.doppler_relativistic
 
+
 class LineFinder:
     @u.quantity_input(rest_wavelength=u.Unit('Angstrom'))
     def __init__(self, ion_name=None, rest_wavelength=None, redshift=0,

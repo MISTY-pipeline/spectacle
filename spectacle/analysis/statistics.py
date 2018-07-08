@@ -8,14 +8,15 @@ from scipy.integrate import simps
 
 from ..utils import find_nearest, wave_to_vel_equiv
 
+dop_rel_equiv = u.equivalencies.doppler_relativistic
 
-@u.quantity_input(x=['length', 'speed'])
-def delta_v_90(x, spectrum):
+
+@u.quantity_input(x=['length', 'speed'], center=u.Unit('Angstrom'))
+def delta_v_90(x, y, rest_wavelength=None, continuum=None, ion_name=None):
     """
     Calculate the dispersion that encompasses the central 90 percent of the
     apparant optical depth. Follows the formulation defined in Prochaska &
     Wolf (1997).
-
     Parameters
     ----------
     x : :class:~`astropy.units.Quantity`
@@ -27,14 +28,10 @@ def delta_v_90(x, spectrum):
     center : :class:~`astropy.units.Quantity`
         The centroid of the ion.
     """
+    x = x.to('km/s', equivalencies=dop_rel_equiv(rest_wavelength))
 
-    with u.set_enabled_equivalencies(u.equivalencies.doppler_relativistic(spectrum.center)):
-        x = x.to('km/s')
-
-    # Remove redshift
-    spectrum = spectrum.copy()
-    spectrum.redshift = 0
-    y = spectrum.optical_depth(x)
+    if continuum is not None:
+        y = continuum - y
 
     mask = (y > 1e-5)
     y = y[mask]
@@ -48,11 +45,12 @@ def delta_v_90(x, spectrum):
         v5 = x[find_nearest(y, y5)]
     else:
         logging.warning("No reasonable amount of optical depth found in "
-                        "feature at %s, aborting dv90 calculation.", spectrum.center)
+                        "feature at %s, aborting dv90 calculation.",
+                        rest_wavelength)
 
         return u.Quantity(0)
 
-    return np.abs((v95 - v5).to('km/s'))
+return np.abs((v95 - v5).to('km/s'))
 
 
 @u.quantity_input(x=['length', 'speed'])
