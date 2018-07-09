@@ -1,4 +1,4 @@
-numpy
+numpy==1.14.5
 scipy==1.1.0
 astropy
-emcee
+emcee==2.2.1
