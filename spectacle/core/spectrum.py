@@ -157,8 +157,8 @@ class Spectrum1DModel:
 
     @property
     def lines(self):
-        tab = Table(names=['name'] + list(OpticalDepth1DModel.param_names),
-                    dtype=['S10'] + ['f8'] * len(OpticalDepth1DModel.param_names))
+        tab = QTable(names=['name'] + list(OpticalDepth1DModel.param_names),
+                     dtype=['S10'] + ['f8'] * len(OpticalDepth1DModel.param_names))
 
         for l in self.line_models:
             tab.add_row([l.name] + list(l.parameters))
