@@ -1,4 +1,4 @@
 numpy
 scipy
-astropy
+astropy==3.0.3
 emcee
