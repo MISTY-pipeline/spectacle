@@ -191,7 +191,7 @@ class Spectrum1DModel:
 
             ew = stats.equivalent_width(wav, sl.flux(wav))
             dv90 = stats.delta_v_90(vel, sl.flux_decrement(vel))
-            fwhm = line.fwhm(wav)
+            fwhm = line.fwhm(self._redshift_model.inverse(wav))
 
             tab.add_row([line.name,
                          line.lambda_0,

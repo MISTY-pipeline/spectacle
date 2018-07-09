@@ -175,6 +175,11 @@ class OpticalDepth1DModel(Fittable1DModel):
                             ('delta_lambda', u.Unit('Angstrom'))])
 
     def fwhm(self, x):
+        """
+        It's unclear how to get the fwhm given the parameters of this Voigt
+        model, so instead, fit a Gaussian to this model and calculate the fwhm
+        from that.
+        """
         y = self(x)  # Generate optical depth values from this model
 
         dx = x - np.mean(x)
