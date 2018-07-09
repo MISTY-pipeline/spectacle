@@ -172,10 +172,11 @@ class Spectrum1DModel:
 
     @u.quantity_input(x=['length', 'speed'])
     def stats(self, x):
-        tab = QTable(names=['name', 'rest', 'col_dens', 'v_dop', 'ew', 'dv90', 'fwhm'],
-                    dtype=('S10', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'))
+        tab = QTable(names=['name', 'wave', 'centroid', 'col_dens', 'v_dop', 'ew', 'dv90', 'fwhm'],
+                     dtype=('S10', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'))
 
-        tab['rest'].unit = u.AA
+        tab['wave'].unit = u.AA
+        tab['centroid'].unit = u.km / u.s
         tab['v_dop'].unit = u.km / u.s
         tab['ew'].unit = u.AA
         tab['dv90'].unit = u.km / u.s
@@ -192,8 +193,14 @@ class Spectrum1DModel:
             dv90 = stats.delta_v_90(vel, sl.flux_decrement(vel))
             fwhm = line.fwhm(wav)
 
-            tab.add_row([line.name, line.lambda_0.value * line.lambda_0.unit, line.column_density,
-                         line.v_doppler, ew, dv90, fwhm])
+            tab.add_row([line.name,
+                         line.lambda_0,
+                         self._redshift_model(line.delta_v),
+                         line.column_density,
+                         line.v_doppler,
+                         ew,
+                         dv90,
+                         fwhm])
 
         return tab
 
