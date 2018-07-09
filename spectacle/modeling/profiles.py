@@ -175,7 +175,7 @@ class OpticalDepth1DModel(Fittable1DModel):
                             ('delta_lambda', u.Unit('Angstrom'))])
 
     def fwhm(self, x):
-        y = self(x)
+        y = self(x)  # Generate optical depth values from this model
 
         dx = x - np.mean(x)
         fwhm = 2 * np.sqrt(np.sum((dx * dx) * y) / np.sum(y))
@@ -200,7 +200,12 @@ class OpticalDepth1DModel(Fittable1DModel):
 
     @u.quantity_input(x=['length', 'speed'])
     def delta_v_90(self, x):
-        return delta_v_90(x=x, y=self(x), rest_wavelength=self.lambda_0.value * self.lambda_0.unit)
+        return delta_v_90(x=x, y=self(x),
+                          rest_wavelength=self.lambda_0.quantity)
+
+    @u.quantity_input(x=['length', 'speed'])
+    def equivalent_width(self, x):
+        return equivalent_width(x=x, y=self(x))
 
 
 class ExtendedVoigt1D(Voigt1D):
@@ -222,7 +227,7 @@ class ExtendedVoigt1D(Voigt1D):
         fwhm : float
             The estimate of the FWHM
         """
-        fwhm = 0.5346 * self.fwhm_L + np.sqrt(0.2166 * (self.fwhm_L ** 2)
-                                              + self.fwhm_G ** 2)
+        fwhm = 0.5346 * self.fwhm_L + np.sqrt(0.2166 * (self.fwhm_L ** 2) +
+                                              self.fwhm_G ** 2)
 
         return fwhm
