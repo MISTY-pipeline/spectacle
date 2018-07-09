@@ -48,7 +48,7 @@ def delta_v_90(x, y, continuum=None, rest_wavelength=None):
         logging.warning("No reasonable amount of optical depth found in "
                         "feature, aborting dv90 calculation.")
 
-        return u.Quantity(0)
+        return u.Quantity(0, 'km/s')
 
     return np.abs((v95 - v5).to('km/s'))
 
