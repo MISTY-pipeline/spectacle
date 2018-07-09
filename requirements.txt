@@ -1,4 +1,4 @@
 numpy==1.14.5
 scipy==1.1.0
-astropy
+astropy==3.0.3
 emcee==2.2.1
