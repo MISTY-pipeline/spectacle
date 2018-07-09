@@ -1,4 +1,4 @@
 numpy
 scipy
 astropy
-emcee
+emcee==2.2.1
