@@ -78,11 +78,11 @@ class LineFinder:
                                    continuum=self._continuum_model)
 
         # Calculate the bounds on each absorption feature
-        if (np.max(y) - np.min(y)) > self._threshold:
+        if np.abs(np.max(y) - np.min(y)) > self._threshold:
             spec_mod.bounds = region_bounds(y,
                                             height=self._threshold,
                                             distance=min_ind,
-                                            smooth=True)
+                                            smooth=False)
             logging.info("Found %i minima.", len(spec_mod.bounds))
 
         # For each set of bounds, estimate the initial values for that line
@@ -109,9 +109,9 @@ class LineFinder:
                 column_density=col_dens,
                 delta_v=centroid,
                 bounds={
-                    'delta_v': (vel_mn_bnd, vel_mx_bnd)
-                    # 'v_doppler': (v_dop.value * 0.1, v_dop.value * 10),
-                    # 'column_density': (col_dens - 1, col_dens + 1)
+                    'delta_v': (vel_mn_bnd, vel_mx_bnd),
+                    # 'v_doppler': (v_dop.value * 0.9, v_dop.value * 1.1),
+                    # 'column_density': (col_dens * 0.9, col_dens * 1.1)
                 })
 
             dict_merge(line_params, self._defaults)
@@ -150,7 +150,7 @@ class LineFinder:
 
 def parameter_estimator(bounds, x, y, rest_wavelength, continuum):
     bound_low, bound_up = bounds
-    mid_diff = int((bound_up - bound_low) * 0.5)
+    mid_diff = int((bound_up - bound_low) * 0) # Expand the regions a little
     mask = ((x >= x[bound_low - mid_diff]) & (x <= x[bound_up + mid_diff]))
 
     if continuum is not None:

@@ -174,7 +174,7 @@ class OpticalDepth1DModel(Fittable1DModel):
                             ('delta_v', u.Unit('km/s')),
                             ('delta_lambda', u.Unit('Angstrom'))])
 
-    def fwhm(self, x=None):
+    def fwhm(self, x):
         y = self(x)
 
         dx = x - np.mean(x)
@@ -199,9 +199,7 @@ class OpticalDepth1DModel(Fittable1DModel):
         return g_fit.fwhm
 
     @u.quantity_input(x=['length', 'speed'])
-    def delta_v_90(self, x=None):
-        x = x or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
-
+    def delta_v_90(self, x):
         return delta_v_90(x=x, y=self(x), rest_wavelength=self.lambda_0.value * self.lambda_0.unit)
 
 
