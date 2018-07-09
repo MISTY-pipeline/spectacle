@@ -109,8 +109,7 @@ class LineFinder:
                 column_density=col_dens,
                 delta_v=centroid,
                 bounds={
-                    'delta_v': (vel_mn_bnd + centroid.value * 0.5,
-                                vel_mx_bnd - centroid.value * 0.5)
+                    'delta_v': (vel_mn_bnd, vel_mx_bnd)
                     # 'v_doppler': (v_dop.value * 0.1, v_dop.value * 10),
                     # 'column_density': (col_dens - 1, col_dens + 1)
                 })

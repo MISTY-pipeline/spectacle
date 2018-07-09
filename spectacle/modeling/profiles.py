@@ -6,7 +6,7 @@ import numpy as np
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable1DModel, Parameter
 from astropy.modeling.fitting import LevMarLSQFitter
-from astropy.modeling.models import Voigt1D
+from astropy.modeling.models import Voigt1D, Gaussian1D
 from scipy import special
 from scipy.integrate import quad
 
@@ -20,6 +20,8 @@ __all__ = ['TauProfile', 'ExtendedVoigt1D']
 PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
 TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /
                (m_e.cgs * c.cgs))).cgs
+
+dop_rel_equiv = u.equivalencies.doppler_relativistic
 
 
 class IncompleteLineInformation(Exception):
@@ -69,6 +71,10 @@ class OpticalDepth1DModel(Fittable1DModel):
 
     input_units_strict = True
     input_units = {'x': u.Unit('km/s')}
+
+    @property
+    def input_units_equivalencies(self):
+        return {'x': dop_rel_equiv(self.lambda_0.value * self.lambda_0.unit)}
 
     lambda_0 = Parameter(fixed=True, min=0, unit=u.Unit('Angstrom'))
     f_value = Parameter(fixed=True, min=0, max=2.0, default=0)
@@ -126,7 +132,7 @@ class OpticalDepth1DModel(Fittable1DModel):
         delta_lambda = u.Quantity(delta_lambda, 'Angstrom')
         delta_v = u.Quantity(delta_v, 'km/s')
 
-        with u.set_enabled_equivalencies(u.equivalencies.doppler_relativistic(lambda_0)):
+        with u.set_enabled_equivalencies(dop_rel_equiv(lambda_0)):
             x = u.Quantity(x, 'km/s').to('Angstrom')
 
         # shift lambda_0 by delta_v
@@ -169,20 +175,34 @@ class OpticalDepth1DModel(Fittable1DModel):
                             ('delta_lambda', u.Unit('Angstrom'))])
 
     def fwhm(self, x=None):
-        shifted_lambda = self.lambda_0 * \
-            (1 + self.delta_v / c.cgs) + self.delta_lambda
+        y = self(x)
 
-        mod = ExtendedVoigt1D(x_0=VelocityConvert(
-            center=self.lambda_0)(shifted_lambda))
-        fitter = LevMarLSQFitter()
+        dx = x - np.mean(x)
+        fwhm = 2 * np.sqrt(np.sum((dx * dx) * y) / np.sum(y))
+        center = np.sum(x * y) / np.sum(y)
+        sigma = fwhm / 2.355
 
-        x = x or np.linspace(-10000, 10000, 1000) * u.Unit('km/s')
+        # Amplitude is derived from area
+        delta_x = x[1:] - x[:-1]
+        sum_y = np.sum(y[1:] * delta_x)
 
-        fit_mod = fitter(mod, x, (WavelengthConvert(center=self.lambda_0)
-                                  | self)(x))
-        fwhm = fit_mod.fwhm
+        height = sum_y / (sigma * np.sqrt(2 * np.pi))
 
-        return fwhm
+        g = Gaussian1D(amplitude=height,
+                       mean=center,
+                       stddev=sigma,
+                       bounds={'mean': (x[0].value, x[-1].value),
+                               'stddev': (None, 4 * sigma.value)})
+
+        g_fit = LevMarLSQFitter()(g, x, y)
+
+        return g_fit.fwhm
+
+    @u.quantity_input(x=['length', 'speed'])
+    def delta_v_90(self, x=None):
+        x = x or np.linspace(-5000, 5000, 10000) * u.Unit('km/s')
+
+        return delta_v_90(x=x, y=self(x), rest_wavelength=self.lambda_0.value * self.lambda_0.unit)
 
 
 class ExtendedVoigt1D(Voigt1D):

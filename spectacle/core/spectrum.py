@@ -5,7 +5,7 @@ import astropy.units as u
 from astropy.constants import c
 from astropy.modeling import Fittable1DModel
 from astropy.modeling.models import Const1D
-from astropy.table import Row, Table
+from astropy.table import Row, QTable
 
 from ..modeling.custom import RedshiftScaleFactor, Scale
 from ..analysis import statistics as stats
@@ -16,6 +16,8 @@ from ..modeling.converters import (DispersionConvert, FluxConvert,
 from ..modeling.profiles import OpticalDepth1DModel
 from ..utils import wave_to_vel_equiv
 from copy import deepcopy
+
+dop_rel_equiv = u.equivalencies.doppler_relativistic
 
 
 class SpectrumModelNotImplemented(Exception):
@@ -169,21 +171,29 @@ class Spectrum1DModel:
         return tab
 
     @u.quantity_input(x=['length', 'speed'])
-    def stats(self, x, y, data_type):
-        tab = Table(names=['Name', 'Centroid', 'Equivalent Width', 'Delta v90'],
-                    dtype=('S10', 'f8', 'f8', 'f8'))
+    def stats(self, x):
+        tab = QTable(names=['name', 'rest', 'col_dens', 'v_dop', 'ew', 'dv90', 'fwhm'],
+                    dtype=('S10', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'))
+
+        tab['rest'].unit = u.AA
+        tab['v_dop'].unit = u.km / u.s
+        tab['ew'].unit = u.AA
+        tab['dv90'].unit = u.km / u.s
+        tab['fwhm'].unit = u.AA
+
+        with u.set_enabled_equivalencies(dop_rel_equiv(self.rest_wavelength)):
+            vel = self._redshift_model(self._redshift_model.inverse(x).to('km/s'))
+            wav = self._redshift_model(self._redshift_model.inverse(x).to('Angstrom'))
 
         for sl in self.single_line_spectra:
-            spec = getattr(sl, data_type)
             line = sl.line_model
-            cont = sl.continuum(x) if sl.continuum is not None else None
 
-            centroid = line.lambda_0 * (1 + line.delta_v / c.cgs) + line.delta_lambda
-            centroid = sl._redshift_model(centroid)
+            ew = stats.equivalent_width(wav, sl.flux(wav))
+            dv90 = stats.delta_v_90(vel, sl.flux_decrement(vel))
+            fwhm = line.fwhm(wav)
 
-            ew = stats.equivalent_width(x, spec(x), continuum=cont)
-            dv90 = stats.delta_v_90(x, self)
-            tab.add_row([line.name, centroid.value, ew.value, dv90.value])
+            tab.add_row([line.name, line.lambda_0.value * line.lambda_0.unit, line.column_density,
+                         line.v_doppler, ew, dv90, fwhm])
 
         return tab
 
@@ -344,11 +354,12 @@ class Spectrum1DModel:
         """
         rs = self._redshift_model.inverse
         dc = DispersionConvert(self.rest_wavelength)
+        ss = Scale(1. / (1 + self.redshift), fixed={'factor': True})
+        cm = self._continuum_model
         lm = self._line_model
         fd = FluxDecrementConvert()
-        ss = Scale(1. / (1 + self.redshift), fixed={'factor': True})
 
-        comp_mod = rs | dc | (lm | ss | fd) if lm is not None else rs | dc | fd
+        comp_mod = rs | dc | (cm + (lm | ss | fd)) if lm is not None else rs | dc | cm | fd
 
         if self.noise is not None:
             comp_mod = comp_mod | self.noise
