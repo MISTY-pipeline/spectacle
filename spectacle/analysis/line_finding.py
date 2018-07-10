@@ -91,6 +91,15 @@ class LineFinder:
             centroid = vel[mn_bnd] + (vel[mx_bnd] - vel[mn_bnd]) * 0.5
             centroid = vel[find_nearest(vel, centroid)]
 
+            # Check that the range encompassed by the bounds is reasonably
+            for mn_bnd, mx_bnd in spec_mod.bounds:
+                if mx_bnd - mn_bnd < 3:
+                    logging.warning("Bounds encompassing feature at %s do not "
+                                    "provide enough data; ignoring feature. "
+                                    "(Data points: %i).",
+                                    centroid, mx_bnd - mn_bnd)
+                    spec_mod.bounds.remove((mn_bnd, mx_bnd))
+
             # logging.info("Found centroid at %s (%s)", centroid,
             #     centroid.to('Angstrom', dop_rel_equiv(self.rest_wavelength)))
 
@@ -177,6 +186,7 @@ def parameter_estimator(bounds, x, y, rest_wavelength, continuum):
                            'stddev': (None, 4 * sigma.value)})
 
     g = continuum + (g | FluxDecrementConvert()) if continuum is not None else g
+    # g = type('g', (g.__class__,), {'_supports_unit_fitting': True})()
 
     g_fit = LevMarLSQFitter()(g, mx, my)
 
