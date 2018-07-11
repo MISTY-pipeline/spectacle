@@ -32,8 +32,8 @@ class LineFinder:
         self._rest_wavelength = u.Quantity(rest_wavelength or 0, 'Angstrom')
 
         if ion_name is not None:
-            ion_name = line_registry.with_name(ion_name)
-            self._rest_wavelength = ion_name['wave'] * line_registry['wave'].unit
+            ion = line_registry.with_name(ion_name)
+            self._rest_wavelength = ion['wave'] * line_registry['wave'].unit
 
         # Store the redshift value inside a redshift scalar model
         self._redshift_model = RedshiftScaleFactor(z=redshift)
@@ -92,13 +92,12 @@ class LineFinder:
             centroid = vel[find_nearest(vel, centroid)]
 
             # Check that the range encompassed by the bounds is reasonably
-            for mn_bnd, mx_bnd in spec_mod.bounds:
-                if mx_bnd - mn_bnd < 3:
-                    logging.warning("Bounds encompassing feature at %s do not "
-                                    "provide enough data; ignoring feature. "
-                                    "(Data points: %i).",
-                                    centroid, mx_bnd - mn_bnd)
-                    spec_mod.bounds.remove((mn_bnd, mx_bnd))
+            if mx_bnd - mn_bnd < 3:
+                logging.warning("Bounds encompassing feature at %s do not "
+                                "provide enough data; ignoring feature. "
+                                "(Data points: %i).",
+                                centroid, mx_bnd - mn_bnd)
+                spec_mod.bounds.remove((mn_bnd, mx_bnd))
 
             # logging.info("Found centroid at %s (%s)", centroid,
             #     centroid.to('Angstrom', dop_rel_equiv(self.rest_wavelength)))
