@@ -172,15 +172,16 @@ class Spectrum1DModel:
 
     @u.quantity_input(x=['length', 'speed'])
     def stats(self, x):
-        tab = QTable(names=['name', 'wave', 'centroid', 'col_dens', 'v_dop', 'ew', 'dv90', 'fwhm'],
+        tab = QTable(names=['name', 'wave', 'col_dens', 'v_dop',
+                            'delta_v', 'ew', 'dv90', 'fwhm'],
                      dtype=('S10', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'))
 
         tab['wave'].unit = u.AA
-        tab['centroid'].unit = u.km / u.s
         tab['v_dop'].unit = u.km / u.s
         tab['ew'].unit = u.AA
         tab['dv90'].unit = u.km / u.s
         tab['fwhm'].unit = u.AA
+        tab['delta_v'].unit = u.km / u.s
 
         with u.set_enabled_equivalencies(dop_rel_equiv(self.rest_wavelength)):
             vel = self._redshift_model(self._redshift_model.inverse(x).to('km/s'))
@@ -195,9 +196,9 @@ class Spectrum1DModel:
 
             tab.add_row([line.name,
                          line.lambda_0,
-                         self._redshift_model(line.delta_v),
                          line.column_density,
                          line.v_doppler,
+                         line.delta_v,
                          ew,
                          dv90,
                          fwhm])
