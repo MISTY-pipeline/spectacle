@@ -86,7 +86,7 @@ class LineFinder:
             logging.info("Found %i minima.", len(spec_mod.bounds))
 
         # For each set of bounds, estimate the initial values for that line
-        for mn_bnd, mx_bnd in spec_mod.bounds:
+        for mn_bnd, mx_bnd in [x for x in spec_mod.bounds]:
             # Calculate the centroid of this region
             centroid = vel[mn_bnd] + (vel[mx_bnd] - vel[mn_bnd]) * 0.5
             centroid = vel[find_nearest(vel, centroid)]
@@ -98,6 +98,7 @@ class LineFinder:
                                 "(Data points: %i).",
                                 centroid, mx_bnd - mn_bnd)
                 spec_mod.bounds.remove((mn_bnd, mx_bnd))
+                continue
 
             # logging.info("Found centroid at %s (%s)", centroid,
             #     centroid.to('Angstrom', dop_rel_equiv(self.rest_wavelength)))
