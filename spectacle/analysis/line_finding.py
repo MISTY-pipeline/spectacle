@@ -26,7 +26,8 @@ class LineFinder:
     @u.quantity_input(rest_wavelength=u.Unit('Angstrom'))
     def __init__(self, ion_name=None, rest_wavelength=None, redshift=0,
                  data_type='optical_depth', continuum=None, threshold=0.1,
-                 min_distance=2, width=15, max_iter=4000, defaults=None):
+                 min_distance=2, width=15, max_iter=4000, rel_tol=1e-2,
+                 abs_tol=1e-4, defaults=None):
         # Discern the rest wavelength for the spectrum. If an ion name is given
         # instead, use that to determine the rest wavelength
         self._rest_wavelength = u.Quantity(rest_wavelength or 0, 'Angstrom')
@@ -60,6 +61,8 @@ class LineFinder:
         self._min_distance = min_distance
         self._width = width
         self._max_iter = max_iter
+        self._rel_tol = rel_tol
+        self._abs_tol = abs_tol
         self._defaults = defaults or {}
 
     @u.quantity_input(x=['length', 'speed'])
@@ -146,7 +149,9 @@ class LineFinder:
 
         # Calculate the regions in the raw data
         spec_mod.regions = {(reg[0], reg[1]): []
-                            for reg in find_regions(y, rel_tol=1e-2, abs_tol=1e-4,
+                            for reg in find_regions(y,
+                                rel_tol=self._rel_tol,
+                                abs_tol=self._abs_tol,
                                 continuum=spec_mod._continuum_model(vel))}
         logging.info("Found %i absorption regions.", len(spec_mod.regions))
 
