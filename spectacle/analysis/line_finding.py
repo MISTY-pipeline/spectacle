@@ -26,8 +26,8 @@ class LineFinder:
     @u.quantity_input(rest_wavelength=u.Unit('Angstrom'))
     def __init__(self, ion_name=None, rest_wavelength=None, redshift=0,
                  data_type='optical_depth', continuum=None, threshold=0.1,
-                 min_distance=2, width=15, max_iter=4000, rel_tol=1e-2,
-                 abs_tol=1e-4, defaults=None):
+                 min_distance=2, width=15, max_iter=4000, rel_tol=None,
+                 abs_tol=None, defaults=None):
         # Discern the rest wavelength for the spectrum. If an ion name is given
         # instead, use that to determine the rest wavelength
         self._rest_wavelength = u.Quantity(rest_wavelength or 0, 'Angstrom')
@@ -61,8 +61,8 @@ class LineFinder:
         self._min_distance = min_distance
         self._width = width
         self._max_iter = max_iter
-        self._rel_tol = rel_tol
-        self._abs_tol = abs_tol
+        self._rel_tol = rel_tol or 0
+        self._abs_tol = abs_tol or self._threshold
         self._defaults = defaults or {}
 
     @u.quantity_input(x=['length', 'speed'])
@@ -72,7 +72,8 @@ class LineFinder:
             vel = self._redshift_model.inverse(x).to('km/s')
             wav = self._redshift_model.inverse(x).to('Angstrom')
 
-        # Convert the min_distance from dispersion units to data elements
+        # Convert the min_distance from dispersion units to data elements.
+        # Assumes uniform spacing.
         min_ind = (np.abs(vel - (vel[0] + self._min_distance))).argmin()
         logging.info("Min distance: %i elements.", min_ind)
 
@@ -148,11 +149,12 @@ class LineFinder:
             spec_mod._line_model = np.sum(fit_line_mods)
 
         # Calculate the regions in the raw data
+        # absolute(a - b) <= (atol + rtol * absolute(b))
         spec_mod.regions = {(reg[0], reg[1]): []
                             for reg in find_regions(y,
-                                rel_tol=self._rel_tol,
-                                abs_tol=self._abs_tol,
-                                continuum=spec_mod._continuum_model(vel))}
+                                                    rel_tol=self._rel_tol,
+                                                    abs_tol=self._abs_tol,
+                                                    continuum=spec_mod._continuum_model(vel))}
         logging.info("Found %i absorption regions.", len(spec_mod.regions))
 
         return spec_mod
@@ -164,7 +166,7 @@ class LineFinder:
 
 def parameter_estimator(bounds, x, y, rest_wavelength, continuum):
     bound_low, bound_up = bounds
-    mid_diff = int((bound_up - bound_low) * 0) # Expand the regions a little
+    mid_diff = int((bound_up - bound_low) * 0)  # Expand the regions a little
     mask = ((x >= x[bound_low - mid_diff]) & (x <= x[bound_up + mid_diff]))
 
     if continuum is not None:
