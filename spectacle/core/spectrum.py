@@ -190,7 +190,7 @@ class Spectrum1DModel:
         for sl in self.single_line_spectra:
             line = sl.line_model
 
-            ew = stats.equivalent_width(wav, sl.flux(wav))
+            ew = stats.equivalent_width(wav, sl.flux(wav), continuum=self._continuum_model(wav))
             dv90 = stats.delta_v_90(vel, sl.flux_decrement(vel))
             fwhm = line.fwhm(self._redshift_model.inverse(wav))
 
