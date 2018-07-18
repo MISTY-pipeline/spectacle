@@ -56,7 +56,8 @@ def delta_v_90(x, y, continuum=None, rest_wavelength=None):
 @u.quantity_input(x=['length', 'speed'])
 def equivalent_width(x, y, continuum=None):
     # Assume continuum is one if none is given
-    continuum = continuum or 1
+    if continuum if None:
+        continuum = 1
 
     # Average dispersion in the line region.
     avg_dx = np.mean(x[1:] - x[:-1])
