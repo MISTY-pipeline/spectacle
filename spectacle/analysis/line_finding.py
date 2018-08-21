@@ -1,4 +1,5 @@
 import logging
+from functools import reduce
 
 import astropy.units as u
 import numpy as np
@@ -89,6 +90,14 @@ class LineFinder:
                                             smooth=False)
             logging.info("Found %i minima.", len(spec_mod.bounds))
 
+            mask = ~reduce(np.logical_or, [(x > x[l]) & (x < x[u])
+                                           for l, u in spec_mod.bounds])
+
+            spec_mod.bounds += region_bounds(y[mask],
+                                             height=self._threshold,
+                                             distance=min_ind,
+                                             smooth=False)
+
         # For each set of bounds, estimate the initial values for that line
         for mn_bnd, mx_bnd in [x for x in spec_mod.bounds]:
             # Calculate the centroid of this region
@@ -124,7 +133,7 @@ class LineFinder:
                 bounds={
                     'delta_v': (vel_mn_bnd, vel_mx_bnd),
                     # 'v_doppler': (v_dop.value * 0.9, v_dop.value * 1.1),
-                    # 'column_density': (col_dens * 0.9, col_dens * 1.1)
+                    # 'column_density': (col_dens * 0.8, col_dens * 1.2)
                 })
 
             dict_merge(line_params, self._defaults)

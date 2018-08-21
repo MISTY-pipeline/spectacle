@@ -84,7 +84,7 @@ class OpticalDepth1DModel(Fittable1DModel):
     delta_v = Parameter(default=0, min=0, fixed=False, unit=u.Unit('km/s'))
     delta_lambda = Parameter(default=0, min=-100, max=100, fixed=True, unit=u.Unit('Angstrom'))
 
-    def __init__(self, name=None, lambda_0=None, line_list=None, *args, **kwargs):
+    def __init__(self, ion_name=None, lambda_0=None, line_list=None, *args, **kwargs):
         line_mask = np.in1d(line_registry['name'],
                             [line_registry.correct(n) for n in line_list
                              if line_registry.correct(n) is not None]) \
@@ -92,20 +92,20 @@ class OpticalDepth1DModel(Fittable1DModel):
 
         line_table = line_registry[line_mask]
 
-        if name is not None:
-            line = line_table.with_name(name)
+        if ion_name is not None:
+            line = line_table.with_name(ion_name)
 
             if line is None:
                 raise LineNotFound("No line with name '{}' in current ion "
-                                   "table.".format(name))
+                                   "table.".format(ion_name))
 
             lambda_0 = line['wave'] * u.Unit('Angstrom')
-            name = line['name']
+            ion_name = line['name']
         elif lambda_0 is not None:
             lambda_0 = u.Quantity(lambda_0, u.Unit('Angstrom'))
             ind = find_nearest(line_table['wave'], lambda_0.value)
             line = line_table[ind]
-            name = line['name']
+            ion_name = line['name']
         else:
             raise IncompleteLineInformation(
                 "Not enough information to construction absorption line "
@@ -120,7 +120,7 @@ class OpticalDepth1DModel(Fittable1DModel):
                                                          self.lambda_0)]['gamma']
         })
 
-        super(OpticalDepth1DModel, self).__init__(name=name, lambda_0=lambda_0,
+        super(OpticalDepth1DModel, self).__init__(name=ion_name, lambda_0=lambda_0,
                                          *args, **kwargs)
 
     @staticmethod
