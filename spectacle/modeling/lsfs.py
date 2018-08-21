@@ -78,3 +78,6 @@ class GaussianLSFModel(Fittable1DModel):
         kernel = Gaussian1DKernel(stddev, *self._kernel_args, **self._kernel_kwargs)
 
         return convolve(y, kernel, boundary='extend')
+
+    def _parameter_units_for_data_units(self, input_units, output_units):
+        return dict()
