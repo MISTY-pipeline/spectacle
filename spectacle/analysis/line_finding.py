@@ -1,4 +1,5 @@
 import logging
+from functools import reduce
 
 import astropy.units as u
 import numpy as np
@@ -12,6 +13,7 @@ from ..core.spectrum import Spectrum1DModel
 from ..io.registries import line_registry
 from ..modeling.converters import FluxConvert, FluxDecrementConvert
 from ..modeling.profiles import OpticalDepth1DModel
+from ..modeling.lsfs import GaussianLSFModel, COSLSFModel
 from ..utils import find_nearest, dict_merge
 from ..utils.peak_detect import detect_peaks, region_bounds
 
@@ -25,9 +27,9 @@ dop_rel_equiv = u.equivalencies.doppler_relativistic
 class LineFinder:
     @u.quantity_input(rest_wavelength=u.Unit('Angstrom'))
     def __init__(self, ion_name=None, rest_wavelength=None, redshift=0,
-                 data_type='optical_depth', continuum=None, threshold=0.1,
-                 min_distance=2, width=15, max_iter=4000, rel_tol=None,
-                 abs_tol=None, defaults=None):
+                 data_type='optical_depth', continuum=None, lsf=None,
+                 threshold=0.1, min_distance=2, width=15, max_iter=4000,
+                 rel_tol=None, abs_tol=None, defaults=None):
         # Discern the rest wavelength for the spectrum. If an ion name is given
         # instead, use that to determine the rest wavelength
         self._rest_wavelength = u.Quantity(rest_wavelength or 0, 'Angstrom')
@@ -57,6 +59,11 @@ class LineFinder:
         else:
             self._continuum_model = None
 
+        if lsf is not None and not isinstance(lsf, Fittable1DModel):
+            raise ValueError("LSF must be a subclass of `Fittable1DModel`.")
+        else:
+            self._lsf = lsf
+
         self._threshold = threshold
         self._min_distance = min_distance
         self._width = width
@@ -80,6 +87,7 @@ class LineFinder:
         spec_mod = Spectrum1DModel(rest_wavelength=self.rest_wavelength,
                                    redshift=self._redshift_model.z,
                                    continuum=self._continuum_model)
+        spec_mod.lsf = self._lsf
 
         # Calculate the bounds on each absorption feature
         if np.abs(np.max(y) - np.min(y)) > self._threshold:
@@ -88,6 +96,14 @@ class LineFinder:
                                             distance=min_ind,
                                             smooth=False)
             logging.info("Found %i minima.", len(spec_mod.bounds))
+
+            mask = ~reduce(np.logical_or, [(x > x[l]) & (x < x[u])
+                                           for l, u in spec_mod.bounds])
+
+            spec_mod.bounds += region_bounds(y[mask],
+                                             height=self._threshold,
+                                             distance=min_ind,
+                                             smooth=False)
 
         # For each set of bounds, estimate the initial values for that line
         for mn_bnd, mx_bnd in [x for x in spec_mod.bounds]:
@@ -124,7 +140,7 @@ class LineFinder:
                 bounds={
                     'delta_v': (vel_mn_bnd, vel_mx_bnd),
                     # 'v_doppler': (v_dop.value * 0.9, v_dop.value * 1.1),
-                    # 'column_density': (col_dens * 0.9, col_dens * 1.1)
+                    # 'column_density': (col_dens * 0.8, col_dens * 1.2)
                 })
 
             dict_merge(line_params, self._defaults)
