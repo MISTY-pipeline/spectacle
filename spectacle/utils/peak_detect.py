@@ -150,14 +150,6 @@ def region_bounds(y, height=0.01, distance=0.001, relative=False, smooth=False, 
     # Normalize the diff array so the height check can be equivalent to a check
     # on the normalized flux
     diff = diff / np.linalg.norm(diff)
-    print(max(diff), min(diff))
-    print(np.max(y), np.min(y))
-
-    import matplotlib.pyplot as plt
-
-    f, ax = plt.subplots()
-
-    ax.plot(x[:-1], diff)
 
     # Ensure that the diff array is smoothed to avoid jagged spikes
     if smooth:
@@ -187,8 +179,6 @@ def region_bounds(y, height=0.01, distance=0.001, relative=False, smooth=False, 
     reg_inds = np.sort(reg_inds)
     reg_bounds = [(reg_inds[i], reg_inds[i+1])
                     for i in range(0, len(reg_inds[:-1]), 2)]
-
-    ax.plot(x[:-1][reg_inds], diff[reg_inds], marker='o')
 
     # If any bounds tuple is too close, remove them
     # for bnds in [x for x in reg_bounds]:

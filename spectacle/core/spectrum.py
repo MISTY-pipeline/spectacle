@@ -251,7 +251,7 @@ class Spectrum1DModel:
         """
         kwargs.setdefault('lambda_0', self._rest_wavelength if name is None else None)
 
-        tau_prof = OpticalDepth1DModel(name=name, *args, **kwargs) if model is None else model
+        tau_prof = OpticalDepth1DModel(ion_name=name, *args, **kwargs) if model is None else model
 
         self._line_model = tau_prof if self._line_model is None \
             else self._line_model + tau_prof
