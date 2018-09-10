@@ -79,6 +79,58 @@ class LineFinder:
             vel = self._redshift_model.inverse(x).to('km/s')
             wav = self._redshift_model.inverse(x).to('Angstrom')
 
+        init_mod = self._run(vel, y, x)
+
+        # Remove lines with no measurable tau
+        # init_mod.auto_remove_lines(lambda line: np.trapz(line(vel) >= 1))
+
+        # Calculate the residuals between model and data
+        mask = reduce(np.logical_or, [(vel > vel[l]) & (vel < vel[u])
+                                       for l, u in init_mod.bounds])
+
+        ry = np.copy(y)
+        ry[mask] = 0
+        rm = getattr(init_mod, self._data_type)(vel)
+        rm[mask] = 0
+
+        residuals = np.abs(ry - rm)
+
+        nearest_lines = []
+
+        # For each peak in the residuals, create a new line object
+        for ind in detect_peaks(residuals, mph=0.25, mpd=(np.abs(vel - (vel[0] + self._min_distance))).argmin()):
+            logging.info("Found residual peak at %s.", vel[ind])
+
+            # nearest_lines.append(
+            #     init_mod.line_models[
+            #         find_nearest(
+            #             np.array([x.delta_v.value for x in init_mod.line_models]),
+            #             vel[ind].value)])
+
+        logging.info("Found {} residual peaks.".format(len(nearest_lines)))
+
+        return init_mod
+
+        # if len(nearest_lines) > 0:
+        #     # Duplicate each found line and extend the delta_v bounds to include
+        #     # the location of the residual
+        #     for line in nearest_lines:
+        #         # Re-calculate bounds on the old line
+        #         line.v_doppler, line.column_density = parameter_estimator(
+        #             np.array(line.delta_v.bounds) * line.delta_v.unit + line.delta_v.quantity,
+        #             vel, y, self.rest_wavelength, self._continuum_model, self._redshift_model.z
+        #         )
+
+        #         new_line = line.copy()
+
+        #         init_mod.add_line(model=new_line)
+
+        #     # Refit the model
+        #     init_mod._line_model = self._fit_model(init_mod, vel, y)
+
+        # return init_mod
+
+    def _run(self, vel, y, wav):
         # Convert the min_distance from dispersion units to data elements.
         # Assumes uniform spacing.
         min_ind = (np.abs(vel - (vel[0] + self._min_distance))).argmin()
@@ -91,19 +143,29 @@ class LineFinder:
 
         # Calculate the bounds on each absorption feature
         if np.abs(np.max(y) - np.min(y)) > self._threshold:
-            spec_mod.bounds = region_bounds(y,
+            spec_mod.bounds = region_bounds(y, x=wav,
                                             height=self._threshold,
                                             distance=min_ind,
                                             smooth=False)
             logging.info("Found %i minima.", len(spec_mod.bounds))
 
-            mask = ~reduce(np.logical_or, [(x > x[l]) & (x < x[u])
-                                           for l, u in spec_mod.bounds])
+            # mask = ~reduce(np.logical_or, [(x > x[l]) & (x < x[u])
+            #                                for l, u in spec_mod.bounds])
 
-            spec_mod.bounds += region_bounds(y[mask],
-                                             height=self._threshold,
-                                             distance=min_ind,
-                                             smooth=False)
+            # spec_mod.bounds += region_bounds(y[mask],
+            #                                  height=self._threshold,
+            #                                  distance=min_ind,
+            #                                  smooth=False)
+
+        # Calculate the regions in the raw data
+        # absolute(a - b) <= (atol + rtol * absolute(b))
+        spec_mod.regions = {(reg[0], reg[1]): []
+                            for reg in find_regions(y,
+                                                    rel_tol=self._rel_tol,
+                                                    abs_tol=self._abs_tol,
+                                                    continuum=spec_mod._continuum_model(vel))}
+
+        logging.info("Found %i absorption regions.", len(spec_mod.regions))
 
         # For each set of bounds, estimate the initial values for that line
         for mn_bnd, mx_bnd in [x for x in spec_mod.bounds]:
@@ -111,12 +173,14 @@ class LineFinder:
             centroid = vel[mn_bnd] + (vel[mx_bnd] - vel[mn_bnd]) * 0.5
             centroid = vel[find_nearest(vel, centroid)]
 
+            rs_centroid = self._redshift_model(centroid)
+
             # Check that the range encompassed by the bounds is reasonably
             if mx_bnd - mn_bnd < 3:
                 logging.warning("Bounds encompassing feature at %s do not "
                                 "provide enough data; ignoring feature. "
                                 "(Data points: %i).",
-                                centroid, mx_bnd - mn_bnd)
+                                rs_centroid, mx_bnd - mn_bnd)
                 spec_mod.bounds.remove((mn_bnd, mx_bnd))
                 continue
 
@@ -125,8 +189,8 @@ class LineFinder:
 
             # Estimate the doppler b and column densities for this line
             v_dop, col_dens = parameter_estimator(
-                (mn_bnd, mx_bnd), vel, y, self.rest_wavelength,
-                self._continuum_model)
+                (vel[mn_bnd], vel[mx_bnd]), vel, y, self._rest_wavelength,
+                self._continuum_model, self._redshift_model.z)
 
             # Create an optical depth profile for the line
             vel_mn_bnd = vel[mn_bnd].value  # self._redshift_model.inverse(vel[mn_bnd].value)
@@ -148,6 +212,11 @@ class LineFinder:
             # Add line to the spectrum model
             spec_mod.add_line(model=OpticalDepth1DModel(**line_params))
 
+        spec_mod._line_model = self._fit_model(spec_mod, vel, y)
+
+        return spec_mod
+
+    def _fit_model(self, spec_mod, vel, y):
         # Begin fitting the spectrum. Get the data-type-appropriate model.
         data_mod = getattr(spec_mod, self._data_type)
         fitter = LevMarLSQFitter()
@@ -162,28 +231,19 @@ class LineFinder:
                          if hasattr(smod, 'lambda_0')]
 
         if len(fit_line_mods) > 0:
-            spec_mod._line_model = np.sum(fit_line_mods)
+            return np.sum(fit_line_mods)
 
-        # Calculate the regions in the raw data
-        # absolute(a - b) <= (atol + rtol * absolute(b))
-        spec_mod.regions = {(reg[0], reg[1]): []
-                            for reg in find_regions(y,
-                                                    rel_tol=self._rel_tol,
-                                                    abs_tol=self._abs_tol,
-                                                    continuum=spec_mod._continuum_model(vel))}
-        logging.info("Found %i absorption regions.", len(spec_mod.regions))
-
-        return spec_mod
+        return spec_mod._line_model
 
     @property
     def rest_wavelength(self):
         return self._rest_wavelength
 
 
-def parameter_estimator(bounds, x, y, rest_wavelength, continuum):
+def parameter_estimator(bounds, x, y, rest_wavelength, continuum, redshift):
     bound_low, bound_up = bounds
-    mid_diff = int((bound_up - bound_low) * 0)  # Expand the regions a little
-    mask = ((x >= x[bound_low - mid_diff]) & (x <= x[bound_up + mid_diff]))
+    mid_diff = (bound_up - bound_low) * 0.15  # Expand the regions a little
+    mask = ((x >= (bound_low - mid_diff)) & (x <= (bound_up + mid_diff)))
 
     if continuum is not None:
         y = continuum(x) - y
@@ -215,7 +275,7 @@ def parameter_estimator(bounds, x, y, rest_wavelength, continuum):
 
     new_delta_x = x[1:] - x[:-1]
     new_y = g_fit(x)
-    new_fwhm = np.abs(g_fit[1].fwhm)
+    new_fwhm = np.abs(g_fit[1].fwhm) if continuum is not None else np.abs(g_fit.fwhm)
     new_sum_y = np.sum(new_y[1:] * new_delta_x)
 
     # Estimate the doppler b parameter
@@ -223,7 +283,7 @@ def parameter_estimator(bounds, x, y, rest_wavelength, continuum):
 
     # Estimate the column density
     f_value = line_registry.with_lambda(rest_wavelength)['osc_str']
-    col_dens = (new_sum_y.value * (v_dop / rest_wavelength).to('Hz') / (
+    col_dens = (new_sum_y.value * (v_dop / (rest_wavelength * (1 + redshift))).to('Hz') / (
         TAU_FACTOR * f_value)).to('1/cm2')
     col_dens = np.log10(col_dens.value)
 
