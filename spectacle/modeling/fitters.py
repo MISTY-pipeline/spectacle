@@ -9,8 +9,6 @@ from scipy import stats
 import scipy.optimize as op
 import emcee
 
-import matplotlib.pyplot as plt
-
 from ..utils import find_nearest
 
 
@@ -133,17 +131,6 @@ class MCMCFitter:
         #     with open("chain.dat", "a") as f:
         #         for k in range(position.shape[0]):
         #             f.write("{0:4d} {1:s}\n".format(k, " ".join(position[k])))
-
-        # Plot the samples
-        import matplotlib.pyplot as plt
-
-        f, axes = plt.subplots(ndim, 1)
-
-        for i, ax in enumerate(axes):
-            ax.plot(sampler.chain[:, :, i].T, color='k', alpha=0.25)
-
-        plt.tight_layout(h_pad=0.0)
-        # plt.savefig("test.png")
 
         burnin = int(steps * 0.1)
         samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))

@@ -3,7 +3,6 @@ import logging
 import astropy.units as u
 from astropy.constants import c, m_e
 import numpy as np
-from pandas import DataFrame
 from scipy.integrate import simps
 
 from ..utils import find_nearest, wave_to_vel_equiv
