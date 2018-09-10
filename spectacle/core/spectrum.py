@@ -1,21 +1,22 @@
 import logging
 from collections import OrderedDict
+from copy import deepcopy
 
 import astropy.units as u
+import numpy as np
 from astropy.constants import c
 from astropy.modeling import Fittable1DModel
 from astropy.modeling.models import Const1D
-from astropy.table import Row, QTable
+from astropy.table import QTable, Row
 
-from ..modeling.custom import RedshiftScaleFactor, Scale
 from ..analysis import statistics as stats
 from ..analysis.resample import Resample
 from ..io.registries import line_registry
 from ..modeling.converters import (DispersionConvert, FluxConvert,
-                                   FluxDecrementConvert, DispersionConvert)
+                                   FluxDecrementConvert)
+from ..modeling.custom import RedshiftScaleFactor, Scale
 from ..modeling.profiles import OpticalDepth1DModel
 from ..utils import wave_to_vel_equiv
-from copy import deepcopy
 
 dop_rel_equiv = u.equivalencies.doppler_relativistic
 
@@ -256,6 +257,9 @@ class Spectrum1DModel:
             else self._line_model + tau_prof
 
         return tau_prof
+
+    def auto_remove_lines(self, condition):
+        self._line_model = np.sum([x for x in self.line_model if condition(x)])
 
     @property
     def lsf(self):
