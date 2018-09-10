@@ -136,13 +136,28 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
     return ind
 
 
-def region_bounds(y, height=0.001, distance=0.001, relative=False, smooth=False):
+def region_bounds(y, height=0.01, distance=0.001, relative=False, smooth=False, x=None):
+    # Ignore anything above the threshold
+    if x is None:
+        x = np.arange(len(y))
+
+    mask = (1 - y) > height
+    y = np.ma.array(y, mask=~mask)
+
     # Take a first iteration of the minima finder
     diff = np.diff(y)
 
     # Normalize the diff array so the height check can be equivalent to a check
     # on the normalized flux
     diff = diff / np.linalg.norm(diff)
+    print(max(diff), min(diff))
+    print(np.max(y), np.min(y))
+
+    import matplotlib.pyplot as plt
+
+    f, ax = plt.subplots()
+
+    ax.plot(x[:-1], diff)
 
     # Ensure that the diff array is smoothed to avoid jagged spikes
     if smooth:
@@ -157,8 +172,8 @@ def region_bounds(y, height=0.001, distance=0.001, relative=False, smooth=False)
     valley_height = np.abs(np.min(diff)) * height if relative else height
 
     reg_inds = np.append(
-        detect_peaks(diff, mph=peak_height, mpd=distance),
-        detect_peaks(diff, mph=valley_height, mpd=distance, valley=True))
+        detect_peaks(diff, mph=0.001, mpd=distance),
+        detect_peaks(diff, mph=0.001, mpd=distance, valley=True))
 
     reg_inds = np.sort(reg_inds)
     new_inds = []
@@ -172,6 +187,8 @@ def region_bounds(y, height=0.001, distance=0.001, relative=False, smooth=False)
     reg_inds = np.sort(reg_inds)
     reg_bounds = [(reg_inds[i], reg_inds[i+1])
                     for i in range(0, len(reg_inds[:-1]), 2)]
+
+    ax.plot(x[:-1][reg_inds], diff[reg_inds], marker='o')
 
     # If any bounds tuple is too close, remove them
     # for bnds in [x for x in reg_bounds]:
