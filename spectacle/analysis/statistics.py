@@ -14,8 +14,9 @@ dop_rel_equiv = u.equivalencies.doppler_relativistic
 def delta_v_90(x, y, continuum=None, rest_wavelength=None):
     """
     Calculate the dispersion that encompasses the central 90 percent of the
-    apparant optical depth. Follows the formulation defined in Prochaska &
+    apparent optical depth. Follows the formulation defined in Prochaska &
     Wolf (1997).
+
     Parameters
     ----------
     x : :class:~`astropy.units.Quantity`

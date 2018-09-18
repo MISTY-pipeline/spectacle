@@ -13,8 +13,10 @@ with open('HISTORY.rst') as history_file:
 
 requirements = [
     'numpy',
-    'astropy',
-    'emcee'
+    'scipy',
+    'astropy==3.0.0',
+    'emcee',
+    'pyyaml'
 ]
 
 setup_requirements = [
