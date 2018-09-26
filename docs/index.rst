@@ -1,22 +1,15 @@
-Welcome to Spectacle's documentation!
-======================================
+Documentation
+=============
 
-Contents:
+This is the documentation for spectacle.
+
 
 .. toctree::
-   :maxdepth: 2
+  :maxdepth: 2
 
-   readme
-   installation
-   usage
-   modules
-   contributing
-   authors
-   history
+  spectacle/index.rst
 
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+.. note:: The layout of this directory is simply a suggestion.  To follow
+          traditional practice, do *not* edit this page, but instead place
+          all documentation for the package inside ``spectacle/``.
+          You can follow this practice or choose your own layout.

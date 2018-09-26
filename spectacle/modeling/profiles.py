@@ -8,14 +8,11 @@ from astropy.modeling import Fittable1DModel, Parameter
 from astropy.modeling.fitting import LevMarLSQFitter
 from astropy.modeling.models import Voigt1D, Gaussian1D
 from scipy import special
-from scipy.integrate import quad
 
-from ..io.registries import line_registry
-from ..utils import find_nearest, wave_to_vel_equiv
-from .converters import VelocityConvert, WavelengthConvert
-from ..analysis.statistics import delta_v_90, equivalent_width
+from ..registries.lines import line_registry
+from ..utils.misc import find_nearest
 
-__all__ = ['TauProfile', 'ExtendedVoigt1D']
+__all__ = ['OpticalDepth1D']
 
 PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
 TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /
@@ -32,7 +29,7 @@ class LineNotFound(Exception):
     pass
 
 
-class OpticalDepth1DModel(Fittable1DModel):
+class OpticalDepth1D(Fittable1DModel):
     """
     Implements a Voigt profile astropy model. This model generates optical
     depth profiles for absorption features.
@@ -69,14 +66,7 @@ class OpticalDepth1DModel(Fittable1DModel):
     inputs = ('x',)
     outputs = ('y',)
 
-    input_units_strict = True
-    input_units = {'x': u.Unit('km/s')}
-
-    @property
-    def input_units_equivalencies(self):
-        return {'x': dop_rel_equiv(self.lambda_0.value * self.lambda_0.unit)}
-
-    lambda_0 = Parameter(fixed=True, min=0, unit=u.Unit('Angstrom'))
+    lambda_0 = Parameter(fixed=True, min=0, default=1215.6701, unit=u.Unit('Angstrom'))
     f_value = Parameter(fixed=True, min=0, max=2.0, default=0)
     gamma = Parameter(fixed=True, min=0, default=0)
     v_doppler = Parameter(default=10, min=.1, max=1e5, unit=u.Unit('km/s'))
@@ -84,7 +74,9 @@ class OpticalDepth1DModel(Fittable1DModel):
     delta_v = Parameter(default=0, min=0, fixed=False, unit=u.Unit('km/s'))
     delta_lambda = Parameter(default=0, min=-100, max=100, fixed=True, unit=u.Unit('Angstrom'))
 
-    def __init__(self, ion_name=None, lambda_0=None, line_list=None, *args, **kwargs):
+    def __init__(self, ion_name=None, line_list=None, *args, **kwargs):
+        super(OpticalDepth1D, self).__init__(*args, **kwargs)
+
         line_mask = np.in1d(line_registry['name'],
                             [line_registry.correct(n) for n in line_list
                              if line_registry.correct(n) is not None]) \
@@ -99,29 +91,15 @@ class OpticalDepth1DModel(Fittable1DModel):
                 raise LineNotFound("No line with name '{}' in current ion "
                                    "table.".format(ion_name))
 
-            lambda_0 = line['wave'] * u.Unit('Angstrom')
-            ion_name = line['name']
-        elif lambda_0 is not None:
-            lambda_0 = u.Quantity(lambda_0, u.Unit('Angstrom'))
-            ind = find_nearest(line_table['wave'], lambda_0.value)
-            line = line_table[ind]
             ion_name = line['name']
         else:
-            raise IncompleteLineInformation(
-                "Not enough information to construction absorption line "
-                "profile. Please provide at least a name or centroid.")
+            ind = find_nearest(line_table['wave'].value, self.lambda_0.value)
+            line = line_table[ind]
+            ion_name = line['name']
 
-        kwargs.setdefault('f_value', line['osc_str'])
-        kwargs.setdefault('gamma', line['gamma'])
-        kwargs.setdefault('tied', {
-            'f_value': lambda mod: line_table[find_nearest(line_table['wave'],
-                                                           self.lambda_0)]['osc_str'],
-            'gamma': lambda mod: line_table[find_nearest(line_table['wave'],
-                                                         self.lambda_0)]['gamma']
-        })
-
-        super(OpticalDepth1DModel, self).__init__(name=ion_name, lambda_0=lambda_0,
-                                         *args, **kwargs)
+        self.name = ion_name
+        self.f_value = line['osc_str']
+        self.gamma = line['gamma']
 
     @staticmethod
     def evaluate(x, lambda_0, f_value, gamma, v_doppler, column_density,
@@ -148,7 +126,7 @@ class OpticalDepth1DModel(Fittable1DModel):
         # dimensionless frequency offset in units of doppler freq
         x = c.cgs / v_doppler.to('cm/s') * (shifted_lambda / x - 1.0)
         a = gamma / (4.0 * np.pi * nudop)  # damping parameter
-        phi = OpticalDepth1DModel.voigt(a, x)  # line profile
+        phi = OpticalDepth1D.voigt(a, x)  # line profile
         tau_phi = tau0 * phi  # profile scaled with tau0
         tau_phi = tau_phi.decompose().value
 
@@ -203,36 +181,36 @@ class OpticalDepth1DModel(Fittable1DModel):
 
         return g_fit.fwhm
 
-    @u.quantity_input(x=['length', 'speed'])
-    def delta_v_90(self, x):
-        return delta_v_90(x=x, y=self(x),
-                          rest_wavelength=self.lambda_0.quantity)
+    # @u.quantity_input(x=['length', 'speed'])
+    # def delta_v_90(self, x):
+    #     return delta_v_90(x=x, y=self(x),
+    #                       rest_wavelength=self.lambda_0.quantity)
+    #
+    # @u.quantity_input(x=['length', 'speed'])
+    # def equivalent_width(self, x):
+    #     return equivalent_width(x=x, y=self(x))
 
-    @u.quantity_input(x=['length', 'speed'])
-    def equivalent_width(self, x):
-        return equivalent_width(x=x, y=self(x))
 
-
-class ExtendedVoigt1D(Voigt1D):
-    x_0 = Parameter(default=0)
-    amplitude_L = Parameter(default=1)
-    fwhm_L = Parameter(default=2 / np.pi, min=0)
-    fwhm_G = Parameter(default=np.log(2), min=0)
-
-    @property
-    def fwhm(self):
-        """
-        Calculates an approximation of the FWHM.
-
-        The approximation is accurate to
-        about 0.03% (see http://en.wikipedia.org/wiki/Voigt_profile).
-
-        Returns
-        -------
-        fwhm : float
-            The estimate of the FWHM
-        """
-        fwhm = 0.5346 * self.fwhm_L + np.sqrt(0.2166 * (self.fwhm_L ** 2) +
-                                              self.fwhm_G ** 2)
-
-        return fwhm
+# class ExtendedVoigt1D(Voigt1D):
+#     x_0 = Parameter(default=0)
+#     amplitude_L = Parameter(default=1)
+#     fwhm_L = Parameter(default=2 / np.pi, min=0)
+#     fwhm_G = Parameter(default=np.log(2), min=0)
+#
+#     @property
+#     def fwhm(self):
+#         """
+#         Calculates an approximation of the FWHM.
+#
+#         The approximation is accurate to
+#         about 0.03% (see http://en.wikipedia.org/wiki/Voigt_profile).
+#
+#         Returns
+#         -------
+#         fwhm : float
+#             The estimate of the FWHM
+#         """
+#         fwhm = 0.5346 * self.fwhm_L + np.sqrt(0.2166 * (self.fwhm_L ** 2) +
+#                                               self.fwhm_G ** 2)
+#
+#         return fwhm
