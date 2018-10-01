@@ -21,3 +21,11 @@ if sys.version_info < tuple((int(val) for val in __minimum_python_version__.spli
 if not _ASTROPY_SETUP_:
     # For egg_info test builds to pass, put package imports here.
     pass
+
+import logging
+
+logging.basicConfig(format='spectacle [%(levelname)-8s]: %(message)s',
+level=logging.INFO)
+
+
+from .modeling import Spectral1D, OpticalDepth1D
