@@ -74,7 +74,7 @@ class OpticalDepth1D(Fittable1DModel):
     delta_v = Parameter(default=0, min=0, fixed=False, unit=u.Unit('km/s'))
     delta_lambda = Parameter(default=0, min=-100, max=100, fixed=True, unit=u.Unit('Angstrom'))
 
-    def __init__(self, ion_name=None, line_list=None, *args, **kwargs):
+    def __init__(self, name=None, line_list=None, *args, **kwargs):
         super(OpticalDepth1D, self).__init__(*args, **kwargs)
 
         line_mask = np.in1d(line_registry['name'],
@@ -84,20 +84,20 @@ class OpticalDepth1D(Fittable1DModel):
 
         line_table = line_registry[line_mask]
 
-        if ion_name is not None:
-            line = line_table.with_name(ion_name)
+        if name is not None:
+            line = line_table.with_name(name)
 
             if line is None:
                 raise LineNotFound("No line with name '{}' in current ion "
-                                   "table.".format(ion_name))
+                                   "table.".format(name))
 
-            ion_name = line['name']
+            name = line['name']
         else:
             ind = find_nearest(line_table['wave'].value, self.lambda_0.value)
             line = line_table[ind]
-            ion_name = line['name']
+            name = line['name']
 
-        self.name = ion_name
+        self.name = name
         self.f_value = line['osc_str']
         self.gamma = line['gamma']
 
