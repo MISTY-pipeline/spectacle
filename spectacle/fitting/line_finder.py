@@ -19,6 +19,7 @@ class LineFinder1D(Fittable1DModel):
         super().__init__(*args, **kwargs)
 
         self._y = None
+        self._continuum = None
         self._defaults = defaults or {}
         self._model_result = None
 

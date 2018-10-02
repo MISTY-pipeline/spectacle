@@ -149,6 +149,16 @@ class DispersionConvert(Fittable1DModel):
         return x.value
 
 
+# Model arithmetic operators
+OPERATORS = {'+': operator.add,
+             '-': operator.sub,
+             '*': operator.mul,
+             '/': operator.truediv,
+             '**': operator.pow,
+             '&': operator.and_,
+             '|': operator.or_}
+
+
 def _strip_units(compound_model, x=None):
     """
     Remove the units of a given compound model.
@@ -167,14 +177,6 @@ def _strip_units(compound_model, x=None):
     : :class:`~Fittable1D`
         Compound model without units.
     """
-    operators = {'+': operator.add,
-                 '-': operator.sub,
-                 '*': operator.mul,
-                 '/': operator.truediv,
-                 '**': operator.pow,
-                 '&': operator.and_,
-                 '|': operator.or_}
-
     leaf_idx = -1
 
     parameter_units = {pn: getattr(sm, pn).unit
@@ -202,7 +204,7 @@ def _strip_units(compound_model, x=None):
 
         return sub_mod
 
-    unitless_model = compound_model._tree.evaluate(operators, getter=getter).__class__
+    unitless_model = compound_model._tree.evaluate(OPERATORS, getter=getter).__class__
     unitless_model._parameter_units = parameter_units
 
     return unitless_model, parameter_units
@@ -225,19 +227,6 @@ def _apply_units(compound_model, parameter_units):
     : :class:`~Fittable1D`
         Compound model with units.
     """
-    # if not hasattr(compound_model, '_parameter_units'):
-    #     logging.error("Compound model has no stored information on the "
-    #                   "parameter units.")
-    #     return compound_model
-
-    operators = {'+': operator.add,
-                 '-': operator.sub,
-                 '*': operator.mul,
-                 '/': operator.truediv,
-                 '**': operator.pow,
-                 '&': operator.and_,
-                 '|': operator.or_}
-
     leaf_idx = -1
 
     def getter(idx, model):
@@ -253,4 +242,4 @@ def _apply_units(compound_model, parameter_units):
 
         return sub_mod
 
-    return compound_model._tree.evaluate(operators, getter=getter).__class__
+    return compound_model._tree.evaluate(OPERATORS, getter=getter).__class__
