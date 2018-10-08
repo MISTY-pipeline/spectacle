@@ -136,55 +136,60 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
     return ind
 
 
-def region_bounds(y, height=0.01, distance=0.001, relative=False, smooth=False, x=None):
+def region_bounds(y, x=None, height=0.01, distance=0.001, relative=False):
     # Ignore anything above the threshold
     if x is None:
         x = np.arange(len(y))
 
-    mask = (1 - y) > height
+    mask = y > height
     y = np.ma.array(y, mask=~mask)
 
+    # Ensure that the diff array is smoothed to avoid jagged spikes
+    # window = int(len(y) * 0.025)
+    # window = window + 1 if window % 2 == 0 else window
+    # y = savgol_filter(y, window, 2)
+    # from scipy.signal import lfilter
+    # y = lfilter([1/window] * window, 1, y)
+
     # Take a first iteration of the minima finder
-    diff = np.diff(y)
+    diff = np.abs(np.diff(y))
 
     # Normalize the diff array so the height check can be equivalent to a check
     # on the normalized flux
-    diff = diff / np.linalg.norm(diff)
+    diff = (diff * np.max(y) / np.linalg.norm(diff) + 1) #** 2 - 1
 
-    # Ensure that the diff array is smoothed to avoid jagged spikes
-    if smooth:
-        # window = int(len(diff) * 0.01)
-        # window = window + 1 if window % 2 == 0 else window
-        # diff = savgol_filter(diff, window, 2)
-        from astropy.convolution import convolve
-        from astropy.convolution import Gaussian1DKernel
-        diff = convolve(diff, Gaussian1DKernel(5))
+    # reg_inds = np.append(
+    #     detect_peaks(diff, mph=peak_height, mpd=distance, kpsh=True),
+    #     detect_peaks(diff, mph=valley_height, mpd=distance, valley=True))
 
-    peak_height = np.max(diff) * height if relative else height
-    valley_height = np.abs(np.min(diff)) * height if relative else height
+    import peakutils as pu
 
-    reg_inds = np.append(
-        detect_peaks(diff, mph=0.001, mpd=distance),
-        detect_peaks(diff, mph=0.001, mpd=distance, valley=True))
+    reg_inds = pu.indexes(diff, thres=height, min_dist=distance)
 
-    reg_inds = np.sort(reg_inds)
-    new_inds = []
-
-    for i in range(len(reg_inds[:-1])):
-        if np.sign(diff[reg_inds[i]]) == np.sign(diff[reg_inds[i+1]]):
-            nind = int(reg_inds[i] + (reg_inds[i+1] - reg_inds[i]) * 0.5)
-            new_inds.append(nind)
-
-    reg_inds = np.append(reg_inds, new_inds).astype(int)
+    # reg_inds = np.sort(reg_inds)
+    # new_inds = []
+    #
+    # for i in range(len(reg_inds[:-1])):
+    #     if np.sign(diff[reg_inds[i]]) == np.sign(diff[reg_inds[i+1]]):
+    #         nind = int(reg_inds[i] + (reg_inds[i+1] - reg_inds[i]) * 0.5)
+    #         new_inds.append(nind)
+    #
+    # reg_inds = np.append(reg_inds, new_inds).astype(int)
     reg_inds = np.sort(reg_inds)
     reg_bounds = [(reg_inds[i], reg_inds[i+1])
                     for i in range(0, len(reg_inds[:-1]), 2)]
 
-    reg_info = [(reg_inds[i][0], )]
+    import matplotlib.pyplot as plt
 
-    # If any bounds tuple is too close, remove them
-    # for bnds in [x for x in reg_bounds]:
-    #     if bnds[1] - bnds[0] < 10:
-    #         reg_bounds.remove(bnds)
+    f, (ax1, ax2) = plt.subplots(2,1)
+
+    ax1.plot(x[1:], diff)
+    ax2.plot(x[1:], np.diff(y))
+
+    for mn, mx in reg_bounds:
+        ax1.axvline(x[mn].value)
+        ax1.axvline(x[mx].value)
+        ax2.axvline(x[mn].value)
+        ax2.axvline(x[mx].value)
 
     return reg_bounds

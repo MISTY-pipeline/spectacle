@@ -45,7 +45,7 @@ class DynamicFittable1DModelMeta(type):
         # Compose the line-based compound model taking into consideration
         # the redshift, continuum, and dispersion conversions.
         compound_model = (DispersionConvert(u.Quantity(rest_wavelength, u.AA)) |
-                          RedshiftScaleFactor(z, fixed={'z': True}).inverse |
+                          RedshiftScaleFactor(z, fixed={'z': True}) |
                           (continuum + np.sum(_lines)).__class__ |
                           Scale(1. / (1 + z), fixed={'factor': True}))
 
@@ -96,9 +96,9 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
             raise Exception("Fitter must be an astropy fitter subclass.")
 
         # The internal models assume all inputs are in km/s, if provided a
-        # quantity object, ensure that it is convereted to the proper units.
+        # quantity object, ensure that it is converted to the proper units.
         if isinstance(x, u.Quantity):
-            x = self[0](x)
+            x = x.to('km/s').value
 
         # Create a new compound without units that can be used with the
         # astropy fitters, since compound models with units are not
