@@ -55,6 +55,14 @@ class DynamicFittable1DModelMeta(type):
         _cls_kwargs = {}
         _cls_kwargs.update(cls.__dict__)
         Spectral1D = type("Spectral1D", (compound_model,), _cls_kwargs)
+
+        # Override the call function on the returned generated compound model
+        # class in order to return a Spectrum1D object.
+        def _custom_call(self, x, *args, **kwargs):
+            data = super(Spectral1D, self).__call__(x, *args, **kwargs)
+            return Spectrum1D(flux=u.Quantity(data), spectral_axis=x)
+
+        setattr(Spectral1D, '__call__', _custom_call)
         spec1d = Spectral1D()
 
         # Updating the dict directly on an instance instead of during the type
@@ -91,7 +99,7 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
     input_units_allow_dimensionless = True
     input_units = {'x': u.Unit('km/s')}
 
-    def fit_to(self, x, y, fitter=LevMarLSQFitter()):
+    def fit_to(self, x, y, fitter=LevMarLSQFitter(), kwargs={}):
         if not fitter.__class__ in _FitterMeta.registry:
             raise Exception("Fitter must be an astropy fitter subclass.")
 
@@ -100,11 +108,16 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
         if isinstance(x, u.Quantity):
             x = x.to('km/s').value
 
+        # A data array returned by a Spectrum1D object is implicitly a Quantity
+        # and should be reverted to a regular array for the unitless fitter.
+        if isinstance(y, u.Quantity):
+            y = y.value
+
         # Create a new compound without units that can be used with the
         # astropy fitters, since compound models with units are not
         # currently supported.
         unitless_cls, parameter_units = _strip_units(self)
-        fitted_model = fitter(unitless_cls(), x, y)
+        fitted_model = fitter(unitless_cls(), x, y, **kwargs)
 
         # Now we put back the units on the model
         model_with_units = _apply_units(fitted_model, parameter_units)
