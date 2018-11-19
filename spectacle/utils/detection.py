@@ -1,5 +1,9 @@
 import numpy as np
 from scipy.signal import savgol_filter
+from .misc import find_nearest
+from itertools import chain
+import peakutils as pu
+
 
 __author__ = "Marcos Duarte, https://github.com/demotu/BMC"
 __version__ = "1.0.4"
@@ -136,60 +140,67 @@ def detect_peaks(x, mph=None, mpd=1, threshold=0, edge='rising',
     return ind
 
 
-def region_bounds(y, x=None, height=0.01, distance=0.001, relative=False):
+def region_bounds(y, x=None, height=0.01, distance=1, relative=False):
     # Ignore anything above the threshold
     if x is None:
         x = np.arange(len(y))
 
-    mask = y > height
-    y = np.ma.array(y, mask=~mask)
-
-    # Ensure that the diff array is smoothed to avoid jagged spikes
-    # window = int(len(y) * 0.025)
-    # window = window + 1 if window % 2 == 0 else window
-    # y = savgol_filter(y, window, 2)
-    # from scipy.signal import lfilter
-    # y = lfilter([1/window] * window, 1, y)
-
     # Take a first iteration of the minima finder
-    diff = np.abs(np.diff(y))
+    diff = np.diff(y)
+    adiff = np.abs(diff)
 
-    # Normalize the diff array so the height check can be equivalent to a check
-    # on the normalized flux
-    diff = (diff * np.max(y) / np.linalg.norm(diff) + 1) #** 2 - 1
+    prime_inds = pu.indexes(y, thres=height, min_dist=distance, thres_abs=True)
+    reg_inds = pu.indexes(adiff, thres=height, min_dist=distance, thres_abs=True)
 
-    # reg_inds = np.append(
-    #     detect_peaks(diff, mph=peak_height, mpd=distance, kpsh=True),
-    #     detect_peaks(diff, mph=valley_height, mpd=distance, valley=True))
+    reg_bounds = []
 
-    import peakutils as pu
+    for pind in prime_inds:
+        if len(reg_inds[reg_inds < pind]) == 0:
+            mn = pind - 1
+        else:
+            mn_reg_inds = reg_inds[reg_inds < pind]
+            mn = mn_reg_inds[find_nearest(mn_reg_inds, pind)]
 
-    reg_inds = pu.indexes(diff, thres=height, min_dist=distance)
+        if len(reg_inds[reg_inds > pind]) == 0:
+            mx = pind + 1
+        else:
+            mx_reg_inds = reg_inds[reg_inds > pind]
+            mx = mx_reg_inds[find_nearest(mx_reg_inds, pind)]
 
-    # reg_inds = np.sort(reg_inds)
-    # new_inds = []
-    #
-    # for i in range(len(reg_inds[:-1])):
-    #     if np.sign(diff[reg_inds[i]]) == np.sign(diff[reg_inds[i+1]]):
-    #         nind = int(reg_inds[i] + (reg_inds[i+1] - reg_inds[i]) * 0.5)
-    #         new_inds.append(nind)
-    #
-    # reg_inds = np.append(reg_inds, new_inds).astype(int)
-    reg_inds = np.sort(reg_inds)
-    reg_bounds = [(reg_inds[i], reg_inds[i+1])
-                    for i in range(0, len(reg_inds[:-1]), 2)]
+        reg_bounds.append((mn, mx))
 
-    import matplotlib.pyplot as plt
+    for rind in [x for x in reg_inds if x not in chain(*reg_bounds)]:
+        partner = prime_inds[find_nearest(prime_inds, rind)]
 
-    f, (ax1, ax2) = plt.subplots(2,1)
+        if rind > partner:
+            reg_bounds.append((partner, rind))
+        else:
+            reg_bounds.append((rind, partner))
 
-    ax1.plot(x[1:], diff)
-    ax2.plot(x[1:], np.diff(y))
+    # import matplotlib.pyplot as plt
 
-    for mn, mx in reg_bounds:
-        ax1.axvline(x[mn].value)
-        ax1.axvline(x[mx].value)
-        ax2.axvline(x[mn].value)
-        ax2.axvline(x[mx].value)
+    # f, (ax1, ax2, ax3) = plt.subplots(3,1)
+
+    # ax1.plot(x[1:], adiff)
+    # ax2.plot(x[1:], diff)
+    # ax3.plot(x, y)
+
+    # for cn in prime_inds:
+    #     ax1.axvline(x[cn].value, color='r')
+    #     ax2.axvline(x[cn].value, color='r')
+    #     ax3.axvline(x[cn].value, color='r')
+
+    # for rind in reg_inds:
+    #     ax1.axvline(x[rind].value, color='g')
+    #     ax2.axvline(x[rind].value, color='g')
+    #     ax3.axvline(x[rind].value, color='g')
+
+    # for mn, mx in reg_bounds:
+    #     ax1.axvline(x[mn].value)
+    #     ax1.axvline(x[mx].value)
+    #     ax2.axvline(x[mn].value)
+    #     ax2.axvline(x[mx].value)
+    #     ax3.axvline(x[mn].value)
+    #     ax3.axvline(x[mx].value)
 
     return reg_bounds

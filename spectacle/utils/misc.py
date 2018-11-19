@@ -5,18 +5,18 @@ import astropy.units as u
 import collections
 
 
-def find_nearest(array, value, side="left"):
+def find_nearest(array, value, side="left", count=1):
     """
     The function below works whether or not the input array is sorted. The
     function below returns the index of the input array corresponding to the
     closest value, which is somewhat more general.
     """
     if side == "right":
-        idx = (np.abs(array[::-1] - value)).argmin()
+        indexes = (np.abs(array[::-1] - value))
     else:
-        idx = (np.abs(array - value)).argmin()
+        indexes = (np.abs(array - value))
 
-    return idx
+    return indexes.argmin() if count == 1 else np.argsort(indexes)[:count]
 
 
 def unit_validator(equivalencies=None, **dwargs):
