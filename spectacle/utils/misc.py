@@ -12,11 +12,11 @@ def find_nearest(array, value, side="left", count=1):
     closest value, which is somewhat more general.
     """
     if side == "right":
-        indexes = (np.abs(array[::-1] - value))
+        indexes = np.abs(array[::-1] - value)
     else:
-        indexes = (np.abs(array - value))
+        indexes = np.abs(array - value)
 
-    return indexes.argmin() if count == 1 else np.argsort(indexes)[:count]
+    return np.argsort(indexes)[:count]
 
 
 def unit_validator(equivalencies=None, **dwargs):
