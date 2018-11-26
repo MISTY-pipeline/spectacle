@@ -10,3 +10,73 @@ This package can also be used to generate analytical spectra from detailed
 characteristics, find potential line features, and simultaneously fit sets of
 absorption/emission lines.
 
+Quick example
+-------------
+
+.. plot::
+    :include-source:
+    :align: center
+    :context: close-figs
+
+    Include some setup imports for plotting and unit support.
+
+    >>> from astropy import units as u
+    >>> import numpy as np
+    >>> from matplotlib import pyplot as plt
+    >>> from astropy.visualization import quantity_support
+    >>> quantity_support()  # for getting units on the axes below  # doctest: +IGNORE_OUTPUT
+
+    Import the spectral model and profile model.
+
+    >>> from spectacle.modeling import Spectral1D, OpticalDepth1D
+
+    Create some HI lines to add to the spectral model.
+
+    >>> line = OpticalDepth1D("HI1216", v_doppler=50 * u.km/u.s, column_density=14)
+    >>> line2 = OpticalDepth1D("HI1216", delta_v=100 * u.km/u.s)
+
+    Create the multi-component spectral model, defining a rest wavelength and
+    explicitly defining some redshift value.
+
+    >>> spec_mod = Spectral1D([line, line2], z=0, rest_wavelength=line.lambda_0.quantity, output='flux')
+
+    Generate spectral data from the model.
+
+    >>> x = np.linspace(-500, 500, 1000) * u.Unit('km/s')
+    >>> y = spec_mod(x) * u.Unit('erg / Angstrom / cm^2 / s')
+
+    Plot the result.
+
+    >>> f, ax = plt.subplots()
+    >>> ax.set_title("HI 1216")
+    >>> ax.step(x, y)
+
+Using Spectacle
+---------------
+
+.. toctree::
+   :maxdepth: 2
+
+   installation
+   contributing
+   getting_started
+   modeling
+   line_finding
+   fitting
+   registries
+   analysis
+
+API
+---
+
+.. toctree::
+   :maxdepth: 1
+
+   api.rst
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
