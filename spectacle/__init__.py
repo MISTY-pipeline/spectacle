@@ -1,10 +1,31 @@
-"""Top-level package for spectacle."""
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+
+# Packages may add whatever they like to this file, but
+# should keep this content at the top.
+# ----------------------------------------------------------------------------
+from ._astropy_init import *
+# ----------------------------------------------------------------------------
+
+# Enforce Python version check during package import.
+# This is the same check as the one at the top of setup.py
+import sys
+
+__minimum_python_version__ = "3.5"
+
+class UnsupportedPythonError(Exception):
+    pass
+
+if sys.version_info < tuple((int(val) for val in __minimum_python_version__.split('.'))):
+    raise UnsupportedPythonError("spectacle does not support Python < {}".format(__minimum_python_version__))
+
+if not _ASTROPY_SETUP_:
+    # For egg_info test builds to pass, put package imports here.
+    pass
 
 import logging
 
-__author__ = """Nicholas Earl"""
-__email__ = 'nearl@stsci.edu'
-__version__ = '0.2.0'
-
 logging.basicConfig(format='spectacle [%(levelname)-8s]: %(message)s',
-                    level=logging.INFO)
+level=logging.INFO)
+
+
+from .modeling import Spectral1D, OpticalDepth1D

@@ -1,105 +1,6 @@
-from collections import OrderedDict
-
-import logging
 import astropy.units as u
 import numpy as np
-from astropy.constants import c
 from astropy.modeling import Fittable1DModel, Parameter
-
-from ..utils import wave_to_vel_equiv
-
-__all__ = ['VelocityConvert', 'WavelengthConvert',
-           'DispersionConvert', 'FluxConvert', 'FluxDecrementConvert']
-
-
-class VelocityConvert(Fittable1DModel):
-    """
-    Model to convert from wavelength space to velocity space.
-
-    Parameters
-    ----------
-    center : float
-        Central wavelength.
-
-    Notes
-    -----
-    Model formula:
-
-        .. math:: v = \frac{\lambda - \lambda_c}{\lambda} c
-    """
-    inputs = ('x',)
-    outputs = ('x',)
-    input_units_strict = True
-
-    input_units = {'x': u.Unit('Angstrom')}
-
-    center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
-
-    @staticmethod
-    def evaluate(x, center):
-        # ln_lambda = np.log(x) - np.log(center)
-        # vel = (c.cgs * ln_lambda).to('km/s').value
-
-        vel = (c.cgs * ((x - center) / x)).to('km/s')
-
-        return vel
-
-
-class WavelengthConvert(Fittable1DModel):
-    """
-    Model to convert from velocity space to wavelength space.
-
-    Parameters
-    ----------
-    center : float
-        Central wavelength.
-
-    Notes
-    -----
-    Model formula:
-
-        .. math:: \lambda = \lambda_c (1 + \frac{\lambda}{c}
-    """
-    inputs = ('x',)
-    outputs = ('x',)
-    input_units_strict = True
-
-    input_units = {'x': u.Unit('km/s')}
-
-    center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
-
-    @staticmethod
-    def evaluate(x, center):
-        wav = center * (1 + x / c.cgs)
-
-        return wav
-
-
-class DispersionConvert(Fittable1DModel):
-    inputs = ('x',)
-    outputs = ('x',)
-
-    input_units_strict = True
-
-    center = Parameter(default=0, fixed=True, unit=u.Unit('Angstrom'))
-
-    @property
-    def input_units(self):
-        return {'x': 'km/s'}
-
-    @property
-    def input_units_equivalencies(self):
-        return {'x': u.equivalencies.doppler_relativistic(self.center.value * self.center.unit)}
-
-    def evaluate(self, x, center):
-        # Units are stripped in the evaluate methods of models
-        with u.set_enabled_equivalencies(self.input_units_equivalencies['x']):
-            x = u.Quantity(x, 'km/s')
-
-        return x
-
-    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
-        return OrderedDict()
 
 
 class FluxConvert(Fittable1DModel):
@@ -108,13 +9,10 @@ class FluxConvert(Fittable1DModel):
 
     @staticmethod
     def evaluate(y):
-        if isinstance(y, u.Quantity):
-            y = y.value
-
         return np.exp(-y) - 1
 
     def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
-        return OrderedDict()
+        return {}
 
 
 class FluxDecrementConvert(Fittable1DModel):
@@ -123,10 +21,41 @@ class FluxDecrementConvert(Fittable1DModel):
 
     @staticmethod
     def evaluate(y):
-        if isinstance(y, u.Quantity):
-            y = y.value
-
         return 1 - np.exp(-y) - 1
 
-    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
-        return OrderedDict()
+
+class DispersionConvert(Fittable1DModel):
+    """
+    Convert dispersions into velocity space for use internally.
+
+    Arguments
+    ---------
+    rest_wavelength : :class:`~astropy.units.Parameter`
+        Wavelength for use in the equivalency conversions.
+    """
+    inputs = ('x',)
+    outputs = ('x',)
+
+    rest_wavelength = Parameter(default=0, unit=u.AA, fixed=True)
+
+    input_units_allow_dimensionless = {'x': True}
+    input_units = {'x': u.Unit('km/s')}
+
+    linear = True
+    fittable = True
+
+    @property
+    def input_units_equivalencies(self):
+        return {'x': u.spectral() + u.doppler_relativistic(
+            self.rest_wavelength.value * u.AA)}
+
+    @staticmethod
+    def evaluate(x, rest_wavelength):
+        """One dimensional Scale model function"""
+        disp_equiv = u.spectral() + u.doppler_relativistic(
+            u.Quantity(rest_wavelength, u.AA))
+
+        with u.set_enabled_equivalencies(disp_equiv):
+            x = u.Quantity(x, u.Unit("km/s"))
+
+        return x.value

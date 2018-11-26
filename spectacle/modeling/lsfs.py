@@ -1,9 +1,8 @@
 import os
 
-from astropy.table import Table
 from astropy.convolution import Gaussian1DKernel, Kernel1D, convolve
-from astropy.modeling import Fittable1DModel, Parameter
-
+from astropy.modeling import Fittable1DModel
+from astropy.table import Table
 
 __all__ = ['COSLSFModel', 'GaussianLSFModel']
 
@@ -17,14 +16,14 @@ class COSKernel1D(Kernel1D):
 
     def __init__(self):
         path = os.path.abspath(
-            os.path.join(__file__, '..', '..', 'data', 'cos.ecsv'))
+            os.path.join(__file__, '..', '..', 'data', 'cos_lsf.ecsv'))
         table = Table.read(path, format='ascii.ecsv')
 
         super(COSKernel1D, self).__init__(array=table['value'])
 
 
 class LSFModel(Fittable1DModel):
-    inputs = ('x',)
+    inputs = ('y',)
     outputs = ('y',)
 
     def __init__(self, kernel=None, *args, **kwargs):
@@ -40,44 +39,30 @@ class LSFModel(Fittable1DModel):
     def kernel(self, value):
         self._kernel = value
 
-    @staticmethod
-    def evaluate(y):
+    def evaluate(self, y, *args, **kwargs):
         return convolve(y, self.kernel, boundary='extend')
 
 
-class COSLSFModel(Fittable1DModel):
+class COSLSFModel(LSFModel):
     """
     COS LSF model which can be used with the compound model objects.
     """
     inputs = ('y',)
     outputs = ('y',)
 
-    @staticmethod
-    def evaluate(y):
-        kernel = COSKernel1D()
-
-        return convolve(y, kernel, boundary='extend')
+    def __init__(self, *args, **kwargs):
+        super().__init__(kernel=COSKernel1D(), *args, **kwargs)
 
 
-class GaussianLSFModel(Fittable1DModel):
+class GaussianLSFModel(LSFModel):
     """
     Gaussian LSF model which can used with the compound model objects.
     """
     inputs = ('y',)
     outputs = ('y',)
 
-    stddev = Parameter(default=0, min=0, fixed=True)
-
     def __init__(self, stddev, *args, **kwargs):
-        super(GaussianLSFModel, self).__init__(stddev)
+        super().__init__(kernel=Gaussian1DKernel(stddev), *args, **kwargs)
 
         self._kernel_args = args
         self._kernel_kwargs = kwargs
-
-    def evaluate(self, y, stddev):
-        kernel = Gaussian1DKernel(stddev, *self._kernel_args, **self._kernel_kwargs)
-
-        return convolve(y, kernel, boundary='extend')
-
-    def _parameter_units_for_data_units(self, input_units, output_units):
-        return dict()
