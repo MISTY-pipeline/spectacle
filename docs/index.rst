@@ -1,15 +1,12 @@
-Documentation
-=============
+Spectacle
+*********
 
-This is the documentation for spectacle.
+Spectacle is an automated model generator for producing models that represent
+spectral data. It features the ability to reduce spectral data to its absorption
+or emission components, fit features and continua, as well as allow for
+statistical analysis of spectral regions.
 
+This package can also be used to generate analytical spectra from detailed
+characteristics, find potential line features, and simultaneously fit sets of
+absorption/emission lines.
 
-.. toctree::
-  :maxdepth: 2
-
-  spectacle/index.rst
-
-.. note:: The layout of this directory is simply a suggestion.  To follow
-          traditional practice, do *not* edit this page, but instead place
-          all documentation for the package inside ``spectacle/``.
-          You can follow this practice or choose your own layout.
