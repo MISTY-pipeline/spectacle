@@ -54,45 +54,40 @@ class LineFinder1D(Fittable1DModel):
 
         # Convert the min_distance from dispersion units to data elements.
         # Assumes uniform spacing.
-        # threshold = self._frac_guess(threshold)
-        # min_distance = self._frac_guess(min_distance)
         min_ind = (np.abs(x.value - (x[0].value + min_distance))).argmin()
 
         # Find peaks
-        bounds = region_bounds(self._y, x, distance=min_ind, height=threshold)
+        regions = region_bounds(x, self._y)
 
         lines = []
 
-        for mn_bnd, mx_bnd in [x for x in bounds]:
+        for (mn_bnd, mx_bnd), (centroid, buried) in [x for x in regions.items()]:
             line_kwargs = self._defaults.copy()
-
-            # Calculate the centroid of this region
-            centroid = x[mn_bnd + int((mx_bnd - mn_bnd) * 0.5)]
-
-            # Check that the range encompassed by the bounds is reasonably
-            if mx_bnd - mn_bnd < 3:
-                logging.debug("Bounds encompassing feature at %s do not "
-                                "provide enough data; ignoring feature. "
-                                "(Data points: %i).",
-                                centroid, mx_bnd - mn_bnd)
-                bounds.remove((mn_bnd, mx_bnd))
-                continue
+            mn_bnd, mx_bnd = mn_bnd * x.unit, mx_bnd * x.unit
 
             # Estimate the doppler b and column densities for this line
-            centroid, v_dop, col_dens = parameter_estimator(
-                (x[mn_bnd], x[mx_bnd]), x, self._y, ion_name=line_kwargs.get('name'))
+            v_dop, col_dens, nmn_bnd, nmx_bnd = parameter_estimator(
+                centroid=centroid,
+                bounds=(mn_bnd, mx_bnd),
+                x=x,
+                y=self._y,
+                ion_name=line_kwargs.get('name'),
+                buried=buried)
 
             estimate_kwargs = {
                 'delta_v': centroid,
                 'v_doppler': v_dop,
                 'column_density': col_dens,
                 'bounds': {
-                    'delta_v': (x[mn_bnd].value, x[mx_bnd].value),
+                    'delta_v': (mn_bnd.value, mx_bnd.value)
+                               if not buried else (x.value[0], x.value[-1]),
                 },
             }
             line_kwargs.update(estimate_kwargs)
 
             line = OpticalDepth1D(**line_kwargs)
+
+            print(np.trapz(line(x), x))
             lines.append(line)
 
         logging.debug("Found %s possible lines (theshold=%s, min_distance=%s).",
@@ -101,7 +96,7 @@ class LineFinder1D(Fittable1DModel):
         if len(lines) == 0:
             return np.zeros(x.shape)
 
-        spec_mod = Spectral1D(lines, continuum=self._continuum)
+        spec_mod = Spectral1D(lines, continuum=self._continuum, output='optical_depth')
 
         # fitter = LevMarLSQFitter()
         if self._auto_fit:
@@ -109,24 +104,27 @@ class LineFinder1D(Fittable1DModel):
         else:
             fit_spec_mod = spec_mod
 
-        fit_spec_mod.line_bounds = bounds
+        fit_spec_mod.line_regions = regions
 
         self._model_result = fit_spec_mod
 
         return fit_spec_mod(x)
 
 
-def parameter_estimator(bounds, x, y, ion_name):
+def parameter_estimator(centroid, bounds, x, y, ion_name, buried):
     bound_low, bound_up = bounds
-    mid_diff = (bound_up - bound_low) * 0.15  # Expand the regions a little
-    mask = ((x >= (bound_low - mid_diff)) & (x <= (bound_up + mid_diff)))
+    mid_diff = (bound_up - bound_low)
 
+    if buried:
+        mid_diff *= 2
+
+    new_bound_low, new_bound_up =(bound_low - mid_diff), (bound_up + mid_diff)
+    mask = ((x >= new_bound_low) & (x <= new_bound_up))
     mx, my = x[mask], y[mask]
 
     # Width can be estimated by the weighted 2nd moment of the x coordinate
     dx = mx - np.mean(mx)
     fwhm = 2 * np.sqrt(np.sum((dx * dx) * my) / np.sum(my))
-    center = np.sum(mx * my) / np.sum(my)
     sigma = fwhm / 2.355
 
     # Amplitude is derived from area
@@ -145,9 +143,9 @@ def parameter_estimator(bounds, x, y, ion_name):
     col_dens = (sum_y / (TAU_FACTOR * ion['wave'] * ion['osc_str'])).to('1/cm2')
     col_dens = np.log10(col_dens.value)
 
-    logging.debug("""Estimated initial values:
+    logging.info("""Estimated initial values:
     Centroid: {:g}
     Column density: {:g}
-    Doppler width: {:g}""".format(center, col_dens, v_dop))
+    Doppler width: {:g}""".format(centroid, col_dens, v_dop))
 
-    return center, v_dop, col_dens
+    return v_dop, col_dens, new_bound_low, new_bound_up
