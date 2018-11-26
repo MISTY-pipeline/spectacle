@@ -2,7 +2,7 @@ import operator
 
 import astropy.units as u
 import numpy as np
-from astropy.modeling import Fittable1DModel
+from astropy.modeling import Fittable1DModel, Parameter
 from astropy.modeling.fitting import LevMarLSQFitter, _FitterMeta
 from astropy.modeling.models import Const1D, RedshiftScaleFactor
 from astropy.convolution import Kernel1D
@@ -182,7 +182,6 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
         """
         return [x for x in self if isinstance(x, OpticalDepth1D)]
 
-
     @property
     def lsf_kernel(self):
         return next((x for x in self if isinstance(x, LSFModel)), None)
@@ -233,12 +232,12 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
 
     @property
     def as_flux(self):
-        """New pectral model that produces flux output."""
+        """New spectral model that produces flux output."""
         return self.copy(output='flux')
 
     @property
     def as_flux_decrement(self):
-        """New pectral model that produces flux decrement output."""
+        """New spectral model that produces flux decrement output."""
         return self.copy(output='flux_decrement')
 
     @property
@@ -260,6 +259,19 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
 
         raise ValueError("Kernel must be of type 'LSFModel', or 'Kernel1D'; "
                          "or a string with value 'cos' or 'gaussian'.")
+
+
+class ProfileMultiplier(Fittable1DModel):
+    inputs = ('x',)
+    outputs = ('y',)
+
+    count = Parameter(default=0, min=0, tied=lambda x: int(x))
+
+    @staticmethod
+    def evaluate(self, count, *args, **kwargs):
+
+
+        return self.copy()
 
 
 def _set_custom_call(cls):
