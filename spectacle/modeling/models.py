@@ -3,7 +3,7 @@ import operator
 import astropy.units as u
 import numpy as np
 from astropy.modeling import Fittable1DModel, Parameter
-from astropy.modeling.fitting import LevMarLSQFitter, _FitterMeta
+from astropy.modeling.fitting import _FitterMeta
 from astropy.modeling.models import Const1D, RedshiftScaleFactor
 from astropy.convolution import Kernel1D
 from specutils import Spectrum1D
@@ -11,6 +11,7 @@ from specutils import Spectrum1D
 from .converters import DispersionConvert, FluxConvert, FluxDecrementConvert
 from .profiles import OpticalDepth1D
 from .lsfs import COSLSFModel, GaussianLSFModel, LSFModel
+from ..fitting.curve_fitter import CurveFitter
 
 __all__ = ['Spectral1D']
 
@@ -27,7 +28,11 @@ class DynamicFittable1DModelMeta(type):
                  *args, **kwargs):
         # If no continuum is provided, or the continuum provided is not a
         # model, use a constant model to represent the continuum.
-        if continuum is None or not isinstance(continuum, Fittable1DModel):
+        if continuum is not None and isinstance(continuum, Fittable1DModel):
+            if isinstance(continuum, (float, int)):
+                continuum = Const1D(amplitude=continuum,
+                                    fixed={'amplitude': True})
+        else:
             continuum = Const1D(amplitude=0, fixed={'amplitude': True})
 
         if output not in ('flux', 'flux_decrement', 'optical_depth'):
@@ -119,7 +124,7 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
     input_units_allow_dimensionless = True
     input_units = {'x': u.Unit('km/s')}
 
-    def fit_to(self, x, y, fitter=LevMarLSQFitter(), kwargs={}):
+    def fit_to(self, x, y, fitter=CurveFitter(), kwargs={}):
         if not fitter.__class__ in _FitterMeta.registry:
             raise Exception("Fitter must be an astropy fitter subclass.")
 
@@ -141,6 +146,12 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
 
         # Now we put back the units on the model
         model_with_units = _apply_units(fitted_model, parameter_units)
+
+        # Attach any estimates parameter errors to the new fitted model
+        if hasattr(fitter, 'errors'):
+            model_with_units.errors = fitter.errors
+        else:
+            model_with_units.errors = None
 
         return model_with_units()
 

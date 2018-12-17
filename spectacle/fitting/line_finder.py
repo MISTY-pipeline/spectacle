@@ -116,9 +116,9 @@ def parameter_estimator(centroid, bounds, x, y, ion_name, buried):
     mid_diff = (bound_up - bound_low)
 
     if buried:
-        mid_diff *= 2
+        mid_diff *= 3
 
-    new_bound_low, new_bound_up =(bound_low - mid_diff), (bound_up + mid_diff)
+    new_bound_low, new_bound_up = (bound_low - mid_diff), (bound_up + mid_diff)
     mask = ((x >= new_bound_low) & (x <= new_bound_up))
     mx, my = x[mask], y[mask]
 
