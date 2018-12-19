@@ -23,7 +23,7 @@ class DynamicFittable1DModelMeta(type):
     :class:`~spectacle.modeling.profiles.OpticalDepth1D` and return a new
     compound model.
     """
-    def __call__(cls, lines, continuum=None, z=0,
+    def __call__(cls, lines=None, continuum=None, z=0,
                  rest_wavelength=0 * u.AA, lsf=None, output='flux',
                  *args, **kwargs):
         # If no continuum is provided, or the continuum provided is not a
@@ -32,6 +32,8 @@ class DynamicFittable1DModelMeta(type):
             if isinstance(continuum, (float, int)):
                 continuum = Const1D(amplitude=continuum,
                                     fixed={'amplitude': True})
+        elif isinstance(continuum, (float, int)):
+            continuum = Const1D(amplitude=continuum, fixed={'amplitude': True})
         else:
             continuum = Const1D(amplitude=0, fixed={'amplitude': True})
 
@@ -55,18 +57,44 @@ class DynamicFittable1DModelMeta(type):
                 elif isinstance(line, Fittable1DModel):
                     _lines.append(line)
 
+        # Parse the lsf information, if provided
+        if lsf is not None and not isinstance(lsf, LSFModel):
+            if isinstance(lsf, Kernel1D):
+                lsf = LSFModel(kernel=lsf)
+            elif isinstance(lsf, str):
+                if lsf == 'cos':
+                    lsf = COSLSFModel()
+                elif lsf == 'gaussian':
+                    lsf = GaussianLSFModel(**kwargs)
+            else:
+                raise ValueError("Kernel must be of type 'LSFModel', or "
+                                 "'Kernel1D'; or a string with value 'cos' "
+                                 "or 'gaussian'.")
+
         # Compose the line-based compound model taking into consideration
         # the redshift, continuum, and dispersion conversions.
         dc = DispersionConvert(u.Quantity(rest_wavelength, u.AA))
         rs = RedshiftScaleFactor(z, fixed={'z': True})
-        ln = np.sum(_lines).__class__
 
-        if output == 'flux_decrement':
-            compound_model = (dc | rs | (continuum + (ln | FluxDecrementConvert())))
-        elif output == 'flux':
-            compound_model = (dc | rs | (continuum + (ln | FluxConvert())))
+        if lines is not None:
+            if len(lines) > 1:
+                for line in lines:
+                    # Calculate the velocity offset given the rest wavelength
+                    with u.set_enabled_equivalencies(u.doppler_optical(rest_wavelength)):
+                        offset = line.lambda_0.quantity.to('km/s')
+
+                    line.delta_v += offset
+
+            ln = np.sum(_lines)
+
+            if output == 'flux_decrement':
+                compound_model = (dc | rs | (continuum + (ln | FluxDecrementConvert())))
+            elif output == 'flux':
+                compound_model = (dc | rs | (continuum + (ln | FluxConvert())))
+            else:
+                compound_model = (dc | rs | (continuum + ln))
         else:
-            compound_model = (dc | rs | (continuum + ln))
+            compound_model = (dc | rs | continuum)
 
         # Check for any lsf kernels that have been added
         if lsf is not None:
@@ -79,7 +107,7 @@ class DynamicFittable1DModelMeta(type):
         _cls_kwargs.update(cls.__dict__)
         _cls_kwargs['continuum'] = continuum
 
-        Spectral1D = type("Spectral1D", (compound_model,), _cls_kwargs)
+        Spectral1D = type("Spectral1D", (compound_model.__class__,), _cls_kwargs)
 
         # Override the call function on the returned generated compound model
         # class in order to return a Spectrum1D object.
@@ -125,8 +153,8 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
     input_units = {'x': u.Unit('km/s')}
 
     def fit_to(self, x, y, fitter=CurveFitter(), kwargs={}):
-        if not fitter.__class__ in _FitterMeta.registry:
-            raise Exception("Fitter must be an astropy fitter subclass.")
+        # if not fitter.__class__ in _FitterMeta.registry:
+        #     raise Exception("Fitter must be an astropy fitter subclass.")
 
         # The internal models assume all inputs are in km/s, if provided a
         # quantity object, ensure that it is converted to the proper units.
@@ -216,7 +244,7 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
         else:
             return 'optical_depth'
 
-    def copy(self, **kwargs):
+    def _copy(self, **kwargs):
         """
         Copy the spectral model, optionally overriding any previous values.
 
@@ -235,7 +263,8 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
             continuum=self.continuum,
             z=self.redshift,
             rest_wavelength=self.rest_wavelength,
-            output=self.output_type)
+            output=self.output_type,
+            lsf=self.lsf_kernel)
 
         new_kwargs.update(kwargs)
 
@@ -244,32 +273,34 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
     @property
     def as_flux(self):
         """New spectral model that produces flux output."""
-        return self.copy(output='flux')
+        return self._copy(output='flux')
 
     @property
     def as_flux_decrement(self):
         """New spectral model that produces flux decrement output."""
-        return self.copy(output='flux_decrement')
+        return self._copy(output='flux_decrement')
 
     @property
     def as_optical_depth(self):
         """New spectral model that produces optical depth output."""
-        return self.copy(output='optical_depth')
+        return self._copy(output='optical_depth')
 
     def with_lsf(self, kernel=None, **kwargs):
         """New spectral model with a line spread function."""
-        if isinstance(kernel, LSFModel):
-            return self.copy(lsf=kernel)
-        elif isinstance(kernel, Kernel1D):
-            return self.copy(lsf=LSFModel(kernel=kernel))
-        elif isinstance(kernel, str):
-            if kernel == 'cos':
-                return self.copy(lsf=COSLSFModel())
-            elif kernel == 'gaussian':
-                return self.copy(lsf=GaussianLSFModel(**kwargs))
+        return self._copy(lsf=kernel)
 
-        raise ValueError("Kernel must be of type 'LSFModel', or 'Kernel1D'; "
-                         "or a string with value 'cos' or 'gaussian'.")
+    def with_line(self, *args, **kwargs):
+        """
+        Add a new line to the spectral model.
+
+        Returns
+        -------
+        : :class:`~spectacle.modeling.models.Spectral1D`
+            The new spectral model.
+        """
+        new_line = OpticalDepth1D(*args, **kwargs)
+
+        return self._copy(lines=self.lines + [new_line])
 
 
 class ProfileMultiplier(Fittable1DModel):
@@ -282,7 +313,7 @@ class ProfileMultiplier(Fittable1DModel):
     def evaluate(self, count, *args, **kwargs):
 
 
-        return self.copy()
+        return self._copy()
 
 
 def _set_custom_call(cls):

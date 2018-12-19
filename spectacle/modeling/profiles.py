@@ -92,6 +92,7 @@ class OpticalDepth1D(Fittable1DModel):
                                    "table.".format(name))
 
             name = line['name']
+            self.lambda_0 = line['wave']
         else:
             ind = find_nearest(line_table['wave'].value, self.lambda_0.value)
             line = line_table[ind]

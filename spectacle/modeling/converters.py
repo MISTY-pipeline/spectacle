@@ -2,6 +2,12 @@ import astropy.units as u
 import numpy as np
 from astropy.modeling import Fittable1DModel, Parameter
 
+DOPPLER_CONVERT = {
+    'optical': u.doppler_optical,
+    'radio': u.doppler_radio,
+    'relativistic': u.doppler_relativistic
+}
+
 
 class FluxConvert(Fittable1DModel):
     inputs = ('y',)
@@ -46,13 +52,13 @@ class DispersionConvert(Fittable1DModel):
 
     @property
     def input_units_equivalencies(self):
-        return {'x': u.spectral() + u.doppler_relativistic(
+        return {'x': u.spectral() + u.doppler_optical(
             self.rest_wavelength.value * u.AA)}
 
     @staticmethod
     def evaluate(x, rest_wavelength):
         """One dimensional Scale model function"""
-        disp_equiv = u.spectral() + u.doppler_relativistic(
+        disp_equiv = u.spectral() + u.doppler_optical(
             u.Quantity(rest_wavelength, u.AA))
 
         with u.set_enabled_equivalencies(disp_equiv):
