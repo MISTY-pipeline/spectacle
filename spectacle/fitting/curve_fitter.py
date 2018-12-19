@@ -28,7 +28,17 @@ class CurveFitter(LevMarLSQFitter):
 
     @fitter_unit_support
     def __call__(self, *args, **kwargs):
-        return self._curve_fit(*args, **kwargs)
+        method = kwargs.get('method', 'curve')
+
+        if method == 'curve':
+            return self._curve_fit(*args, **kwargs)
+        elif method == 'leastsq':
+            return self._leastsq(*args, **kwargs)
+        elif method == 'bootstrap':
+            return self._bootstrap(*args, **kwargs)
+        else:
+            raise ValueError("No method named '{}'. Must be one of 'curve', "
+                             "'leastsq', or 'bootstrap'.".format(method))
 
     def _curve_fit(self, model, x, y, z=None, weights=None, yerr=None,
                    maxiter=DEFAULT_MAXITER, acc=DEFAULT_ACC,
@@ -125,8 +135,6 @@ class CurveFitter(LevMarLSQFitter):
         init_values, _ = _model_to_fit_params(model)
         pfit, finds = _model_to_fit_params(model_copy)
         self._output_errors = np.zeros(model.parameters.shape)
-
-        errfunc = lambda x, y: model_copy(x) - y
         pcov = self.fit_info['param_cov']
 
         error = []
@@ -141,7 +149,7 @@ class CurveFitter(LevMarLSQFitter):
 
         return model_copy
 
-    def _bootstrap(self, model, x, y, z=None, yerrs=0.0, weights=None, **kwargs):
+    def _bootstrap(self, model, x, y, z=None, yerr=0.0, weights=None, **kwargs):
         model_copy = super().__call__(model, x, y, z, weights, **kwargs)
 
         init_values, _ = _model_to_fit_params(model)
@@ -154,7 +162,7 @@ class CurveFitter(LevMarLSQFitter):
         residuals = self.objective_function(*farg)
         sigma_res = np.std(residuals)
 
-        sigma_err_total = np.sqrt(sigma_res ** 2 + yerrs ** 2)
+        sigma_err_total = np.sqrt(sigma_res ** 2 + yerr ** 2)
 
         # 100 random data sets are generated and fitted
         ps = []

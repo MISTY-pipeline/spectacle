@@ -3,7 +3,7 @@ import logging
 import astropy.units as u
 import numpy as np
 from astropy.constants import c, m_e
-from astropy.modeling import Fittable1DModel, Parameter
+from astropy.modeling import Fittable2DModel, Parameter
 
 from ..modeling import OpticalDepth1D, Spectral1D
 from ..utils.detection import region_bounds
@@ -14,22 +14,22 @@ TAU_FACTOR = (np.pi * PROTON_CHARGE ** 2 /
                (m_e.cgs * c.cgs)).cgs
 
 
-class LineFinder1D(Fittable1DModel):
-    inputs = ('x',)
+class LineFinder1D(Fittable2DModel):
+    inputs = ('x', 'y')
     outputs = ('y',)
 
     threshold = Parameter(default=0.1, min=0, max=1)
     min_distance = Parameter(default=10.0, min=1, max=100)
 
-    def __init__(self, y, continuum=None, defaults=None, auto_fit=True,
-                 *args, **kwargs):
+    def __init__(self, continuum=None, defaults=None, auto_fit=True,
+                 output='flux', *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._y = y
         self._continuum = continuum
         self._defaults = defaults or {}
         self._model_result = None
         self._auto_fit = auto_fit
+        self._output = output
 
     @property
     def model_result(self):
@@ -48,7 +48,7 @@ class LineFinder1D(Fittable1DModel):
 
         return super().__call__(*args, **kwargs)
 
-    def evaluate(self, x, threshold, min_distance, *args, **kwargs):
+    def evaluate(self, x, y, threshold, min_distance, *args, **kwargs):
         with u.set_enabled_equivalencies(u.spectral() + u.doppler_relativistic(1216 * u.AA)):
             x = u.Quantity(x, 'km/s')
 
@@ -57,7 +57,7 @@ class LineFinder1D(Fittable1DModel):
         min_ind = (np.abs(x.value - (x[0].value + min_distance))).argmin()
 
         # Find peaks
-        regions = region_bounds(x, self._y)
+        regions = region_bounds(x, y)
 
         lines = []
 
@@ -70,7 +70,7 @@ class LineFinder1D(Fittable1DModel):
                 centroid=centroid,
                 bounds=(mn_bnd, mx_bnd),
                 x=x,
-                y=self._y,
+                y=y,
                 ion_name=line_kwargs.get('name'),
                 buried=buried)
 
@@ -86,8 +86,6 @@ class LineFinder1D(Fittable1DModel):
             line_kwargs.update(estimate_kwargs)
 
             line = OpticalDepth1D(**line_kwargs)
-
-            print(np.trapz(line(x), x))
             lines.append(line)
 
         logging.debug("Found %s possible lines (theshold=%s, min_distance=%s).",
@@ -96,11 +94,11 @@ class LineFinder1D(Fittable1DModel):
         if len(lines) == 0:
             return np.zeros(x.shape)
 
-        spec_mod = Spectral1D(lines, continuum=self._continuum, output='optical_depth')
+        spec_mod = Spectral1D(lines, continuum=self._continuum, output=self._output)
 
         # fitter = LevMarLSQFitter()
         if self._auto_fit:
-            fit_spec_mod = spec_mod.fit_to(x, self._y, kwargs={'maxiter': 2000})
+            fit_spec_mod = spec_mod.fit_to(x, y, kwargs={'maxiter': 2000})
         else:
             fit_spec_mod = spec_mod
 
@@ -115,8 +113,8 @@ def parameter_estimator(centroid, bounds, x, y, ion_name, buried):
     bound_low, bound_up = bounds
     mid_diff = (bound_up - bound_low)
 
-    if buried:
-        mid_diff *= 3
+    # if buried:
+    #     mid_diff *= 3
 
     new_bound_low, new_bound_up = (bound_low - mid_diff), (bound_up + mid_diff)
     mask = ((x >= new_bound_low) & (x <= new_bound_up))
