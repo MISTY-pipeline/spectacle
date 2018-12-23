@@ -10,15 +10,13 @@ from astropy.modeling.models import Voigt1D, Gaussian1D
 from scipy import special
 
 from ..registries.lines import line_registry
-from ..utils.misc import find_nearest
+from ..utils.misc import find_nearest, DOPPLER_CONVERT
 
 __all__ = ['OpticalDepth1D']
 
 PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
 TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /
                (m_e.cgs * c.cgs))).cgs
-
-dop_rel_equiv = u.equivalencies.doppler_relativistic
 
 
 class IncompleteLineInformation(Exception):
@@ -101,9 +99,21 @@ class OpticalDepth1D(Fittable1DModel):
         self.name = name
         self.f_value = line['osc_str']
         self.gamma = line['gamma']
+        self._velocity_convention = 'relativistic'
 
-    @staticmethod
-    def evaluate(x, lambda_0, f_value, gamma, v_doppler, column_density,
+    @property
+    def velocity_convention(self):
+        return self._velocity_convention
+
+    @velocity_convention.setter
+    def velocity_convention(self, value):
+        if value in DOPPLER_CONVERT.keys():
+            self._velocity_convention = value
+        else:
+            raise ValueError("Velocity convention must be one of {}.".format(
+                DOPPLER_CONVERT.keys()))
+
+    def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
         lambda_0 = u.Quantity(lambda_0, 'Angstrom')
         v_doppler = u.Quantity(v_doppler, 'km/s')
@@ -111,8 +121,8 @@ class OpticalDepth1D(Fittable1DModel):
         delta_lambda = u.Quantity(delta_lambda, 'Angstrom')
         delta_v = u.Quantity(delta_v, 'km/s')
 
-        with u.set_enabled_equivalencies(dop_rel_equiv(lambda_0)):
-            x = u.Quantity(x, 'km/s').to('Angstrom')
+        with u.set_enabled_equivalencies(DOPPLER_CONVERT[self.velocity_convention](lambda_0)):
+            x = u.Quantity(x, 'Angstrom')
 
         # shift lambda_0 by delta_v
         shifted_lambda = lambda_0 * (1 + delta_v / c.cgs) + delta_lambda
