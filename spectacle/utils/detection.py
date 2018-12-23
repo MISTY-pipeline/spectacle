@@ -1,9 +1,19 @@
 import numpy as np
+from astropy.convolution import convolve
+from spectacle.utils.misc import find_nearest
 
 
 def region_bounds(x, y):
-    from astropy.convolution import convolve
-    from spectacle.utils.misc import find_nearest
+    # Slice the y axis in half -- if more data elements exist in the "top"
+    # half, assume the spectrum is absorption. Otherwise, assume emission.
+    mid_y = min(y) + (max(y) - min(y)) * 0.5
+
+    print(mid_y, len(y[y > mid_y]), len(y[y < mid_y]))
+
+    # if len(y[y > mid_y]) > len(y[y < mid_y]):
+    #     # Absorption
+    #
+    #     y = max(y) - y
 
     kernel = [1, 0, -1]
 

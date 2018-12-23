@@ -28,7 +28,7 @@ class LineRegistry(QTable):
 
     def with_lambda(self, lambda_0):
         lambda_0 = u.Quantity(lambda_0, u.Unit('Angstrom'))
-        ind = find_nearest(self['wave'], lambda_0.value)
+        ind = find_nearest(self['wave'], lambda_0)
 
         return self[ind]
 
