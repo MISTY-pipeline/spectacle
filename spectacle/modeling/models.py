@@ -3,15 +3,16 @@ import operator
 import astropy.units as u
 import numpy as np
 from astropy.modeling import Fittable1DModel, Parameter
-from astropy.modeling.fitting import _FitterMeta
+from astropy.modeling.fitting import _FitterMeta, LevMarLSQFitter
 from astropy.modeling.models import Const1D, RedshiftScaleFactor
 from astropy.convolution import Kernel1D
 from specutils import Spectrum1D
 
-from .converters import DispersionConvert, FluxConvert, FluxDecrementConvert
+from .converters import FluxConvert, FluxDecrementConvert
 from .profiles import OpticalDepth1D
 from .lsfs import COSLSFModel, GaussianLSFModel, LSFModel
 from ..fitting.curve_fitter import CurveFitter
+from ..utils.misc import DOPPLER_CONVERT
 
 __all__ = ['Spectral1D']
 
@@ -23,9 +24,8 @@ class DynamicFittable1DModelMeta(type):
     :class:`~spectacle.modeling.profiles.OpticalDepth1D` and return a new
     compound model.
     """
-    def __call__(cls, lines=None, continuum=None, z=0,
-                 rest_wavelength=0 * u.AA, lsf=None, output='flux',
-                 *args, **kwargs):
+    def __call__(cls, lines=None, continuum=None, z=0, lsf=None, output='flux',
+                 velocity_convention='relativistic', **kwargs):
         # If no continuum is provided, or the continuum provided is not a
         # model, use a constant model to represent the continuum.
         if continuum is not None and isinstance(continuum, Fittable1DModel):
@@ -65,7 +65,7 @@ class DynamicFittable1DModelMeta(type):
                 if lsf == 'cos':
                     lsf = COSLSFModel()
                 elif lsf == 'gaussian':
-                    lsf = GaussianLSFModel(**kwargs)
+                    lsf = GaussianLSFModel(kwargs.pop('stddev', 1))
             else:
                 raise ValueError("Kernel must be of type 'LSFModel', or "
                                  "'Kernel1D'; or a string with value 'cos' "
@@ -73,28 +73,19 @@ class DynamicFittable1DModelMeta(type):
 
         # Compose the line-based compound model taking into consideration
         # the redshift, continuum, and dispersion conversions.
-        dc = DispersionConvert(u.Quantity(rest_wavelength, u.AA))
-        rs = RedshiftScaleFactor(z, fixed={'z': True})
+        rs = RedshiftScaleFactor(z, fixed={'z': True}).inverse
 
         if lines is not None:
-            if len(lines) > 1:
-                for line in lines:
-                    # Calculate the velocity offset given the rest wavelength
-                    with u.set_enabled_equivalencies(u.doppler_optical(rest_wavelength)):
-                        offset = line.lambda_0.quantity.to('km/s')
-
-                    line.delta_v += offset
-
             ln = np.sum(_lines)
 
             if output == 'flux_decrement':
-                compound_model = (dc | rs | (continuum + (ln | FluxDecrementConvert())))
+                compound_model = (rs | (continuum + (ln | FluxDecrementConvert())) | rs.inverse)
             elif output == 'flux':
-                compound_model = (dc | rs | (continuum + (ln | FluxConvert())))
+                compound_model = (rs | (continuum + (ln | FluxConvert())) | rs.inverse)
             else:
-                compound_model = (dc | rs | (continuum + ln))
+                compound_model = (rs | (continuum + ln) | rs.inverse)
         else:
-            compound_model = (dc | rs | continuum)
+            compound_model = (rs | continuum | rs.inverse)
 
         # Check for any lsf kernels that have been added
         if lsf is not None:
@@ -106,6 +97,7 @@ class DynamicFittable1DModelMeta(type):
         _cls_kwargs = {}
         _cls_kwargs.update(cls.__dict__)
         _cls_kwargs['continuum'] = continuum
+        _cls_kwargs['_velocity_convention'] = velocity_convention
 
         Spectral1D = type("Spectral1D", (compound_model.__class__,), _cls_kwargs)
 
@@ -118,7 +110,7 @@ class DynamicFittable1DModelMeta(type):
         # object does not belong to the class.
         # spec1d.__dict__.update(cls.__dict__)
 
-        return type.__call__(Spectral1D, *args, **kwargs)
+        return type.__call__(Spectral1D, **kwargs)
 
 
 class Spectral1D(metaclass=DynamicFittable1DModelMeta):
@@ -138,9 +130,6 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
         provided, a :class:`~Const1D` model is used.
     z : float, optional
         The redshift applied to the spectral model. Default = 0.
-    rest_wavelength : :class:`~astropy.units.Quantity`, optional
-        The rest wavelength used in dispersions conversions between wavelength
-        and velocity. Default = 0 Angstroms.
     lsf : :class:`~spectacle.modeling.lsfs.LSFModel`, :class:`~astropy.convolution.Kernel1D`, str, optional
         The line spread function applied to the spectral model. It can be a
         pre-defined kernel model, or a convolution kernel, or a string
@@ -149,17 +138,27 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
     """
     inputs = ('x',)
     outputs = ('y',)
-    input_units_allow_dimensionless = True
-    input_units = {'x': u.Unit('km/s')}
+    input_units_allow_dimensionless = False
 
-    def fit_to(self, x, y, fitter=CurveFitter(), kwargs={}):
+    def fit_to(self, x, y, fitter=CurveFitter(), rest_wavelength=None, **kwargs):
         # if not fitter.__class__ in _FitterMeta.registry:
         #     raise Exception("Fitter must be an astropy fitter subclass.")
 
         # The internal models assume all inputs are in km/s, if provided a
         # quantity object, ensure that it is converted to the proper units.
         if isinstance(x, u.Quantity):
-            x = x.to('km/s').value
+            if x.unit.physical_type == 'speed':
+                if rest_wavelength is None:
+                    raise ValueError("A `rest_wavelength` must be included when the"
+                                     "dispersion is provided in velocity space.")
+
+                disp_equiv = u.spectral() + DOPPLER_CONVERT[
+                    self._velocity_convention](rest_wavelength)
+
+                with u.set_enabled_equivalencies(disp_equiv):
+                    x = x.to('Angstrom')
+            elif x.unit.physical_type in ('length', 'frequency'):
+                x = x.to('Angstrom', equivalencies=u.spectral())
 
         # A data array returned by a Spectrum1D object is implicitly a Quantity
         # and should be reverted to a regular array for the unitless fitter.
@@ -169,8 +168,9 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
         # Create a new compound without units that can be used with the
         # astropy fitters, since compound models with units are not
         # currently supported.
-        unitless_cls, parameter_units = _strip_units(self)
-        fitted_model = fitter(unitless_cls(), x, y, **kwargs)
+        unitless_cls, parameter_units = _strip_units(self, x)
+
+        fitted_model = fitter(unitless_cls(), x.value, y, **kwargs)
 
         # Now we put back the units on the model
         model_with_units = _apply_units(fitted_model, parameter_units)
@@ -194,19 +194,7 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
             The redshift value.
         """
         return next((x for x in self
-                     if isinstance(x, RedshiftScaleFactor))).z.value
-
-    @property
-    def rest_wavelength(self):
-        """
-        Wavelength at which conversions to and from velocity space will be
-        performed.
-
-        : u.Quantity
-            The rest wavelength.
-        """
-        return next((x for x in self
-                     if isinstance(x, DispersionConvert))).rest_wavelength.quantity
+                     if isinstance(x, RedshiftScaleFactor))).inverse.z.value
 
     @property
     def lines(self):
@@ -262,7 +250,6 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
             lines=self.lines,
             continuum=self.continuum,
             z=self.redshift,
-            rest_wavelength=self.rest_wavelength,
             output=self.output_type,
             lsf=self.lsf_kernel)
 
@@ -287,7 +274,7 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
 
     def with_lsf(self, kernel=None, **kwargs):
         """New spectral model with a line spread function."""
-        return self._copy(lsf=kernel)
+        return self._copy(lsf=kernel, **kwargs)
 
     def with_line(self, *args, **kwargs):
         """
@@ -366,13 +353,13 @@ def _strip_units(compound_model, x=None):
             param = getattr(sub_mod, pn)
 
             if param.unit is not None:
-                if x is not None and isinstance(x, u.Quantity):
-                    with u.set_enabled_equivalencies(
-                            u.spectral() + u.doppler_relativistic(
-                                compound_model._rest_wavelength)):
-                        quant = param.quantity.to(x.unit)
-                else:
-                    quant = u.Quantity(param.value)
+                # if x is not None and isinstance(x, u.Quantity):
+                #     print("Value", sub_mod.lambda_0.quantity)
+                #     with u.set_enabled_equivalencies(
+                #             u.spectral() + u.doppler_relativistic(lambda_0)):
+                #         quant = param.quantity.to(x.unit)
+                # else:
+                quant = param.quantity
 
                 param.value = quant.value
                 param._set_unit(None, force=True)
