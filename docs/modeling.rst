@@ -64,7 +64,7 @@ absorption or emission data into the dispersion bins. Likewise, `flux` and
 Applying line spread functions
 ------------------------------
 
-LSFs can be added to the :class:`spectacle.modeling.models.Spectral1D` model to
+LSFs can be added to the :class:`~spectacle.modeling.models.Spectral1D` model to
 generate data that more appropriately matches what one might expect from an
 instrument like, e.g., HST COS
 
@@ -78,18 +78,108 @@ instrument like, e.g., HST COS
     >>> from matplotlib import pyplot as plt
     >>> from spectacle.modeling import Spectral1D, OpticalDepth1D
 
-    >>> line = OpticalDepth1D("HI1216", v_doppler=500 * u.km/u.s, column_density=14)
-    >>> line2 = OpticalDepth1D("OVI1038", v_doppler=500 * u.km/u.s)
+    >>> line1 = OpticalDepth1D("HI1216", v_doppler=500 * u.km/u.s, column_density=14)
+    >>> line2 = OpticalDepth1D("OVI1038", v_doppler=500 * u.km/u.s, column_density=15)
 
-    >>> spec_mod = Spectral1D([line2], continuum=1, rest_wavelength=900 * u.AA, lsf='cos', output='flux')
-    >>> x = np.linspace(0, 2000, 1000) * u.Unit('Angstrom')
+    LSFs can either be applied directly during spectrum model creation:
+
+    >>> spec_mod_with_lsf = Spectral1D([line1, line2], continuum=1, lsf='cos', output='flux')
+
+    or they can be applied after the fact:
+
+    >>> spec_mod = Spectral1D([line1, line2], continuum=1, output='flux')
+    >>> spec_mod_with_lsf = spec_mod.with_lsf('cos')
+
+    >>> x = np.linspace(1000, 1300, 1000) * u.Unit('Angstrom')
 
     >>> f, ax = plt.subplots()
-    >>> ax.set_title("Flux")
-    >>> ax.step(x, spec_mod(x))
+    >>> ax.step(x, spec_mod(x), label="Flux")
+    >>> ax.step(x, spec_mod_with_lsf(x), label="Flux with LSF")
+    >>> ax.set_xlabel("Wavelength [Angstrom]")
+    >>> f.legend(loc=0)
+
+
+Supplying custom LSF kernels
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Spectacle provides two built-in LSF kernels: the HST COS kernel, and a Gaussian
+kernel. Both can be applied by simply passing in a string, and in the latter
+case, also supplying an additional `stddev` keyword argument::
+
+    spec_mod = Spectral1D("HI1216", continuum=1, lsf='cos')
+    spec_mod = Spectral1D("HI1216", continuum=1, lsf='gaussian', stddev=15)
+
+Users may also supply their own kernels, or any
+`Astropy 1D kernel <http://docs.astropy.org/en/stable/convolution/index.html#classes>`_.
+The only restriction is that kernels must be a subclass of either
+:class:`~spectacle.modeling.lsfs.LSFModel`, or :class:`~astropy.convolution.Kernel1D`.
+
 
 Converting dispersions
 ----------------------
+
+Spectacle supports dispersions in either wavelength space or velocity space,
+and will implicitly deal with conversions internally as necessary. Conversions
+to velocity space is calculated using the relativistic doppler equation
+
+.. math::
+    V &= c \frac{f_0^2 - f^2}{f_0^2 + f^2},
+
+    f(V) &= f_0 \frac{\left(1 - (V/c)^2\right)^{1/2}}{(1+V/c)}.
+
+This of course makes the assumption that observed redshift is due to relativistic
+effects along the light of sight. At higher redshifts, however, the predominant
+source of observed redshift is due to the cosmological expansion of space, and
+not the source's velocity with respect to the observer.
+
+It is possible to set the approximation used in wavelength/frequency to
+velocity conversions for Spectacle. Aside from the default relativistic
+calculation, users can choose the "optical definition"
+
+.. math:: V = c \frac{f_0 - f}{f  }  ;  f(V) = f_0 ( 1 + V/c )^{-1}
+
+or the "radio definition"
+
+.. math:: V = c \frac{f_0 - f}{f_0}  ;  f(V) = f_0 ( 1 - V/c ).
+
+This can be done upon instantiation of the
+:class:`~spectacle.modeling.models.Spectral1D` model::
+
+    spec_mod = Spectral1D("HI1216", continuum=1, z=0, velocity_convention='optical')
+
+The `velocity_convention` keyword supports one either `relativisitic`,
+`optical`, or `radio` to indiciate the definition to be used in internal
+conversions.
+
+.. plot::
+    :include-source:
+    :align: center
+    :context: close-figs
+
+    >>> from astropy import units as u
+    >>> import numpy as np
+    >>> from matplotlib import pyplot as plt
+    >>> from spectacle.modeling import Spectral1D, OpticalDepth1D
+
+    >>> line1 = OpticalDepth1D("HI1216", v_doppler=500 * u.km/u.s, column_density=14)
+    >>> line2 = OpticalDepth1D("OVI1038", v_doppler=500 * u.km/u.s, column_density=15)
+
+    LSFs can either be applied directly during spectrum model creation:
+
+    >>> spec_mod_with_lsf = Spectral1D([line1, line2], continuum=1, lsf='cos', output='flux')
+
+    or they can be applied after the fact:
+
+    >>> spec_mod = Spectral1D([line1, line2], continuum=1, output='flux')
+    >>> spec_mod_with_lsf = spec_mod.with_lsf('cos')
+
+    >>> x = np.linspace(1000, 1300, 1000) * u.Unit('Angstrom')
+
+    >>> f, ax = plt.subplots()
+    >>> ax.step(x, spec_mod(x), label="Flux")
+    >>> ax.step(x, spec_mod_with_lsf(x), label="Flux with LSF")
+    >>> ax.set_xlabel("Wavelength [Angstrom]")
+    >>> f.legend(loc=0)
 
 Implementing redshift
 ---------------------

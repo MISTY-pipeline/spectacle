@@ -1,6 +1,7 @@
-Spectacle
-*********
+.. image:: _static/logo.png
+    :align: center
 
+|
 Spectacle is an automated model generator for producing models that represent
 spectral data. It features the ability to reduce spectral data to its absorption
 or emission components, fit features and continua, as well as allow for
@@ -38,7 +39,7 @@ Quick example
     Create the multi-component spectral model, defining a rest wavelength and
     explicitly defining some redshift value.
 
-    >>> spec_mod = Spectral1D([line, line2], z=0, rest_wavelength=line.lambda_0.quantity, output='flux')
+    >>> spec_mod = Spectral1D([line, line2], continuum=1, z=0, output='flux')
 
     Generate spectral data from the model.
 
