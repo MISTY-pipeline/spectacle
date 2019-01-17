@@ -24,7 +24,7 @@ class LineFinder1D(Fittable2DModel):
     def input_units_allow_dimensionless(self):
         return {'x': False, 'y': True}
 
-    threshold = Parameter(default=0.1, min=0, max=1)
+    threshold = Parameter(default=0)
     min_distance = Parameter(default=10.0, min=1, max=100)
 
     def __init__(self, ions=None, continuum=None, defaults=None,
@@ -91,11 +91,11 @@ class LineFinder1D(Fittable2DModel):
         min_ind = (np.abs(x.value - (x[0].value + min_distance))).argmin()
 
         # Find peaks
-        regions = region_bounds(x, y)
+        regions = region_bounds(x, y, threshold=threshold)
 
         lines = []
 
-        for (mn_bnd, mx_bnd), (centroid, buried) in [x for x in regions.items()]:
+        for (mn_bnd, mx_bnd), (centroid, buried) in regions.items():
             mn_bnd, mx_bnd = mn_bnd * x.unit, mx_bnd * x.unit
             sub_x = None
 
@@ -108,12 +108,6 @@ class LineFinder1D(Fittable2DModel):
             if x.unit.physical_type in ('length', 'frequency'):
                 line = sub_registry.with_lambda(centroid)
 
-                line_kwargs.update({
-                    'name': line['name'],
-                    'lambda_0': line['wave'],
-                    'gamma': line['gamma'],
-                    'f_value': line['osc_str']})
-
                 disp_equiv = u.spectral() + DOPPLER_CONVERT[
                     self._velocity_convention](centroid)
 
@@ -125,11 +119,11 @@ class LineFinder1D(Fittable2DModel):
             else:
                 line = sub_registry.with_name(self._ions[0])
 
-                line_kwargs.update({
-                    'name': line['name'],
-                    'lambda_0': line['wave'],
-                    'gamma': line['gamma'],
-                    'f_value': line['osc_str']})
+            line_kwargs.update({
+                'name': line['name'],
+                'lambda_0': line['wave'],
+                'gamma': line['gamma'],
+                'f_value': line['osc_str']})
 
             # Estimate the doppler b and column densities for this line
             v_dop, col_dens, nmn_bnd, nmx_bnd = parameter_estimator(
@@ -140,6 +134,9 @@ class LineFinder1D(Fittable2DModel):
                 ion_name=line_kwargs.get('name'),
                 buried=buried,
                 velocity_convention=self._velocity_convention)
+
+            if np.isinf(col_dens):
+                continue
 
             estimate_kwargs = {
                 'delta_v': centroid,
@@ -166,10 +163,14 @@ class LineFinder1D(Fittable2DModel):
 
         # fitter = LevMarLSQFitter()
         if self._auto_fit:
-            fit_spec_mod = spec_mod.fit_to(x, y,
-                                           rest_wavelength=sub_registry.with_name(self._ions[0])['wave'] if x.unit.physical_type == 'speed' else None,
-                                           maxiter=2000,
-                                           fitter=LevMarLSQFitter())
+            fit_spec_mod = spec_mod.fit_to(
+                x=x,
+                y=y,
+                rest_wavelength=sub_registry.with_name(self._ions[0])['wave']
+                                if x.unit.physical_type == 'speed' else None,
+                maxiter=2000,
+                fitter=LevMarLSQFitter())
+
         else:
             fit_spec_mod = spec_mod
 
@@ -213,14 +214,16 @@ def parameter_estimator(centroid, bounds, x, y, ion_name, buried, velocity_conve
     # Estimate the column density
     # col_dens = (v_dop / TAU_FACTOR * c.cgs ** 2).to('1/cm2')
     col_dens = (sum_y / (TAU_FACTOR * ion['wave'] * ion['osc_str'])).to('1/cm2')
-    col_dens = np.log10(col_dens.value)
+    ln_col_dens = np.log10(col_dens.value)
 
     if buried:
-        col_dens -= 0.1
+        ln_col_dens -= 0.1
 
     logging.info("""Estimated initial values:
+    Ion: {}
     Centroid: {:g}
-    Column density: {:g}
-    Doppler width: {:g}""".format(centroid, col_dens, v_dop))
+    Column density: {:g}, ({:g})
+    Doppler width: {:g}""".format(ion_name, centroid, ln_col_dens,
+                                  col_dens, v_dop))
 
-    return v_dop, col_dens, new_bound_low, new_bound_up
+    return v_dop, ln_col_dens, new_bound_low, new_bound_up
