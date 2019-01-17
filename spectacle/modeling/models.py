@@ -79,11 +79,11 @@ class DynamicFittable1DModelMeta(type):
             ln = np.sum(_lines)
 
             if output == 'flux_decrement':
-                compound_model = continuum + ((rs | ln | FluxDecrementConvert()) | rs.inverse)
+                compound_model = ((rs | (continuum + ln | FluxDecrementConvert())) | rs.inverse)
             elif output == 'flux':
-                compound_model = continuum + ((rs | ln | FluxConvert()) | rs.inverse)
+                compound_model = ((rs | continuum + (ln | FluxConvert())) | rs.inverse)
             else:
-                compound_model = continuum + (rs | ln | rs.inverse)
+                compound_model = (rs | (continuum + ln) | rs.inverse)
         else:
             compound_model = (rs | continuum | rs.inverse)
 

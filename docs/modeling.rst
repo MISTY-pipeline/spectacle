@@ -184,11 +184,14 @@ conversions.
 Implementing redshift
 ---------------------
 
-The redshift behavior in Spectacle is nuanced, and perhaps not what the user
-may expect. When creating a :class:`~spectacle.modeling.models.Spectral1D`
-model, providing a `z` parameter indicates the redshift of the **input** dispersion.
-Internally, Spectacle will then de-redshift the data before performing internal
-operations and produce an output at the same redshift value.
+When creating a :class:`~spectacle.modeling.models.Spectral1D`
+model, the user can provide a redshift at which the output spectrum will
+deposit the lines by including a `z` parameter.
+
+.. note::
+    When :ref:`fitting <fitting>`, including the `z` parameter
+    indicates the redshift of the *input* dispersion. Spectacle will de-redshift
+    the data input using this value before performing any fits.
 
 
 .. plot::
@@ -204,12 +207,7 @@ operations and produce an output at the same redshift value.
     >>> line1 = OpticalDepth1D("HI1216", v_doppler=500 * u.km/u.s, column_density=14)
     >>> line2 = OpticalDepth1D("OVI1038", v_doppler=500 * u.km/u.s, column_density=15)
 
-    LSFs can either be applied directly during spectrum model creation:
-
     >>> spec_mod = Spectral1D([line1, line2], continuum=1, z=0, output='flux')
-
-    or they can be applied after the fact:
-
     >>> spec_mod_with_z = Spectral1D([line1, line2], continuum=1, z=0.05, output='flux')
 
     >>> x = np.linspace(1000, 1300, 1000) * u.Unit('Angstrom')
