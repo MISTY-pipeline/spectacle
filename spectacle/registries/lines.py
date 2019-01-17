@@ -30,7 +30,7 @@ class LineRegistry(QTable):
         lambda_0 = u.Quantity(lambda_0, u.Unit('Angstrom'))
         ind = find_nearest(self['wave'], lambda_0)
 
-        return self[ind]
+        return self[ind][0]
 
     def correct(self, name):
         _corrector = SpellingCorrector(list(self['name']))
