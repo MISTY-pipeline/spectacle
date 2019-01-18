@@ -2,9 +2,9 @@ import operator
 
 import astropy.units as u
 import numpy as np
-from astropy.modeling import Fittable1DModel, Parameter
+from astropy.modeling import Fittable1DModel, FittableModel, Parameter
 from astropy.modeling.fitting import _FitterMeta, LevMarLSQFitter
-from astropy.modeling.models import Const1D, RedshiftScaleFactor
+from astropy.modeling.models import Const1D, RedshiftScaleFactor, Polynomial1D
 from astropy.convolution import Kernel1D
 from specutils import Spectrum1D
 
@@ -28,12 +28,12 @@ class DynamicFittable1DModelMeta(type):
                  velocity_convention='relativistic', **kwargs):
         # If no continuum is provided, or the continuum provided is not a
         # model, use a constant model to represent the continuum.
-        if continuum is not None and isinstance(continuum, Fittable1DModel):
-            if isinstance(continuum, (float, int)):
-                continuum = Const1D(amplitude=continuum,
-                                    fixed={'amplitude': True})
-        elif isinstance(continuum, (float, int)):
-            continuum = Const1D(amplitude=continuum, fixed={'amplitude': True})
+        if continuum is not None:
+            if not issubclass(type(continuum), FittableModel):
+                if isinstance(continuum, (float, int)):
+                    continuum = Const1D(amplitude=continuum, fixed={'amplitude': True})
+                else:
+                    raise ValueError("Continuum must be a number or `Fittable1DModel`.")
         else:
             continuum = Const1D(amplitude=0, fixed={'amplitude': True})
 
