@@ -88,10 +88,10 @@ class LineFinder1D(Fittable2DModel):
 
         # Convert the min_distance from dispersion units to data elements.
         # Assumes uniform spacing.
-        min_ind = (np.abs(x.value - (x[0].value + min_distance))).argmin()
+        # min_ind = (np.abs(x.value - (x[0].value + min_distance))).argmin()
 
         # Find peaks
-        regions = region_bounds(x, y, threshold=threshold)
+        regions = region_bounds(x, y, threshold=threshold, min_distance=min_distance)
 
         lines = []
 
