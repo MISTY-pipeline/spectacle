@@ -1,16 +1,16 @@
+import logging
 import operator
 
 import astropy.units as u
 import numpy as np
-from astropy.modeling import Fittable1DModel, FittableModel, Parameter
-from astropy.modeling.fitting import _FitterMeta, LevMarLSQFitter
-from astropy.modeling.models import Const1D, RedshiftScaleFactor, Polynomial1D
 from astropy.convolution import Kernel1D
-from specutils import Spectrum1D
+from astropy.modeling import Fittable1DModel, FittableModel
+from astropy.modeling.core import _CompoundModelMeta
+from astropy.modeling.models import Const1D, RedshiftScaleFactor
 
 from .converters import FluxConvert, FluxDecrementConvert
-from .profiles import OpticalDepth1D
 from .lsfs import COSLSFModel, GaussianLSFModel, LSFModel
+from .profiles import OpticalDepth1D
 from ..fitting.curve_fitter import CurveFitter
 from ..utils.misc import DOPPLER_CONVERT
 
@@ -33,7 +33,7 @@ class DynamicFittable1DModelMeta(type):
                 if isinstance(continuum, (float, int)):
                     continuum = Const1D(amplitude=continuum, fixed={'amplitude': True})
                 else:
-                    raise ValueError("Continuum must be a number or `Fittable1DModel`.")
+                    raise ValueError("Continuum must be a number or `FittableModel`.")
         else:
             continuum = Const1D(amplitude=0, fixed={'amplitude': True})
 
@@ -91,26 +91,48 @@ class DynamicFittable1DModelMeta(type):
         if lsf is not None:
             compound_model |= lsf
 
-        # Add the definitions inside the original Spectral1D class to the new
-        # compound class. Creating a new class seems to be less error-prone
-        # than dynamically changing the base of a pre-existing class.
-        _cls_kwargs = {}
-        _cls_kwargs.update(cls.__dict__)
-        _cls_kwargs['continuum'] = continuum
-        _cls_kwargs['_velocity_convention'] = velocity_convention
+        # Create a metaclass proxy type to circumvent metaclass conflicts
+        MetaProxy = type("MetaProxy", (DynamicFittable1DModelMeta,
+                                       _CompoundModelMeta), {})
+        # Spectral1D = type("Spectral1D", (cls, compound_model.__class__),
+        #                   {'__metaclass__': MetaProxy})
 
-        Spectral1D = type("Spectral1D", (compound_model.__class__,), _cls_kwargs)
+        class Spectral1D(cls, compound_model.__class__, metaclass=MetaProxy):
+            def __init__(self, lines=None, continuum=None, z=0, lsf=None,
+                         output='flux',
+                         velocity_convention='relativistic'):
+                super().__init__()
 
-        # Override the call function on the returned generated compound model
-        # class in order to return a Spectrum1D object.
-        # _set_custom_call(Spectral1D)
+                self._continuum = continuum
+                self._velocity_convention = velocity_convention
 
-        # Updating the dict directly on an instance instead of during the type
-        # creation above avoids issues of python complaining that the __dict__
-        # object does not belong to the class.
-        # spec1d.__dict__.update(cls.__dict__)
+            def __call__(self, x, *args, **kwargs):
+                if self.ion_count > 1:
+                    logging.info(
+                        "Spectrum is composed of multiple different ions,"
+                        "expecting dispersion as wavelength.")
+                    self._input_units = {'x': 'Angstrom'}
+                else:
+                    logging.info(
+                        "Spectrum is composed of a set of a single ion, "
+                        "expecting dispersion in velocity.")
 
-        return type.__call__(Spectral1D, **kwargs)
+                    rest_wavelength = self.lines[0].lambda_0.quantity
+
+                    disp_equiv = u.spectral() + DOPPLER_CONVERT[
+                        self._velocity_convention](rest_wavelength)
+
+                    self._input_units = {
+                        'x': [(u.Unit('km/s'), u.Unit('Angstrom'),
+                               lambda x: u.Quantity(x, 'km/s').to('Angstrom',
+                                                                  disp_equiv),
+                               lambda x: u.Quantity(x, 'Angstrom').to('km/s',
+                                                                      disp_equiv))]}
+
+                return super().__call__(x, *args, **kwargs)
+
+        return type.__call__(Spectral1D, continuum=continuum,
+                             velocity_convention=velocity_convention, **kwargs)
 
 
 class Spectral1D(metaclass=DynamicFittable1DModelMeta):
@@ -140,34 +162,23 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
     outputs = ('y',)
     input_units_allow_dimensionless = False
 
-    def fit_to(self, x, y, fitter=CurveFitter(), rest_wavelength=None, **kwargs):
+    @property
+    def continuum(self):
+        return self._continuum
+
+    @property
+    def velocity_convention(self):
+        return self._velocity_convention
+
+    def fit_to(self, x, y, fitter=CurveFitter(), **kwargs):
         # if not fitter.__class__ in _FitterMeta.registry:
         #     raise Exception("Fitter must be an astropy fitter subclass.")
-
-        # The internal models assume all inputs are in km/s, if provided a
-        # quantity object, ensure that it is converted to the proper units.
-        if isinstance(x, u.Quantity):
-            if x.unit.physical_type == 'speed':
-                if rest_wavelength is None:
-                    raise ValueError("A `rest_wavelength` must be included when the"
-                                     "dispersion is provided in velocity space.")
-
-                disp_equiv = u.spectral() + DOPPLER_CONVERT[
-                    self._velocity_convention](rest_wavelength)
-
-                with u.set_enabled_equivalencies(disp_equiv):
-                    x = x.to('Angstrom')
-            elif x.unit.physical_type in ('length', 'frequency'):
-                x = x.to('Angstrom', equivalencies=u.spectral())
 
         # A data array returned by a Spectrum1D object is implicitly a Quantity
         # and should be reverted to a regular array for the unitless fitter.
         if isinstance(y, u.Quantity):
             y = y.value
 
-        # Create a new compound without units that can be used with the
-        # astropy fitters, since compound models with units are not
-        # currently supported.
         unitless_cls, parameter_units = _strip_units(self, x)
 
         fitted_model = fitter(unitless_cls(), x.value, y, **kwargs)
@@ -175,7 +186,7 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
         # Now we put back the units on the model
         model_with_units = _apply_units(fitted_model, parameter_units)
 
-        # Attach any estimates parameter errors to the new fitted model
+        # Attach any estimated parameter errors to the newly fitted model
         if hasattr(fitter, 'errors'):
             model_with_units.errors = fitter.errors
         else:
@@ -208,6 +219,19 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
             A list of :class:`~spectacle.modeling.profiles.Voigt1D` models.
         """
         return [x for x in self if isinstance(x, OpticalDepth1D)]
+
+    @property
+    def ion_count(self):
+        """
+        The number of unique ion within this spectrum model.
+
+        Returns
+        -------
+        : int
+            The number of unique ions.
+        """
+        print(set([x.name for x in self.lines]))
+        return len(set([x.name for x in self.lines]))
 
     @property
     def lsf_kernel(self):
@@ -290,27 +314,6 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
         return self._copy(lines=self.lines + [new_line])
 
 
-class ProfileMultiplier(Fittable1DModel):
-    inputs = ('x',)
-    outputs = ('y',)
-
-    count = Parameter(default=0, min=0, tied=lambda x: int(x))
-
-    @staticmethod
-    def evaluate(self, count, *args, **kwargs):
-
-
-        return self._copy()
-
-
-def _set_custom_call(cls):
-    def _custom_call(self, x, *args, **kwargs):
-        data = super(cls, self).__call__(x, *args, **kwargs)
-        return Spectrum1D(flux=u.Quantity(data), spectral_axis=u.Quantity(x))
-
-    setattr(cls, '__call__', _custom_call)
-
-
 # Model arithmetic operators
 OPERATORS = {'+': operator.add,
              '-': operator.sub,
@@ -340,6 +343,10 @@ def _strip_units(compound_model, x=None):
         Compound model without units.
     """
     leaf_idx = -1
+    compound_model = compound_model.copy()
+
+    if x is not None:
+        compound_model._input_units = {'x': x.unit}
 
     parameter_units = {pn: getattr(sm, pn).unit
                        for sm in compound_model for pn in sm.param_names}

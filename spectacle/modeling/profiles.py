@@ -93,25 +93,12 @@ class OpticalDepth1D(Fittable1DModel):
             self.lambda_0 = line['wave']
         else:
             ind = find_nearest(line_table['wave'].value, self.lambda_0.value)
-            line = line_table[ind]
+            line = line_table[ind][0]
             name = line['name']
 
-        self.name = name
+        self.name = str(name)
         self.f_value = line['osc_str']
         self.gamma = line['gamma']
-        self._velocity_convention = 'relativistic'
-
-    @property
-    def velocity_convention(self):
-        return self._velocity_convention
-
-    @velocity_convention.setter
-    def velocity_convention(self, value):
-        if value in DOPPLER_CONVERT.keys():
-            self._velocity_convention = value
-        else:
-            raise ValueError("Velocity convention must be one of {}.".format(
-                DOPPLER_CONVERT.keys()))
 
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
@@ -154,14 +141,14 @@ class OpticalDepth1D(Fittable1DModel):
     def fit_deriv(x, x_0, b, gamma, f):
         return [0, 0, 0, 0]
 
-    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
-        return OrderedDict([('lambda_0', u.Unit('Angstrom')),
-                            ('f_value', None),
-                            ('gamma', None),
-                            ('v_doppler', u.Unit('km/s')),
-                            ('column_density', None),
-                            ('delta_v', u.Unit('km/s')),
-                            ('delta_lambda', u.Unit('Angstrom'))])
+    # def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
+    #     return OrderedDict([('lambda_0', u.Unit('Angstrom')),
+    #                         ('f_value', None),
+    #                         ('gamma', None),
+    #                         ('v_doppler', u.Unit('km/s')),
+    #                         ('column_density', None),
+    #                         ('delta_v', u.Unit('km/s')),
+    #                         ('delta_lambda', u.Unit('Angstrom'))])
 
     def fwhm(self, x):
         """
