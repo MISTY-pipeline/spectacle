@@ -7,7 +7,4 @@ class SingleIonSpectral1D(Fittable1DModel):
         pass
 
     def __init__(self, ion, *args, **kwargs):
-        if isinstance(ion, str):
-
-
         super().__init__(*args, **kwargs)

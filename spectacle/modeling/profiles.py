@@ -5,6 +5,8 @@ import astropy.units as u
 import numpy as np
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable1DModel, Parameter
+from astropy.modeling import fitting
+
 from astropy.modeling.fitting import LevMarLSQFitter
 from astropy.modeling.models import Voigt1D, Gaussian1D
 from scipy import special
@@ -102,15 +104,8 @@ class OpticalDepth1D(Fittable1DModel):
 
     def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
-        lambda_0 = u.Quantity(lambda_0, 'Angstrom')
-        v_doppler = u.Quantity(v_doppler, 'km/s')
-        column_density = u.Quantity(10 ** column_density, '1/cm2')
-        delta_lambda = u.Quantity(delta_lambda, 'Angstrom')
-        delta_v = u.Quantity(delta_v, 'km/s')
-
-        with u.set_enabled_equivalencies(DOPPLER_CONVERT[self.velocity_convention](lambda_0)):
+        with u.set_enabled_equivalencies(u.spectral() + u.doppler_relativistic(lambda_0)):
             x = u.Quantity(x, 'Angstrom')
-
         # shift lambda_0 by delta_v
         shifted_lambda = lambda_0 * (1 + delta_v / c.cgs) + delta_lambda
 
@@ -141,15 +136,6 @@ class OpticalDepth1D(Fittable1DModel):
     def fit_deriv(x, x_0, b, gamma, f):
         return [0, 0, 0, 0]
 
-    # def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
-    #     return OrderedDict([('lambda_0', u.Unit('Angstrom')),
-    #                         ('f_value', None),
-    #                         ('gamma', None),
-    #                         ('v_doppler', u.Unit('km/s')),
-    #                         ('column_density', None),
-    #                         ('delta_v', u.Unit('km/s')),
-    #                         ('delta_lambda', u.Unit('Angstrom'))])
-
     def fwhm(self, x):
         """
         It's unclear how to get the fwhm given the parameters of this Voigt
@@ -178,37 +164,3 @@ class OpticalDepth1D(Fittable1DModel):
         g_fit = LevMarLSQFitter()(g, x, y)
 
         return g_fit.fwhm
-
-    # @u.quantity_input(x=['length', 'speed'])
-    # def delta_v_90(self, x):
-    #     return delta_v_90(x=x, y=self(x),
-    #                       rest_wavelength=self.lambda_0.quantity)
-    #
-    # @u.quantity_input(x=['length', 'speed'])
-    # def equivalent_width(self, x):
-    #     return equivalent_width(x=x, y=self(x))
-
-
-# class ExtendedVoigt1D(Voigt1D):
-#     x_0 = Parameter(default=0)
-#     amplitude_L = Parameter(default=1)
-#     fwhm_L = Parameter(default=2 / np.pi, min=0)
-#     fwhm_G = Parameter(default=np.log(2), min=0)
-#
-#     @property
-#     def fwhm(self):
-#         """
-#         Calculates an approximation of the FWHM.
-#
-#         The approximation is accurate to
-#         about 0.03% (see http://en.wikipedia.org/wiki/Voigt_profile).
-#
-#         Returns
-#         -------
-#         fwhm : float
-#             The estimate of the FWHM
-#         """
-#         fwhm = 0.5346 * self.fwhm_L + np.sqrt(0.2166 * (self.fwhm_L ** 2) +
-#                                               self.fwhm_G ** 2)
-#
-#         return fwhm

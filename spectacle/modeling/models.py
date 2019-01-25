@@ -13,19 +13,75 @@ from .lsfs import COSLSFModel, GaussianLSFModel, LSFModel
 from .profiles import OpticalDepth1D
 from ..fitting.curve_fitter import CurveFitter
 from ..utils.misc import DOPPLER_CONVERT
+from astropy.modeling import Parameter
+from astropy.units.equivalencies import doppler_optical
 
 __all__ = ['Spectral1D']
 
 
-class DynamicFittable1DModelMeta(type):
+class Spectral1D(Fittable1DModel):
     """
-    Meta class that acts as a factory for creating compound models with
-    variable collections of sub models. This can take a collection of
-    :class:`~spectacle.modeling.profiles.OpticalDepth1D` and return a new
-    compound model.
+    Base representation of a compound model containing a variable number of
+    :class:`~spectacle.modeling.profiles.OpticalDepth1D` line model features.
+
+    Parameters
+    ----------
+    lines : str, :class:`~OpticalDepth1D`, list
+        The line information used to compose the spectral model. This can be
+        either a string, in which case the line information is retrieve from the
+        ion registry; an instance of :class:`~OpticalDepth1D`; or a list of
+        either of the previous two types.
+    continuum : :class:`~Fittable1DModel`, optional
+        An astropy model representing the continuum of the spectrum. If not
+        provided, a :class:`~Const1D` model is used.
+    z : float, optional
+        The redshift applied to the spectral model. Default = 0.
+    lsf : :class:`~spectacle.modeling.lsfs.LSFModel`, :class:`~astropy.convolution.Kernel1D`, str, optional
+        The line spread function applied to the spectral model. It can be a
+        pre-defined kernel model, or a convolution kernel, or a string
+        referencing the built-in Hubble COS lsf, or a Gaussian lsf. Optional
+        keyword arguments can be passed through.
     """
-    def __call__(cls, lines=None, continuum=None, z=0, lsf=None, output='flux',
-                 velocity_convention='relativistic', **kwargs):
+    inputs = ('x',)
+    outputs = ('y',)
+
+    @property
+    def input_units_allow_dimensionless(self):
+        return {'x': False}
+
+    @property
+    def input_units(self):
+        if any([x.unit is not None for x in [getattr(self, y) for y in self.param_names]]):
+            if self.is_single_ion:
+                return {'x': u.Unit('km/s')}
+            else:
+                return {'x': u.Unit('Angstrom')}
+        else:
+            return {'x': None}
+
+    @property
+    def input_units_equivalencies(self):
+        rest_wavelength = self.lines[0].lambda_0.quantity \
+            if self.is_single_ion else self.rest_wavelength
+
+        disp_equiv = u.spectral() + DOPPLER_CONVERT[
+            self._velocity_convention](rest_wavelength)
+
+        return {'x': disp_equiv}
+
+    def __new__(cls, lines=None, continuum=None, z=None, lsf=None, output=None,
+                velocity_convention=None, rest_wavelength=None, *args, **kwargs):
+        # If the cls already contains parameter attributes, assume that this is
+        # being called as part of a copy operation and return the class as-is.
+        if (lines is None and continuum is None and z is None and
+                output is None and velocity_convention is None and
+                rest_wavelength is None):
+            return super().__new__(cls)
+
+        output = output or 'flux'
+        velocity_convention = velocity_convention or 'relativistic'
+        rest_wavelength = rest_wavelength or u.Quantity(0, 'Angstrom')
+
         # If no continuum is provided, or the continuum provided is not a
         # model, use a constant model to represent the continuum.
         if continuum is not None:
@@ -91,76 +147,61 @@ class DynamicFittable1DModelMeta(type):
         if lsf is not None:
             compound_model |= lsf
 
-        # Create a metaclass proxy type to circumvent metaclass conflicts
-        MetaProxy = type("MetaProxy", (DynamicFittable1DModelMeta,
-                                       _CompoundModelMeta), {})
-        # Spectral1D = type("Spectral1D", (cls, compound_model.__class__),
-        #                   {'__metaclass__': MetaProxy})
+        # Model parameter members are setup in the model's compound meta class.
+        # After we've attached the parameters to this fittable model, call the
+        # __new__ and __init__ meta methods again to ensure proper creation.
+        members = {}
+        members.update(cls.__dict__)
 
-        class Spectral1D(cls, compound_model.__class__, metaclass=MetaProxy):
-            def __init__(self, lines=None, continuum=None, z=0, lsf=None,
-                         output='flux',
-                         velocity_convention='relativistic'):
-                super().__init__()
+        # Delete all previous parameter definitions living on the class
+        for k, v in members.items():
+            if isinstance(v, Parameter):
+                delattr(cls, k)
 
-                self._continuum = continuum
-                self._velocity_convention = velocity_convention
+        # Create a dictionary to pass as the parameter unit definitions to the
+        # new class. This ensures fitters know this model supports units.
+        data_units = {}
 
-            def __call__(self, x, *args, **kwargs):
-                if self.ion_count > 1:
-                    logging.info(
-                        "Spectrum is composed of multiple different ions,"
-                        "expecting dispersion as wavelength.")
-                    self._input_units = {'x': 'Angstrom'}
-                else:
-                    logging.info(
-                        "Spectrum is composed of a set of a single ion, "
-                        "expecting dispersion in velocity.")
+        # Attach all of the compound model parameters to this model
+        for param_name in compound_model.param_names:
+            param = getattr(compound_model, param_name)
+            members[param_name] = param.copy()
+            data_units[param_name] = param.unit
 
-                    rest_wavelength = self.lines[0].lambda_0.quantity
+        # setattr(cls, '_parameter_units_for_data_units',
+        #         lambda *args: data_units)
+        members['_parameter_units_for_data_units'] = lambda *args: data_units
 
-                    disp_equiv = u.spectral() + DOPPLER_CONVERT[
-                        self._velocity_convention](rest_wavelength)
+        # Since the fitting machinery makes a copy of the model object, attach
+        # what would be instance-level attributes to the class.
+        # setattr(cls, '_continuum', continuum)
+        # setattr(cls, '_compound_model', compound_model)
+        # setattr(cls, '_velocity_convention', velocity_convention)
+        # setattr(cls, '_rest_wavelength', rest_wavelength)
 
-                    self._input_units = {
-                        'x': [(u.Unit('km/s'), u.Unit('Angstrom'),
-                               lambda x: u.Quantity(x, 'km/s').to('Angstrom',
-                                                                  disp_equiv),
-                               lambda x: u.Quantity(x, 'Angstrom').to('km/s',
-                                                                      disp_equiv))]}
+        cls = type('Spectral1D', (cls, ), members)
+        instance = super().__new__(cls)
 
-                return super().__call__(x, *args, **kwargs)
+        # Define the instance-level parameters
+        setattr(instance, '_continuum', continuum)
+        setattr(instance, '_compound_model', compound_model)
+        setattr(instance, '_velocity_convention', velocity_convention)
+        setattr(instance, '_rest_wavelength', rest_wavelength)
 
-        return type.__call__(Spectral1D, continuum=continuum,
-                             velocity_convention=velocity_convention, **kwargs)
+        return instance
 
+    def __init__(self, *args, **kwargs):
+        super().__init__()
 
-class Spectral1D(metaclass=DynamicFittable1DModelMeta):
-    """
-    Base representation of a compound model containing a variable number of
-    :class:`~spectacle.modeling.profiles.OpticalDepth1D` line model features.
+    def evaluate(self, x, *args, **kwargs):
+        # For the input dispersion to be unit-ful, especially when fitting
+        x = u.Quantity(x, 'km/s') if self.is_single_ion else u.Quantity(x, 'Angstrom')
 
-    Parameters
-    ----------
-    lines : str, :class:`~OpticalDepth1D`, list
-        The line information used to compose the spectral model. This can be
-        either a string, in which case the line information is retrieve from the
-        ion registry; an instance of :class:`~OpticalDepth1D`; or a list of
-        either of the previous two types.
-    continuum : :class:`~Fittable1DModel`, optional
-        An astropy model representing the continuum of the spectrum. If not
-        provided, a :class:`~Const1D` model is used.
-    z : float, optional
-        The redshift applied to the spectral model. Default = 0.
-    lsf : :class:`~spectacle.modeling.lsfs.LSFModel`, :class:`~astropy.convolution.Kernel1D`, str, optional
-        The line spread function applied to the spectral model. It can be a
-        pre-defined kernel model, or a convolution kernel, or a string
-        referencing the built-in Hubble COS lsf, or a Gaussian lsf. Optional
-        keyword arguments can be passed through.
-    """
-    inputs = ('x',)
-    outputs = ('y',)
-    input_units_allow_dimensionless = False
+        # For the parameters to be unit-ful especially when used in fitting
+        args = [u.Quantity(val, unit) if unit is not None else val
+                for val, unit in zip(args, self._parameter_units_for_data_units().values())]
+
+        return self._compound_model.__class__(*args, **kwargs)(x)
 
     @property
     def continuum(self):
@@ -170,29 +211,9 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
     def velocity_convention(self):
         return self._velocity_convention
 
-    def fit_to(self, x, y, fitter=CurveFitter(), **kwargs):
-        # if not fitter.__class__ in _FitterMeta.registry:
-        #     raise Exception("Fitter must be an astropy fitter subclass.")
-
-        # A data array returned by a Spectrum1D object is implicitly a Quantity
-        # and should be reverted to a regular array for the unitless fitter.
-        if isinstance(y, u.Quantity):
-            y = y.value
-
-        unitless_cls, parameter_units = _strip_units(self, x)
-
-        fitted_model = fitter(unitless_cls(), x.value, y, **kwargs)
-
-        # Now we put back the units on the model
-        model_with_units = _apply_units(fitted_model, parameter_units)
-
-        # Attach any estimated parameter errors to the newly fitted model
-        if hasattr(fitter, 'errors'):
-            model_with_units.errors = fitter.errors
-        else:
-            model_with_units.errors = None
-
-        return model_with_units()
+    @property
+    def rest_wavelength(self):
+        return self._rest_wavelength
 
     @property
     def redshift(self):
@@ -204,7 +225,7 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
         : float
             The redshift value.
         """
-        return next((x for x in self
+        return next((x for x in self._compound_model
                      if isinstance(x, RedshiftScaleFactor))).inverse.z.value
 
     @property
@@ -218,24 +239,24 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
         : list
             A list of :class:`~spectacle.modeling.profiles.Voigt1D` models.
         """
-        return [x for x in self if isinstance(x, OpticalDepth1D)]
+        return [x for x in self._compound_model if isinstance(x, OpticalDepth1D)]
 
     @property
-    def ion_count(self):
+    def is_single_ion(self):
         """
-        The number of unique ion within this spectrum model.
+        Whether this spectrum represents a collection of single ions or a
+        collection of multiple different ions.
 
         Returns
         -------
-        : int
-            The number of unique ions.
+        : bool
+            Is the spectrum composed of a collection of single ions.
         """
-        print(set([x.name for x in self.lines]))
-        return len(set([x.name for x in self.lines]))
+        return len(set([x.name for x in self.lines])) == 1
 
     @property
     def lsf_kernel(self):
-        return next((x for x in self if isinstance(x, LSFModel)), None)
+        return next((x for x in self._compound_model if isinstance(x, LSFModel)), None)
 
     @property
     def output_type(self):
@@ -248,7 +269,7 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
         : str
             The output type of the model.
         """
-        for x in self:
+        for x in self._compound_model:
             if isinstance(x, FluxConvert):
                 return 'flux'
             elif isinstance(x, FluxDecrementConvert):
@@ -275,7 +296,9 @@ class Spectral1D(metaclass=DynamicFittable1DModelMeta):
             continuum=self.continuum,
             z=self.redshift,
             output=self.output_type,
-            lsf=self.lsf_kernel)
+            lsf=self.lsf_kernel,
+            velocity_convention=self.velocity_convention,
+            rest_wavelength=self.rest_wavelength)
 
         new_kwargs.update(kwargs)
 
