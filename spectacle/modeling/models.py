@@ -332,7 +332,10 @@ class Spectral1D(Fittable1DModel):
         : :class:`~spectacle.modeling.models.Spectral1D`
             The new spectral model.
         """
-        new_line = OpticalDepth1D(*args, **kwargs)
+        if isinstance(args[0], OpticalDepth1D):
+            new_line = args[0]
+        else:
+            new_line = OpticalDepth1D(*args, **kwargs)
 
         return self._copy(lines=self.lines + [new_line])
 

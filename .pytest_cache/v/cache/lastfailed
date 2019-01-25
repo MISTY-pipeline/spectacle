@@ -1,4 +1,0 @@
-{
-  "astropy_helpers/astropy_helpers/commands/_dummy.py": true,
-  "astropy_helpers/astropy_helpers/tests/test_openmp_helpers.py": true
-}

@@ -106,6 +106,7 @@ class OpticalDepth1D(Fittable1DModel):
                  delta_v, delta_lambda):
         with u.set_enabled_equivalencies(u.spectral() + u.doppler_relativistic(lambda_0)):
             x = u.Quantity(x, 'Angstrom')
+
         # shift lambda_0 by delta_v
         shifted_lambda = lambda_0 * (1 + delta_v / c.cgs) + delta_lambda
 
