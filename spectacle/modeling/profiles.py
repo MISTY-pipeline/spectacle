@@ -17,8 +17,7 @@ from ..utils.misc import find_nearest, DOPPLER_CONVERT
 __all__ = ['OpticalDepth1D']
 
 PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
-TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /
-               (m_e.cgs * c.cgs))).cgs
+TAU_FACTOR = (np.sqrt(np.pi) * PROTON_CHARGE ** 2 / (m_e * c)).cgs
 
 
 class IncompleteLineInformation(Exception):
@@ -107,6 +106,9 @@ class OpticalDepth1D(Fittable1DModel):
         with u.set_enabled_equivalencies(u.spectral() + u.doppler_relativistic(lambda_0)):
             x = u.Quantity(x, 'Angstrom')
 
+        # Convert the log column density value back to unit-ful value
+        column_density = u.Quantity(10 ** column_density, '1/cm2')
+
         # shift lambda_0 by delta_v
         shifted_lambda = lambda_0 * (1 + delta_v / c.cgs) + delta_lambda
 
@@ -115,23 +117,21 @@ class OpticalDepth1D(Fittable1DModel):
 
         # tau_0
         tau_x = TAU_FACTOR * column_density * f_value / v_doppler
-        tau0 = (tau_x * lambda_0).decompose()[0]
+        tau0 = (tau_x * lambda_0).decompose()
 
         # dimensionless frequency offset in units of doppler freq
-        x = c.cgs / v_doppler.to('cm/s') * (shifted_lambda / x - 1.0)
+        x = c.cgs / v_doppler * (shifted_lambda / x - 1.0)
         a = gamma / (4.0 * np.pi * nudop)  # damping parameter
-        phi = OpticalDepth1D.voigt(a, x)  # line profile
-        tau_phi = tau0 * phi  # profile scaled with tau0
-        tau_phi = tau_phi.decompose().value
 
-        return tau_phi
+        phi = OpticalDepth1D.voigt(a.decompose().value,
+                                   x.decompose().value)  # line profile
+        tau_phi = tau0 * phi  # profile scaled with tau0
+
+        return tau_phi.value
 
     @staticmethod
     def voigt(a, u):
-        x = np.asarray(u).astype(np.float64)
-        y = np.asarray(a).astype(np.float64)
-
-        return special.wofz(x + 1j * y).real
+        return special.wofz(u + 1j * a).real
 
     @staticmethod
     def fit_deriv(x, x_0, b, gamma, f):

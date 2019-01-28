@@ -11,9 +11,6 @@ class FluxConvert(Fittable1DModel):
     def evaluate(y):
         return np.exp(-y) - 1
 
-    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
-        return {}
-
 
 class FluxDecrementConvert(Fittable1DModel):
     inputs = ('y',)

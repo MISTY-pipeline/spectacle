@@ -70,7 +70,7 @@ class Spectral1D(Fittable1DModel):
         return {'x': disp_equiv}
 
     def __new__(cls, lines=None, continuum=None, z=None, lsf=None, output=None,
-                velocity_convention=None, rest_wavelength=None, *args, **kwargs):
+                velocity_convention=None, rest_wavelength=None, **kwargs):
         # If the cls already contains parameter attributes, assume that this is
         # being called as part of a copy operation and return the class as-is.
         if (lines is None and continuum is None and z is None and
@@ -135,11 +135,11 @@ class Spectral1D(Fittable1DModel):
             ln = np.sum(_lines)
 
             if output == 'flux_decrement':
-                compound_model = ((rs | (continuum + ln | FluxDecrementConvert())) | rs.inverse)
+                compound_model = continuum + (rs | (ln | FluxDecrementConvert()) | rs.inverse)
             elif output == 'flux':
-                compound_model = ((rs | continuum + (ln | FluxConvert())) | rs.inverse)
+                compound_model = continuum + (rs | (ln | FluxConvert()) | rs.inverse)
             else:
-                compound_model = (rs | (continuum + ln) | rs.inverse)
+                compound_model = continuum + (rs | ln | rs.inverse)
         else:
             compound_model = (rs | continuum | rs.inverse)
 
@@ -168,7 +168,7 @@ class Spectral1D(Fittable1DModel):
             members[param_name] = param.copy()
             data_units[param_name] = param.unit
 
-        members['_parameter_units_for_data_units'] = lambda *args: data_units
+        members['_parameter_units_for_data_units'] = lambda *pufdu: data_units
 
         cls = type('Spectral1D', (cls, ), members)
         instance = super().__new__(cls)
@@ -188,8 +188,9 @@ class Spectral1D(Fittable1DModel):
         # For the input dispersion to be unit-ful, especially when fitting
         x = u.Quantity(x, 'km/s') if self.is_single_ion else u.Quantity(x, 'Angstrom')
 
-        # For the parameters to be unit-ful especially when used in fitting
-        args = [u.Quantity(val, unit) if unit is not None else val
+        # For the parameters to be unit-ful especially when used in fitting.
+        # TODO: fix arguments being passed with extra dimension.
+        args = [u.Quantity(val[0], unit) if unit is not None else val[0]
                 for val, unit in zip(args, self._parameter_units_for_data_units().values())]
 
         return self._compound_model.__class__(*args, **kwargs)(x)

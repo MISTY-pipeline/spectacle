@@ -48,9 +48,10 @@ Quick example
 
     Plot the result.
 
-    >>> f, ax = plt.subplots()
-    >>> ax.set_title("HI 1216") # doctest: +IGNORE_OUTPUT
-    >>> ax.step(x, y) # doctest: +IGNORE_OUTPUT
+    >>> f, ax = plt.subplots()  # doctest: +IGNORE_OUTPUT
+    >>> ax.set_title("HI 1216")  # doctest: +IGNORE_OUTPUT
+    >>> ax.step(x, y)  # doctest: +IGNORE_OUTPUT
+
 
 Using Spectacle
 ---------------

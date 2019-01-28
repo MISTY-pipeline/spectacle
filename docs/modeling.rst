@@ -169,7 +169,8 @@ deposit the lines by including a `z` parameter.
 .. note::
     When :ref:`fitting <fitting>`, including the `z` parameter
     indicates the redshift of the *input* dispersion. Spectacle will de-redshift
-    the data input using this value before performing any fits.
+    the data input using this value before performing any fits. Also, the
+    provided continuum is *not* included in redshifting.
 
 
 .. plot::
@@ -190,8 +191,9 @@ deposit the lines by including a `z` parameter.
 
     >>> x = np.linspace(1000, 1300, 1000) * u.Unit('Angstrom')
 
-    >>> f, ax = plt.subplots()
-    >>> ax.step(x, spec_mod(x), label="$z=0$")
-    >>> ax.step(x, spec_mod_with_z(x), label="$z=0.05$") # doctest: +IGNORE_OUTPUT
-    >>> ax.set_xlabel("Wavelength [Angstrom]")  # doctest: +IGNORE_OUTPUT
-    >>> f.legend(loc=0)  # doctest: +IGNORE_OUTPUT
+    >>> f, ax = plt.subplots()  # doctest: +SKIP
+    >>> ax.step(x, spec_mod(x), label="k$z=0$") # doctest: +SKIP
+    >>> ax.step(x, spec_mod_with_z(x), label="$z=0.05$")  # doctest: +SKIP
+    >>> ax.set_xlabel("Wavelength [Angstrom]")  # doctest: +SKIP
+    >>> f.legend(loc=0)  # doctest: +SKIP
+
