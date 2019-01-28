@@ -67,32 +67,20 @@ class LineFinder1D(Fittable2DModel):
         # Generate the subset of the table for the ions chosen by the user
         sub_registry = line_registry
 
-        if x.unit.physical_type in ('frequency', 'length'):
-            if len(self._ions) > 1:
-                # In this case, the user has provided a list of ions for their
-                # spectrum. Create a subset of the line registry so that only
-                # these ions will be searched when attempting to identify.
-                sub_registry = line_registry[np.intersect1d(
-                    line_registry['name'], self._ions, return_indices=True)[1]]
-            elif len(self._ions) == 1:
-                # In this case, any absorption/emission features are assumed
-                # to be of the same ion. Convert the dispersion to velocity
-                # using the information of this ion.
-                line = sub_registry.with_name(self._ions[0])
-
-                disp_equiv = u.spectral() + DOPPLER_CONVERT[
-                    self._velocity_convention](line['wave'])
-
-                with u.set_enabled_equivalencies(disp_equiv):
-                    x = x.to('km/s')
+        if len(self._ions) > 0:
+            # In this case, the user has provided a list of ions for their
+            # spectrum. Create a subset of the line registry so that only
+            # these ions will be searched when attempting to identify.
+            sub_registry = line_registry[np.intersect1d(
+                line_registry['name'], self._ions, return_indices=True)[1]]
 
         # Convert the min_distance from dispersion units to data elements.
         # Assumes uniform spacing.
         # min_ind = (np.abs(x.value - (x[0].value + min_distance))).argmin()
 
         # Find peaks
-        regions = region_bounds(x, y, threshold=threshold, min_distance=min_distance)
-
+        regions = region_bounds(x, y, threshold=threshold,
+                                min_distance=min_distance)
         lines = []
 
         for (mn_bnd, mx_bnd), (centroid, buried) in regions.items():
@@ -132,8 +120,7 @@ class LineFinder1D(Fittable2DModel):
                 x=sub_x or x,
                 y=y,
                 ion_name=line_kwargs.get('name'),
-                buried=buried,
-                velocity_convention=self._velocity_convention)
+                buried=buried)
 
             if np.isinf(col_dens):
                 continue
@@ -163,13 +150,7 @@ class LineFinder1D(Fittable2DModel):
 
         # fitter = LevMarLSQFitter()
         if self._auto_fit:
-            fit_spec_mod = spec_mod.fit_to(
-                x=x,
-                y=y,
-                rest_wavelength=sub_registry.with_name(self._ions[0])['wave']
-                                if x.unit.physical_type == 'speed' else None,
-                maxiter=2000,
-                fitter=LevMarLSQFitter())
+            fit_spec_mod = LevMarLSQFitter()(spec_mod, x, y)
 
         else:
             fit_spec_mod = spec_mod
@@ -181,7 +162,7 @@ class LineFinder1D(Fittable2DModel):
         return fit_spec_mod(x)
 
 
-def parameter_estimator(centroid, bounds, x, y, ion_name, buried, velocity_convention):
+def parameter_estimator(centroid, bounds, x, y, ion_name, buried):
     bound_low, bound_up = bounds
     mid_diff = (bound_up - bound_low)
 
@@ -203,13 +184,7 @@ def parameter_estimator(centroid, bounds, x, y, ion_name, buried, velocity_conve
     ion = line_registry.with_name(ion_name)
 
     # Estimate the doppler b parameter
-    if x.unit.physical_type in ('frequency', 'length'):
-        disp_equiv = u.spectral() + DOPPLER_CONVERT[velocity_convention](ion['wave'])
-
-        with u.set_enabled_equivalencies(disp_equiv):
-            v_dop = (np.sqrt(2) * np.sqrt(np.pi) * sigma).to('km/s')
-    else:
-        v_dop = (np.sqrt(2) * np.sqrt(np.pi) * sigma).to('km/s')
+    v_dop = (np.sqrt(2) * np.sqrt(np.pi) * sigma).to('km/s')
 
     # Estimate the column density
     # col_dens = (v_dop / TAU_FACTOR * c.cgs ** 2).to('1/cm2')
@@ -221,9 +196,9 @@ def parameter_estimator(centroid, bounds, x, y, ion_name, buried, velocity_conve
 
     logging.info("""Estimated initial values:
     Ion: {}
-    Centroid: {:g}
+    Centroid: {:g} ({:g})
     Column density: {:g}, ({:g})
-    Doppler width: {:g}""".format(ion_name, centroid, ln_col_dens,
+    Doppler width: {:g}""".format(ion_name, centroid, ion['wave'], ln_col_dens,
                                   col_dens, v_dop))
 
     return v_dop, ln_col_dens, new_bound_low, new_bound_up
