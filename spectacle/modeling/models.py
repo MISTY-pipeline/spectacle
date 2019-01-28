@@ -168,16 +168,7 @@ class Spectral1D(Fittable1DModel):
             members[param_name] = param.copy()
             data_units[param_name] = param.unit
 
-        # setattr(cls, '_parameter_units_for_data_units',
-        #         lambda *args: data_units)
         members['_parameter_units_for_data_units'] = lambda *args: data_units
-
-        # Since the fitting machinery makes a copy of the model object, attach
-        # what would be instance-level attributes to the class.
-        # setattr(cls, '_continuum', continuum)
-        # setattr(cls, '_compound_model', compound_model)
-        # setattr(cls, '_velocity_convention', velocity_convention)
-        # setattr(cls, '_rest_wavelength', rest_wavelength)
 
         cls = type('Spectral1D', (cls, ), members)
         instance = super().__new__(cls)

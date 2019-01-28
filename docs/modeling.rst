@@ -52,13 +52,13 @@ absorption or emission data into the dispersion bins. Likewise, `flux` and
     >>> tau = spec_mod.as_optical_depth(x)
 
     >>> f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
-    >>> ax1.set_title("Flux")
-    >>> ax1.step(x, flux)
-    >>> ax2.set_title("Flux Decrement")
-    >>> ax2.step(x, flux_dec)
-    >>> ax3.set_title("Optical Depth")
-    >>> ax3.step(x, tau)
-    >>> ax3.set_xlabel('Velocity [km/s]')
+    >>> ax1.set_title("Flux") # doctest: +IGNORE_OUTPUT
+    >>> ax1.step(x, flux) # doctest: +IGNORE_OUTPUT
+    >>> ax2.set_title("Flux Decrement") # doctest: +IGNORE_OUTPUT
+    >>> ax2.step(x, flux_dec) # doctest: +IGNORE_OUTPUT
+    >>> ax3.set_title("Optical Depth") # doctest: +IGNORE_OUTPUT
+    >>> ax3.step(x, tau) # doctest: +IGNORE_OUTPUT
+    >>> ax3.set_xlabel('Velocity [km/s]') # doctest: +IGNORE_OUTPUT
     >>> f.tight_layout()
 
 Applying line spread functions
@@ -93,10 +93,10 @@ instrument like, e.g., HST COS
     >>> x = np.linspace(1000, 1300, 1000) * u.Unit('Angstrom')
 
     >>> f, ax = plt.subplots()
-    >>> ax.step(x, spec_mod(x), label="Flux")
-    >>> ax.step(x, spec_mod_with_lsf(x), label="Flux with LSF")
-    >>> ax.set_xlabel("Wavelength [Angstrom]")
-    >>> f.legend(loc=0)
+    >>> ax.step(x, spec_mod(x), label="Flux") # doctest: +IGNORE_OUTPUT
+    >>> ax.step(x, spec_mod_with_lsf(x), label="Flux with LSF") # doctest: +IGNORE_OUTPUT
+    >>> ax.set_xlabel("Wavelength [Angstrom]")  # doctest: +IGNORE_OUTPUT
+    >>> f.legend(loc=0)  # doctest: +IGNORE_OUTPUT
 
 
 Supplying custom LSF kernels
@@ -113,6 +113,13 @@ Users may also supply their own kernels, or any
 `Astropy 1D kernel <http://docs.astropy.org/en/stable/convolution/index.html#classes>`_.
 The only restriction is that kernels must be a subclass of either
 :class:`~spectacle.modeling.lsfs.LSFModel`, or :class:`~astropy.convolution.Kernel1D`.
+
+.. code-block:: python
+
+    >>> from astropy.convolution import Box1DKernel
+    >>> kernel = Box1DKernel(width=10)
+
+    >>> spec_mod_with_lsf = Spectral1D([line1, line2], continuum=1, lsf=kernel, output='flux')
 
 
 Converting dispersions
@@ -151,35 +158,6 @@ The `velocity_convention` keyword supports one either `relativisitic`,
 `optical`, or `radio` to indiciate the definition to be used in internal
 conversions.
 
-.. plot::
-    :include-source:
-    :align: center
-    :context: close-figs
-
-    >>> from astropy import units as u
-    >>> import numpy as np
-    >>> from matplotlib import pyplot as plt
-    >>> from spectacle.modeling import Spectral1D, OpticalDepth1D
-
-    >>> line1 = OpticalDepth1D("HI1216", v_doppler=500 * u.km/u.s, column_density=14)
-    >>> line2 = OpticalDepth1D("OVI1038", v_doppler=500 * u.km/u.s, column_density=15)
-
-    LSFs can either be applied directly during spectrum model creation:
-
-    >>> spec_mod_with_lsf = Spectral1D([line1, line2], continuum=1, lsf='cos', output='flux')
-
-    or they can be applied after the fact:
-
-    >>> spec_mod = Spectral1D([line1, line2], continuum=1, output='flux')
-    >>> spec_mod_with_lsf = spec_mod.with_lsf('cos')
-
-    >>> x = np.linspace(1000, 1300, 1000) * u.Unit('Angstrom')
-
-    >>> f, ax = plt.subplots()
-    >>> ax.step(x, spec_mod(x), label="Flux")
-    >>> ax.step(x, spec_mod_with_lsf(x), label="Flux with LSF")
-    >>> ax.set_xlabel("Wavelength [Angstrom]")
-    >>> f.legend(loc=0)
 
 Implementing redshift
 ---------------------
@@ -214,6 +192,6 @@ deposit the lines by including a `z` parameter.
 
     >>> f, ax = plt.subplots()
     >>> ax.step(x, spec_mod(x), label="$z=0$")
-    >>> ax.step(x, spec_mod_with_z(x), label="$z=0.05$")
-    >>> ax.set_xlabel("Wavelength [Angstrom]")
-    >>> f.legend(loc=0)
+    >>> ax.step(x, spec_mod_with_z(x), label="$z=0.05$") # doctest: +IGNORE_OUTPUT
+    >>> ax.set_xlabel("Wavelength [Angstrom]")  # doctest: +IGNORE_OUTPUT
+    >>> f.legend(loc=0)  # doctest: +IGNORE_OUTPUT

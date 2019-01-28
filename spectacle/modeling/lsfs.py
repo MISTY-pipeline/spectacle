@@ -40,6 +40,10 @@ class LSFModel(Fittable1DModel):
         self._kernel = value
 
     def evaluate(self, y, *args, **kwargs):
+        # TODO: why is the y array including an extra dimesion?
+        if y.ndim > 1:
+            y = y[0]
+
         return convolve(y, self.kernel, boundary='extend')
 
 
