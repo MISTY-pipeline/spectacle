@@ -15,7 +15,7 @@ def region_bounds(x, y, threshold=0, min_distance=1):
         min_distance *= x.unit
 
     if is_absorption:
-        thresh_mask = np.less(y, threshold)
+        thresh_mask = np.greater(np.max(y) - y, threshold)
     else:
         thresh_mask = np.greater(y, threshold)
 
@@ -25,61 +25,86 @@ def region_bounds(x, y, threshold=0, min_distance=1):
     ddY = convolve(dY, kernel, 'extend', normalize_kernel=False) #np.diff(dY)
     dddY = convolve(ddY, kernel, 'extend', normalize_kernel=False) #np.diff(ddY)
 
+    # Anywhere that dS >/< 0 is a line for absorption/emission.
+    # Anywhere that ddS == 0
     dS = convolve(np.sign(dY), kernel, 'extend', normalize_kernel=False)
     ddS = convolve(np.sign(ddY), kernel, 'extend', normalize_kernel=False)
     dddS = convolve(np.sign(dddY), kernel, 'extend', normalize_kernel=False)
 
-    ddS_mask = (ddS == 0) & thresh_mask
+    # Mask areas that don't provide line information
+    ddS_mask = ((ddS < 0) | (ddS > 0)) & thresh_mask
+    dddS_mask = ((dddS < 0) | (dddS > 0)) & thresh_mask
 
     if is_absorption:
+        # Mask for lines in absorption
         dS_mask = (dS > 0) & thresh_mask
-        dddS_mask = (dddS < 0) & thresh_mask
     else:
+        # Mask for lines in emission
         dS_mask = (dS < 0) & thresh_mask
-        dddS_mask = (dddS > 0) & thresh_mask
 
     prime_regions = {}
     ternary_regions = {}
 
     # Find "buried" lines. Do this by taking the third difference of the
-    # spectrum.
-    for tind in np.where(dddS_mask)[0][::2]:
+    # spectrum. Find the indices where the dddS_mask is true, retrieve only a
+    # single index from the tuple by going in steps of 2. Each tind represents
+    # the index of the centroid of the found buried line.
+    for tind in np.where(dS_mask)[0][::2]:
+        # ddS contains bounds information. Find the lower bound index of the
+        # dispersion.
         lower_ind = find_nearest(
-            np.ma.array(x.value, mask=ddS_mask | (x.value > x.value[tind])),
+            np.ma.array(x.value,
+                        mask=~dddS_mask | (x.value > x.value[tind - 2])),
             x.value[tind])
+        # ddS contains bounds information. Find the upper bound index of the
+        # dispersion.
         upper_ind = find_nearest(
-            np.ma.array(x.value, mask=ddS_mask | (x.value < x.value[tind])),
+            np.ma.array(x.value,
+                        mask=~dddS_mask | (x.value < x.value[tind + 2])),
             x.value[tind])
 
-        lower_x_ddS, upper_x_ddS = x.value[lower_ind][0], x.value[upper_ind][0]
+        # Retrieve the dispersion value for these indices and set the
+        # dispersion value for the centroid.
+        lower_x_dddS, upper_x_dddS = x.value[lower_ind][0], \
+                                     x.value[upper_ind][0]
         x_dddS = x[tind]
 
-        if np.sign(ddS[lower_ind]) < np.sign(ddS[upper_ind]):
-            # Ensure that this found peak value is not within the minimum
-            # distance of any other found peak values.
-            if np.all([np.abs(x - x_dddS) > min_distance
-                       for x, _ in ternary_regions.values()]):
-                ternary_regions[(lower_x_ddS, upper_x_ddS)] = (x_dddS, True)
+        # Ensure that this found peak value is not within the minimum
+        # distance of any other found peak values.
+        if np.all([np.abs(x - x_dddS) > min_distance
+                   for x, _ in ternary_regions.values()]):
+            print(lower_x_dddS, upper_x_dddS)
+            ternary_regions[(lower_x_dddS, upper_x_dddS, True)] = (
+            x_dddS, is_absorption)
 
     # Find obvious lines by peak values.
     for pind in np.where(dS_mask)[0][::2]:
         lower_ind = find_nearest(
-            np.ma.array(x.value, mask=ddS_mask | (x.value > x.value[pind])),
+            np.ma.array(x.value,
+                        mask=~ddS_mask | (x.value > x.value[pind - 2])),
             x.value[pind])
         upper_ind = find_nearest(
-            np.ma.array(x.value, mask=ddS_mask | (x.value < x.value[pind])),
+            np.ma.array(x.value,
+                        mask=~ddS_mask | (x.value < x.value[pind + 2])),
             x.value[pind])
 
-        lower_x_ddS, upper_x_ddS = x.value[lower_ind][0], x.value[upper_ind][0]
+        lower_x_ddS, upper_x_ddS = x.value[lower_ind][0], \
+                                   x.value[upper_ind][0]
         x_dS = x[pind]
 
-        if np.sign(ddS[lower_ind]) < np.sign(ddS[upper_ind]):
+        if is_absorption:
+            cond = np.sign(ddS[lower_ind]) > np.sign(ddS[upper_ind])
+        else:
+            cond = np.sign(ddS[lower_ind]) < np.sign(ddS[upper_ind])
+
+        if cond:
             # Ensure that this found peak value is not within the minimum
             # distance of any other found peak values.
             if np.all([np.abs(x - x_dS) > min_distance
-                       for x, _ in ternary_regions.values()]):
-                prime_regions[(lower_x_ddS, upper_x_ddS)] = (x_dS, False)
+                       for x, _ in prime_regions.values()]):
+                prime_regions[(lower_x_ddS, upper_x_ddS, False)] = (
+                x_dS, is_absorption)
 
-    prime_regions.update(ternary_regions)
+    ternary_regions.update(prime_regions)
 
-    return prime_regions
+    return ternary_regions

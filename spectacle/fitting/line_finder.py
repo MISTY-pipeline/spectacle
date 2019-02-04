@@ -64,6 +64,8 @@ class LineFinder1D(Fittable2DModel):
         return super().__call__(x, *args, **kwargs)
 
     def evaluate(self, x, y, threshold, min_distance, *args, **kwargs):
+        spec_mod = Spectral1D(continuum=self._continuum, output=self._output)
+
         # Generate the subset of the table for the ions chosen by the user
         sub_registry = line_registry
 
@@ -83,7 +85,7 @@ class LineFinder1D(Fittable2DModel):
                                 min_distance=min_distance)
         lines = []
 
-        for (mn_bnd, mx_bnd), (centroid, buried) in regions.items():
+        for (mn_bnd, mx_bnd, buried), (centroid, is_absorption) in regions.items():
             mn_bnd, mx_bnd = mn_bnd * x.unit, mx_bnd * x.unit
             sub_x = None
 
@@ -113,12 +115,14 @@ class LineFinder1D(Fittable2DModel):
                 'gamma': line['gamma'],
                 'f_value': line['osc_str']})
 
-            # Estimate the doppler b and column densities for this line
+            # Estimate the doppler b and column densities for this line.
+            # For the parameter estimator to be accurate, the spectrum must be
+            # continuum subtracted.
             v_dop, col_dens, nmn_bnd, nmx_bnd = parameter_estimator(
                 centroid=centroid,
                 bounds=(mn_bnd, mx_bnd),
                 x=sub_x or x,
-                y=y,
+                y=spec_mod.continuum(sub_x or x) - y if is_absorption else y,
                 ion_name=line_kwargs.get('name'),
                 buried=buried)
 
@@ -131,8 +135,8 @@ class LineFinder1D(Fittable2DModel):
                 'column_density': col_dens,
                 'bounds': {
                     'delta_v': (mn_bnd.value, mx_bnd.value)
-                               if not buried else ((sub_x or x).value[0],
-                                                   (sub_x or x).value[-1]),
+                               # if not buried else ((sub_x or x).value[0],
+                               #                     (sub_x or x).value[-1]),
                 },
             }
             line_kwargs.update(estimate_kwargs)
@@ -148,10 +152,8 @@ class LineFinder1D(Fittable2DModel):
 
         spec_mod = Spectral1D(lines, continuum=self._continuum, output=self._output)
 
-        # fitter = LevMarLSQFitter()
         if self._auto_fit:
-            fit_spec_mod = LevMarLSQFitter()(spec_mod, x, y)
-
+            fit_spec_mod = LevMarLSQFitter()(spec_mod, x, y, maxiter=2000)
         else:
             fit_spec_mod = spec_mod
 
@@ -162,7 +164,7 @@ class LineFinder1D(Fittable2DModel):
         return fit_spec_mod(x)
 
 
-def parameter_estimator(centroid, bounds, x, y, ion_name, buried):
+def parameter_estimator(centroid, bounds, x, y, ion_name, buried=False):
     bound_low, bound_up = bounds
     mid_diff = (bound_up - bound_low)
 

@@ -56,13 +56,16 @@ class Spectral1D(Fittable1DModel):
                 return {'x': u.Unit('km/s')}
             else:
                 return {'x': u.Unit('Angstrom')}
+        elif len(self.lines) == 0:
+            return {'x': u.Unit('km/s')}
         else:
             return {'x': None}
 
     @property
     def input_units_equivalencies(self):
         rest_wavelength = self.lines[0].lambda_0.quantity \
-            if self.is_single_ion else self.rest_wavelength
+            if len(self.lines) > 0 and (self.is_single_ion or self.rest_wavelength.value == 0) \
+            else self.rest_wavelength
 
         disp_equiv = u.spectral() + DOPPLER_CONVERT[
             self._velocity_convention](rest_wavelength)
@@ -131,7 +134,7 @@ class Spectral1D(Fittable1DModel):
         # the redshift, continuum, and dispersion conversions.
         rs = RedshiftScaleFactor(z, fixed={'z': True}).inverse
 
-        if lines is not None:
+        if lines is not None and len(_lines) > 0:
             ln = np.sum(_lines)
 
             if output == 'flux_decrement':
@@ -141,7 +144,7 @@ class Spectral1D(Fittable1DModel):
             else:
                 compound_model = continuum + (rs | ln | rs.inverse)
         else:
-            compound_model = (rs | continuum | rs.inverse)
+            compound_model = continuum + (rs | rs.inverse)
 
         # Check for any lsf kernels that have been added
         if lsf is not None:
@@ -165,7 +168,7 @@ class Spectral1D(Fittable1DModel):
         # Attach all of the compound model parameters to this model
         for param_name in compound_model.param_names:
             param = getattr(compound_model, param_name)
-            members[param_name] = param.copy()
+            members[param_name] = param.copy(fixed=param.fixed)
             data_units[param_name] = param.unit
 
         members['_parameter_units_for_data_units'] = lambda *pufdu: data_units
@@ -178,6 +181,7 @@ class Spectral1D(Fittable1DModel):
         setattr(instance, '_compound_model', compound_model)
         setattr(instance, '_velocity_convention', velocity_convention)
         setattr(instance, '_rest_wavelength', rest_wavelength)
+        setattr(instance, '_output', output)
 
         return instance
 
@@ -186,7 +190,9 @@ class Spectral1D(Fittable1DModel):
 
     def evaluate(self, x, *args, **kwargs):
         # For the input dispersion to be unit-ful, especially when fitting
-        x = u.Quantity(x, 'km/s') if self.is_single_ion else u.Quantity(x, 'Angstrom')
+        x = u.Quantity(x, 'km/s') \
+            if self.is_single_ion or len(self.lines) == 0 \
+            else u.Quantity(x, 'Angstrom')
 
         # For the parameters to be unit-ful especially when used in fitting.
         # TODO: fix arguments being passed with extra dimension.
@@ -261,13 +267,7 @@ class Spectral1D(Fittable1DModel):
         : str
             The output type of the model.
         """
-        for x in self._compound_model:
-            if isinstance(x, FluxConvert):
-                return 'flux'
-            elif isinstance(x, FluxDecrementConvert):
-                return 'flux_decrement'
-        else:
-            return 'optical_depth'
+        return self._output
 
     def _copy(self, **kwargs):
         """
@@ -330,6 +330,26 @@ class Spectral1D(Fittable1DModel):
             new_line = OpticalDepth1D(*args, **kwargs)
 
         return self._copy(lines=self.lines + [new_line])
+
+    def with_lines(self, lines):
+        """
+        Create a new spectral model with the added lines.
+
+        Parameters
+        ----------
+        lines : list
+            List of :class:`~spectacle.modeling.profiles.OpticalDepth1D` line
+            objects.
+
+        Returns
+        -------
+        : :class:`~spectacle.modeling.models.Spectral1D`
+            The new spectral model.
+        """
+        if not all([isinstance(x, OpticalDepth1D) for x in lines]):
+            raise ValueError("All lines must be `OpticalDepth1D` objects.")
+
+        return self._copy(lines=self.lines + lines)
 
 
 # Model arithmetic operators
