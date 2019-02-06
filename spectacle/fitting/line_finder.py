@@ -44,13 +44,6 @@ class LineFinder1D(Fittable2DModel):
     def model_result(self):
         return self._model_result
 
-    def _frac_guess(self, value):
-        flr = np.floor(value)
-        cl = np.ceil(value)
-        frac = np.modf(value)[0]
-
-        return flr * (1 - frac) + cl * frac
-
     def __call__(self, x, *args, auto_fit=None, **kwargs):
         if auto_fit is not None:
             self._auto_fit = auto_fit
@@ -61,7 +54,9 @@ class LineFinder1D(Fittable2DModel):
                                  "being given explicit ion reference in the "
                                  "defaults dictionary.")
 
-        return super().__call__(x, *args, **kwargs)
+        super().__call__(x, *args, **kwargs)
+
+        return self._model_result
 
     def evaluate(self, x, y, threshold, min_distance, *args, **kwargs):
         spec_mod = Spectral1D(continuum=self._continuum, output=self._output)
@@ -89,7 +84,7 @@ class LineFinder1D(Fittable2DModel):
             mn_bnd, mx_bnd = mn_bnd * x.unit, mx_bnd * x.unit
             sub_x, vel_mn_bnd, vel_mx_bnd = None, None, None
 
-            line_kwargs = self._defaults.copy()
+            line_kwargs = {}
 
             # For the case where the user has provided a list of ions with a
             # dispersion in wavelength or frequency, convert each ion to
@@ -155,6 +150,7 @@ class LineFinder1D(Fittable2DModel):
                     'delta_v': (mn_bnd.value, mx_bnd.value)})
 
             line_kwargs.update(estimate_kwargs)
+            line_kwargs.update(self._defaults.copy())
 
             line = OpticalDepth1D(**line_kwargs)
             lines.append(line)
