@@ -15,6 +15,7 @@ from ..fitting.curve_fitter import CurveFitter
 from ..utils.misc import DOPPLER_CONVERT
 from astropy.modeling import Parameter
 from astropy.units.equivalencies import doppler_optical
+from functools import wraps
 
 __all__ = ['Spectral1D']
 
@@ -93,6 +94,11 @@ class Spectral1D(Fittable1DModel):
                     continuum = Const1D(amplitude=continuum, fixed={'amplitude': True})
                 else:
                     raise ValueError("Continuum must be a number or `FittableModel`.")
+            else:
+                # If the continuum model is an astropy model, ensure that it
+                # can handle inputs with units or wrap otherwise.
+                if not continuum._supports_unit_fitting:
+                    continuum = _wrap_unitless_model(continuum)
         else:
             continuum = Const1D(amplitude=0, fixed={'amplitude': True})
 
@@ -350,6 +356,35 @@ class Spectral1D(Fittable1DModel):
             raise ValueError("All lines must be `OpticalDepth1D` objects.")
 
         return self._copy(lines=self.lines + lines)
+
+
+def _wrap_unitless_model(model):
+    """
+    Wraps a model that does not support inputs with units, decorating its
+    evaluate method to strip any input units.
+
+    Parameters
+    ----------
+    model : :class:`astropy.modeling.models.Fittable1DModel`
+        The model whose evaluate method will be wrapped.
+
+    Returns
+    -------
+    model : :class:`astropy.modeling.models.Fittable1DModel`
+        The model instance whose evaluate method has been wrapped.
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(x, *args, **kwargs):
+            if isinstance(x, u.Quantity):
+                x = x.value
+
+            return func(x, *args, **kwargs)
+        return wrapper
+
+    setattr(model, 'evaluate', decorator(model.evaluate))
+
+    return model
 
 
 # Model arithmetic operators
