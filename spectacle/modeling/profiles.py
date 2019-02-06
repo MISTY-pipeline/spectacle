@@ -71,7 +71,7 @@ class OpticalDepth1D(Fittable1DModel):
     v_doppler = Parameter(default=10, min=.1, max=1e5, unit=u.Unit('km/s'))
     column_density = Parameter(default=13, min=8, max=25)
     delta_v = Parameter(default=0, min=0, fixed=False, unit=u.Unit('km/s'))
-    delta_lambda = Parameter(default=0, min=-100, max=100, fixed=True, unit=u.Unit('Angstrom'))
+    delta_lambda = Parameter(default=0, min=-100, max=100, fixed=False, unit=u.Unit('Angstrom'))
 
     def __init__(self, name=None, line_list=None, *args, **kwargs):
         super(OpticalDepth1D, self).__init__(*args, **kwargs)
@@ -89,15 +89,12 @@ class OpticalDepth1D(Fittable1DModel):
             if line is None:
                 raise LineNotFound("No line with name '{}' in current ion "
                                    "table.".format(name))
-
-            name = line['name']
-            self.lambda_0 = line['wave']
         else:
             ind = find_nearest(line_table['wave'].value, self.lambda_0.value)
             line = line_table[ind][0]
-            name = line['name']
 
-        self.name = str(name)
+        self.lambda_0 = line['wave']
+        self.name = str(line['name'])
         self.f_value = line['osc_str']
         self.gamma = line['gamma']
 
