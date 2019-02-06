@@ -106,6 +106,8 @@ Spectacle provides two built-in LSF kernels: the HST COS kernel, and a Gaussian
 kernel. Both can be applied by simply passing in a string, and in the latter
 case, also supplying an additional `stddev` keyword argument::
 
+.. code-block:: python
+
     spec_mod = Spectral1D("HI1216", continuum=1, lsf='cos')
     spec_mod = Spectral1D("HI1216", continuum=1, lsf='gaussian', stddev=15)
 
@@ -116,17 +118,17 @@ The only restriction is that kernels must be a subclass of either
 
 .. code-block:: python
 
-    >>> from astropy.convolution import Box1DKernel
-    >>> kernel = Box1DKernel(width=10)
+    from astropy.convolution import Box1DKernel
+    kernel = Box1DKernel(width=10)
 
-    >>> spec_mod_with_lsf = Spectral1D([line1, line2], continuum=1, lsf=kernel, output='flux')
+    spec_mod_with_lsf = Spectral1D([line1, line2], continuum=1, lsf=kernel, output='flux')
 
 
 Converting dispersions
 ----------------------
 
 Spectacle supports dispersions in either wavelength space or velocity space,
-and will implicitly deal with conversions internally as necessary. Conversions
+and will implicitly deal with conversions internally as necessary. Conversion
 to velocity space is calculated using the relativistic doppler equation
 
 .. math::
@@ -143,18 +145,26 @@ It is possible to set the approximation used in wavelength/frequency to
 velocity conversions for Spectacle. Aside from the default relativistic
 calculation, users can choose the "optical definition"
 
-.. math:: V = c \frac{f_0 - f}{f  }  ;  f(V) = f_0 ( 1 + V/c )^{-1}
+.. math::
+
+    V &= c \frac{f_0 - f}{f  }
+
+    f(V) &= f_0 ( 1 + V/c )^{-1}
 
 or the "radio definition"
 
-.. math:: V = c \frac{f_0 - f}{f_0}  ;  f(V) = f_0 ( 1 - V/c ).
+.. math::
+
+    V &= c \frac{f_0 - f}{f_0}
+
+    f(V) &= f_0 ( 1 - V/c ).
 
 This can be done upon instantiation of the
 :class:`~spectacle.modeling.models.Spectral1D` model::
 
     spec_mod = Spectral1D("HI1216", continuum=1, z=0, velocity_convention='optical')
 
-The `velocity_convention` keyword supports one either `relativisitic`,
+The `velocity_convention` keyword supports one of either `relativisitic`,
 `optical`, or `radio` to indiciate the definition to be used in internal
 conversions.
 
