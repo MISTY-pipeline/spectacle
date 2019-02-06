@@ -47,6 +47,7 @@ def test_gaussian_lsf():
 
 
 def test_custom_kernel_lsf():
+    from astropy.modeling.models import Chebyshev1D
     kernel = Box1DKernel(width=10)
 
     line1 = OpticalDepth1D("HI1216", v_doppler=500 * u.km / u.s,
@@ -66,3 +67,11 @@ def test_custom_kernel_lsf():
     assert isinstance(spec_mod_with_lsf_in_init.lsf_kernel, LSFModel)
     assert len(x) == len(spec_mod_with_lsf(x))
     assert isinstance(spec_mod_with_lsf.lsf_kernel, LSFModel)
+
+
+def test_dispersion_convert():
+    line1 = OpticalDepth1D("HI1216", v_doppler=500 * u.km / u.s,
+                           column_density=14)
+    line2 = OpticalDepth1D("OVI1038", v_doppler=500 * u.km / u.s,
+                           column_density=15)
+
