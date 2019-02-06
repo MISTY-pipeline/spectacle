@@ -1,11 +1,13 @@
+import logging
+
+import astropy.units as u
 import numpy as np
 from astropy.convolution import convolve
+
 from spectacle.utils.misc import find_nearest
-from scipy.signal import savgol_filter
-import astropy.units as u
 
 
-def region_bounds(x, y, threshold=0, min_distance=1):
+def region_bounds(x, y, threshold=0.001, min_distance=1):
     # Slice the y axis in half -- if more data elements exist in the "top"
     # half, assume the spectrum is absorption. Otherwise, assume emission.
     mid_y = min(y) + (max(y) - min(y)) * 0.5
@@ -55,27 +57,43 @@ def region_bounds(x, y, threshold=0, min_distance=1):
         lower_ind = find_nearest(
             np.ma.array(x.value,
                         mask=~dddS_mask | (x.value > x.value[tind - 2])),
-            x.value[tind])
+            x.value[tind], count=2)
         # ddS contains bounds information. Find the upper bound index of the
         # dispersion.
         upper_ind = find_nearest(
             np.ma.array(x.value,
                         mask=~dddS_mask | (x.value < x.value[tind + 2])),
-            x.value[tind])
+            x.value[tind], count=2)
+
+        if len(lower_ind) != 2 or len(upper_ind) != 2:
+            logging.warning("Unable to find bounds for buried line")
+            continue
+
+        lower_ind = lower_ind[1]
+        upper_ind = upper_ind[1]
 
         # Retrieve the dispersion value for these indices and set the
         # dispersion value for the centroid.
-        lower_x_dddS, upper_x_dddS = x.value[lower_ind][0], \
-                                     x.value[upper_ind][0]
+        lower_x_dddS, upper_x_dddS = x.value[lower_ind], \
+                                     x.value[upper_ind]
         x_dddS = x[tind]
 
-        # Ensure that this found peak value is not within the minimum
-        # distance of any other found peak values.
-        if np.all([np.abs(x - x_dddS) > min_distance
-                   for x, _ in ternary_regions.values()]):
-            print(lower_x_dddS, upper_x_dddS)
-            ternary_regions[(lower_x_dddS, upper_x_dddS, True)] = (
-            x_dddS, is_absorption)
+        if is_absorption:
+            # This is truly a buried line if, for absorption, if the sign of
+            # the lower index in the bounds mask is greater than the upper.
+            cond = (dddS[lower_ind] > 0) and (dddS[upper_ind] > 0)
+        else:
+            # This is truly a buried line if, for emission, if the sign of
+            # the lower index in the bounds mask is greater than the upper.
+            cond = (dddS[lower_ind] < 0) and (dddS[upper_ind] < 0)
+
+        if cond:
+            # Ensure that this found peak value is not within the minimum
+            # distance of any other found peak values.
+            if np.all([np.abs(x - x_dddS) > min_distance
+                       for x, _ in ternary_regions.values()]):
+                ternary_regions[(lower_x_dddS, upper_x_dddS, True)] = (
+                x_dddS, is_absorption)
 
     # Find obvious lines by peak values.
     for pind in np.where(dS_mask)[0][::2]:
