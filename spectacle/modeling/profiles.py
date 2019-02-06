@@ -1,18 +1,13 @@
-import logging
-from collections import OrderedDict
-
 import astropy.units as u
 import numpy as np
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable1DModel, Parameter
-from astropy.modeling import fitting
-
 from astropy.modeling.fitting import LevMarLSQFitter
-from astropy.modeling.models import Voigt1D, Gaussian1D
+from astropy.modeling.models import Gaussian1D
 from scipy import special
 
 from ..registries.lines import line_registry
-from ..utils.misc import find_nearest, DOPPLER_CONVERT
+from ..utils.misc import find_nearest
 
 __all__ = ['OpticalDepth1D']
 

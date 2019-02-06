@@ -1,21 +1,16 @@
-import logging
 import operator
+from functools import wraps
 
 import astropy.units as u
 import numpy as np
 from astropy.convolution import Kernel1D
-from astropy.modeling import Fittable1DModel, FittableModel
-from astropy.modeling.core import _CompoundModelMeta
+from astropy.modeling import Fittable1DModel, FittableModel, Parameter
 from astropy.modeling.models import Const1D, RedshiftScaleFactor
 
 from .converters import FluxConvert, FluxDecrementConvert
 from .lsfs import COSLSFModel, GaussianLSFModel, LSFModel
 from .profiles import OpticalDepth1D
-from ..fitting.curve_fitter import CurveFitter
 from ..utils.misc import DOPPLER_CONVERT
-from astropy.modeling import Parameter
-from astropy.units.equivalencies import doppler_optical
-from functools import wraps
 
 __all__ = ['Spectral1D']
 

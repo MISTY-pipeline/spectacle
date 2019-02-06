@@ -68,8 +68,7 @@ class LineFinder1D(Fittable2DModel):
             # In this case, the user has provided a list of ions for their
             # spectrum. Create a subset of the line registry so that only
             # these ions will be searched when attempting to identify.
-            sub_registry = line_registry[np.intersect1d(
-                line_registry['name'], self._ions, return_indices=True)[1]]
+            sub_registry = line_registry.subset(self._ions)
 
         # Convert the min_distance from dispersion units to data elements.
         # Assumes uniform spacing.
