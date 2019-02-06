@@ -87,7 +87,7 @@ class LineFinder1D(Fittable2DModel):
 
         for (mn_bnd, mx_bnd, buried), (centroid, is_absorption) in regions.items():
             mn_bnd, mx_bnd = mn_bnd * x.unit, mx_bnd * x.unit
-            sub_x = None
+            sub_x, vel_mn_bnd, vel_mx_bnd = None, None, None
 
             line_kwargs = self._defaults.copy()
 
@@ -99,13 +99,13 @@ class LineFinder1D(Fittable2DModel):
                 line = sub_registry.with_lambda(centroid)
 
                 disp_equiv = u.spectral() + DOPPLER_CONVERT[
-                    self._velocity_convention](centroid)
+                    self._velocity_convention](line['wave'])
 
                 with u.set_enabled_equivalencies(disp_equiv):
                     sub_x = u.Quantity(x, 'km/s')
-                    mn_bnd, mx_bnd, centroid = mn_bnd.to('km/s'), \
-                                               mx_bnd.to('km/s'), \
-                                               centroid.to('km/s')
+                    vel_mn_bnd, vel_mx_bnd, vel_centroid = mn_bnd.to('km/s'), \
+                                                           mx_bnd.to('km/s'), \
+                                                           centroid.to('km/s')
             else:
                 line = sub_registry.with_name(self._ions[0])
 
@@ -120,25 +120,40 @@ class LineFinder1D(Fittable2DModel):
             # continuum subtracted.
             v_dop, col_dens, nmn_bnd, nmx_bnd = parameter_estimator(
                 centroid=centroid,
-                bounds=(mn_bnd, mx_bnd),
+                bounds=(vel_mn_bnd or mn_bnd, vel_mx_bnd or mx_bnd),
                 x=sub_x or x,
                 y=spec_mod.continuum(sub_x or x) - y if is_absorption else y,
-                ion_name=line_kwargs.get('name'),
+                ion_info=line_kwargs,
                 buried=buried)
 
             if np.isinf(col_dens):
                 continue
 
             estimate_kwargs = {
-                'delta_v': centroid,
                 'v_doppler': v_dop,
                 'column_density': col_dens,
-                'bounds': {
-                    'delta_v': (mn_bnd.value, mx_bnd.value)
-                               # if not buried else ((sub_x or x).value[0],
-                               #                     (sub_x or x).value[-1]),
-                },
+                'fixed': {},
+                'bounds': {},
             }
+
+            # Depending on the dispersion unit information, decide whether
+            # the fitter should consider delta values in velocity or
+            # wavelength/frequency space.
+            if x.unit.physical_type in ('length', 'frequency'):
+                estimate_kwargs['fixed'].update({'delta_v': True})
+                estimate_kwargs['bounds'].update({
+                    'delta_lambda': (mn_bnd.value - centroid.value,
+                                     mx_bnd.value - centroid.value)})
+            else:
+                # In velocity space, the centroid *should* be zero for any
+                # line given that the rest wavelength is taken as its lamba_0
+                # in conversions. Thus, the given centroid is akin to the
+                # velocity offset.
+                estimate_kwargs['delta_v'] = centroid
+                estimate_kwargs['fixed'].update({'delta_lambda': True})
+                estimate_kwargs['bounds'].update({
+                    'delta_v': (mn_bnd.value, mx_bnd.value)})
+
             line_kwargs.update(estimate_kwargs)
 
             line = OpticalDepth1D(**line_kwargs)
@@ -164,7 +179,7 @@ class LineFinder1D(Fittable2DModel):
         return fit_spec_mod(x)
 
 
-def parameter_estimator(centroid, bounds, x, y, ion_name, buried=False):
+def parameter_estimator(centroid, bounds, x, y, ion_info, buried=False):
     bound_low, bound_up = bounds
     mid_diff = (bound_up - bound_low)
 
@@ -182,15 +197,12 @@ def parameter_estimator(centroid, bounds, x, y, ion_name, buried=False):
     sum_y = np.sum(my[1:] * delta_x)
     height = sum_y / (sigma * np.sqrt(2 * np.pi))
 
-    # Get information about the ion
-    ion = line_registry.with_name(ion_name)
-
     # Estimate the doppler b parameter
     v_dop = (np.sqrt(2) * np.sqrt(np.pi) * sigma).to('km/s')
 
     # Estimate the column density
     # col_dens = (v_dop / TAU_FACTOR * c.cgs ** 2).to('1/cm2')
-    col_dens = (sum_y / (TAU_FACTOR * ion['wave'] * ion['osc_str'])).to('1/cm2')
+    col_dens = (sum_y / (TAU_FACTOR * ion_info['lambda_0'] * ion_info['f_value'])).to('1/cm2')
     ln_col_dens = np.log10(col_dens.value)
 
     if buried:
@@ -200,7 +212,8 @@ def parameter_estimator(centroid, bounds, x, y, ion_name, buried=False):
     Ion: {}
     Centroid: {:g} ({:g})
     Column density: {:g}, ({:g})
-    Doppler width: {:g}""".format(ion_name, centroid, ion['wave'], ln_col_dens,
+    Doppler width: {:g}""".format(ion_info['name'], centroid,
+                                  ion_info['lambda_0'], ln_col_dens,
                                   col_dens, v_dop))
 
     return v_dop, ln_col_dens, new_bound_low, new_bound_up
