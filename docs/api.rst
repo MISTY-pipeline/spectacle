@@ -4,13 +4,14 @@ API
 Modeling
 --------
 .. automodapi:: spectacle.modeling
-   :no-heading:
+   :no-inheritance-diagram:
 
 Fitting
 -------
 .. automodapi:: spectacle.fitting
-   :no-heading:
+   :no-inheritance-diagram:
 
 Registries
 ----------
 .. automodapi:: spectacle.registries
+   :no-inheritance-diagram:

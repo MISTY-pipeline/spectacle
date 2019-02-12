@@ -1,12 +1,9 @@
-import logging
-from collections import OrderedDict
-
 import astropy.units as u
 import numpy as np
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable1DModel, Parameter
 from astropy.modeling.fitting import LevMarLSQFitter
-from astropy.modeling.models import Voigt1D, Gaussian1D
+from astropy.modeling.models import Gaussian1D
 from scipy import special
 
 from ..registries.lines import line_registry
@@ -15,10 +12,7 @@ from ..utils.misc import find_nearest
 __all__ = ['OpticalDepth1D']
 
 PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
-TAU_FACTOR = ((np.sqrt(np.pi) * PROTON_CHARGE ** 2 /
-               (m_e.cgs * c.cgs))).cgs
-
-dop_rel_equiv = u.equivalencies.doppler_relativistic
+TAU_FACTOR = (np.sqrt(np.pi) * PROTON_CHARGE ** 2 / (m_e * c)).cgs
 
 
 class IncompleteLineInformation(Exception):
@@ -72,7 +66,7 @@ class OpticalDepth1D(Fittable1DModel):
     v_doppler = Parameter(default=10, min=.1, max=1e5, unit=u.Unit('km/s'))
     column_density = Parameter(default=13, min=8, max=25)
     delta_v = Parameter(default=0, min=0, fixed=False, unit=u.Unit('km/s'))
-    delta_lambda = Parameter(default=0, min=-100, max=100, fixed=True, unit=u.Unit('Angstrom'))
+    delta_lambda = Parameter(default=0, min=-100, max=100, fixed=False, unit=u.Unit('Angstrom'))
 
     def __init__(self, name=None, line_list=None, *args, **kwargs):
         super(OpticalDepth1D, self).__init__(*args, **kwargs)
@@ -90,28 +84,23 @@ class OpticalDepth1D(Fittable1DModel):
             if line is None:
                 raise LineNotFound("No line with name '{}' in current ion "
                                    "table.".format(name))
-
-            name = line['name']
         else:
             ind = find_nearest(line_table['wave'].value, self.lambda_0.value)
             line = line_table[ind]
-            name = line['name']
 
-        self.name = name
+        self.lambda_0 = line['wave']
+        self.name = str(line['name'])
         self.f_value = line['osc_str']
         self.gamma = line['gamma']
 
-    @staticmethod
-    def evaluate(x, lambda_0, f_value, gamma, v_doppler, column_density,
+    def evaluate(self, x, lambda_0, f_value, gamma, v_doppler, column_density,
                  delta_v, delta_lambda):
-        lambda_0 = u.Quantity(lambda_0, 'Angstrom')
-        v_doppler = u.Quantity(v_doppler, 'km/s')
-        column_density = u.Quantity(10 ** column_density, '1/cm2')
-        delta_lambda = u.Quantity(delta_lambda, 'Angstrom')
-        delta_v = u.Quantity(delta_v, 'km/s')
+        with u.set_enabled_equivalencies(u.spectral() + u.doppler_relativistic(lambda_0)):
+            x = u.Quantity(x, 'Angstrom')
+            vel = u.Quantity(x, 'km/s')
 
-        with u.set_enabled_equivalencies(dop_rel_equiv(lambda_0)):
-            x = u.Quantity(x, 'km/s').to('Angstrom')
+        # Convert the log column density value back to unit-ful value
+        column_density = u.Quantity(10 ** column_density, '1/cm2')
 
         # shift lambda_0 by delta_v
         shifted_lambda = lambda_0 * (1 + delta_v / c.cgs) + delta_lambda
@@ -121,96 +110,22 @@ class OpticalDepth1D(Fittable1DModel):
 
         # tau_0
         tau_x = TAU_FACTOR * column_density * f_value / v_doppler
-        tau0 = (tau_x * lambda_0).decompose()[0]
+        tau0 = (tau_x * lambda_0).decompose()
 
         # dimensionless frequency offset in units of doppler freq
-        x = c.cgs / v_doppler.to('cm/s') * (shifted_lambda / x - 1.0)
+        x = c.cgs / v_doppler * (shifted_lambda / x - 1.0)
         a = gamma / (4.0 * np.pi * nudop)  # damping parameter
-        phi = OpticalDepth1D.voigt(a, x)  # line profile
-        tau_phi = tau0 * phi  # profile scaled with tau0
-        tau_phi = tau_phi.decompose().value
 
-        return tau_phi
+        phi = OpticalDepth1D.voigt(a.decompose().value,
+                                   x.decompose().value)  # line profile
+        tau_phi = tau0 * phi  # profile scaled with tau0
+
+        return tau_phi.value
 
     @staticmethod
     def voigt(a, u):
-        x = np.asarray(u).astype(np.float64)
-        y = np.asarray(a).astype(np.float64)
-
-        return special.wofz(x + 1j * y).real
+        return special.wofz(u + 1j * a).real
 
     @staticmethod
     def fit_deriv(x, x_0, b, gamma, f):
         return [0, 0, 0, 0]
-
-    def _parameter_units_for_data_units(self, inputs_unit, outputs_unit):
-        return OrderedDict([('lambda_0', u.Unit('Angstrom')),
-                            ('f_value', None),
-                            ('gamma', None),
-                            ('v_doppler', u.Unit('km/s')),
-                            ('column_density', None),
-                            ('delta_v', u.Unit('km/s')),
-                            ('delta_lambda', u.Unit('Angstrom'))])
-
-    def fwhm(self, x):
-        """
-        It's unclear how to get the fwhm given the parameters of this Voigt
-        model, so instead, fit a Gaussian to this model and calculate the fwhm
-        from that.
-        """
-        y = self(x)  # Generate optical depth values from this model
-
-        dx = x - np.mean(x)
-        fwhm = 2 * np.sqrt(np.sum((dx * dx) * y) / np.sum(y))
-        center = np.sum(x * y) / np.sum(y)
-        sigma = fwhm / 2.355
-
-        # Amplitude is derived from area
-        delta_x = x[1:] - x[:-1]
-        sum_y = np.sum(y[1:] * delta_x)
-
-        height = sum_y / (sigma * np.sqrt(2 * np.pi))
-
-        g = Gaussian1D(amplitude=height,
-                       mean=center,
-                       stddev=sigma,
-                       bounds={'mean': (x[0].value, x[-1].value),
-                               'stddev': (None, 4 * sigma.value)})
-
-        g_fit = LevMarLSQFitter()(g, x, y)
-
-        return g_fit.fwhm
-
-    # @u.quantity_input(x=['length', 'speed'])
-    # def delta_v_90(self, x):
-    #     return delta_v_90(x=x, y=self(x),
-    #                       rest_wavelength=self.lambda_0.quantity)
-    #
-    # @u.quantity_input(x=['length', 'speed'])
-    # def equivalent_width(self, x):
-    #     return equivalent_width(x=x, y=self(x))
-
-
-# class ExtendedVoigt1D(Voigt1D):
-#     x_0 = Parameter(default=0)
-#     amplitude_L = Parameter(default=1)
-#     fwhm_L = Parameter(default=2 / np.pi, min=0)
-#     fwhm_G = Parameter(default=np.log(2), min=0)
-#
-#     @property
-#     def fwhm(self):
-#         """
-#         Calculates an approximation of the FWHM.
-#
-#         The approximation is accurate to
-#         about 0.03% (see http://en.wikipedia.org/wiki/Voigt_profile).
-#
-#         Returns
-#         -------
-#         fwhm : float
-#             The estimate of the FWHM
-#         """
-#         fwhm = 0.5346 * self.fwhm_L + np.sqrt(0.2166 * (self.fwhm_L ** 2) +
-#                                               self.fwhm_G ** 2)
-#
-#         return fwhm

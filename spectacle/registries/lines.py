@@ -6,6 +6,7 @@ import astropy.units as u
 
 from ..utils.spelling_corrector import SpellingCorrector
 from ..utils.misc import find_nearest
+import numpy as np
 
 __all__ = ['LineRegistry']
 
@@ -13,6 +14,31 @@ __all__ = ['LineRegistry']
 class LineRegistry(QTable):
     def __init__(self, *args, **kwargs):
         super(LineRegistry, self).__init__(*args, **kwargs)
+
+    def subset(self, ions):
+        inds = []
+
+        for ion in ions:
+            if isinstance(ion, str):
+                name = self.correct(ion)
+            elif isinstance(ion, u.Quantity) or isinstance(ion, float):
+                lambda_0 = u.Quantity(lambda_0, u.Unit('Angstrom'))
+                ind = find_nearest(self['wave'], lambda_0)
+                name = self[ind]['name']
+            else:
+                logging.error("No ion could be found for {}.".format(ion))
+                continue
+
+            # TODO: use intersect1d when we update requirements to numpy 1.15
+            index = np.where(self['name'] == name)[0]
+
+            if len(index) > 0:
+                inds.append(index[0])
+
+        return self[np.array(inds)]
+
+        # return line_registry[np.intersect1d(
+        #     line_registry['name'], names, return_indices=True)[1]]
 
     def with_name(self, name):
         ion = next((row for row in self if row['name'] == name), None)
@@ -28,7 +54,7 @@ class LineRegistry(QTable):
 
     def with_lambda(self, lambda_0):
         lambda_0 = u.Quantity(lambda_0, u.Unit('Angstrom'))
-        ind = find_nearest(self['wave'], lambda_0.value)
+        ind = find_nearest(self['wave'], lambda_0)
 
         return self[ind]
 

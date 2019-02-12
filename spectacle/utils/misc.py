@@ -4,6 +4,12 @@ from functools import wraps
 import astropy.units as u
 import collections
 
+DOPPLER_CONVERT = {
+    'optical': u.doppler_optical,
+    'radio': u.doppler_radio,
+    'relativistic': u.doppler_relativistic
+}
+
 
 def find_nearest(array, value, side="left", count=1):
     """
@@ -15,6 +21,9 @@ def find_nearest(array, value, side="left", count=1):
         indexes = np.abs(array[::-1] - value)
     else:
         indexes = np.abs(array - value)
+
+    if count == 1:
+        return np.argsort(indexes)[0]
 
     return np.argsort(indexes)[:count]
 

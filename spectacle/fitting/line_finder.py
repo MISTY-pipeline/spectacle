@@ -3,10 +3,12 @@ import logging
 import astropy.units as u
 import numpy as np
 from astropy.constants import c, m_e
-from astropy.modeling import Fittable1DModel, Parameter
+from astropy.modeling import Fittable2DModel, Parameter
+from astropy.modeling.fitting import LevMarLSQFitter
 
 from ..modeling import OpticalDepth1D, Spectral1D
 from ..utils.detection import region_bounds
+from ..utils.misc import DOPPLER_CONVERT
 from ..registries import line_registry
 
 PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
@@ -14,80 +16,143 @@ TAU_FACTOR = (np.pi * PROTON_CHARGE ** 2 /
                (m_e.cgs * c.cgs)).cgs
 
 
-class LineFinder1D(Fittable1DModel):
-    inputs = ('x',)
+class LineFinder1D(Fittable2DModel):
+    inputs = ('x', 'y')
     outputs = ('y',)
 
-    threshold = Parameter(default=0.1, min=0, max=1)
+    @property
+    def input_units_allow_dimensionless(self):
+        return {'x': False, 'y': True}
+
+    threshold = Parameter(default=0)
     min_distance = Parameter(default=10.0, min=1, max=100)
 
-    def __init__(self, y, continuum=None, defaults=None, auto_fit=True,
-                 *args, **kwargs):
+    def __init__(self, ions=None, continuum=None, defaults=None,
+                 auto_fit=True, velocity_convention='relativistic',
+                 output='flux', fitter=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._y = y
+        self._ions = ions or []
         self._continuum = continuum
         self._defaults = defaults or {}
         self._model_result = None
         self._auto_fit = auto_fit
+        self._output = output
+        self._velocity_convention = velocity_convention
+        self._fitter = fitter or LevMarLSQFitter()
 
     @property
     def model_result(self):
         return self._model_result
 
-    def _frac_guess(self, value):
-        flr = np.floor(value)
-        cl = np.ceil(value)
-        frac = np.modf(value)[0]
-
-        return flr * (1 - frac) + cl * frac
-
-    def __call__(self, *args, auto_fit=None, **kwargs):
+    def __call__(self, x, *args, auto_fit=None, **kwargs):
         if auto_fit is not None:
             self._auto_fit = auto_fit
 
-        return super().__call__(*args, **kwargs)
+        if x.unit.physical_type == 'speed' and len(self._ions) != 1:
+            raise ReferenceError("The line finder will not be able to parse "
+                                 "ion information in velocity space without "
+                                 "being given explicit ion reference in the "
+                                 "defaults dictionary.")
 
-    def evaluate(self, x, threshold, min_distance, *args, **kwargs):
-        with u.set_enabled_equivalencies(u.spectral() + u.doppler_relativistic(1216 * u.AA)):
-            x = u.Quantity(x, 'km/s')
+        super().__call__(x, *args, **kwargs)
+
+        return self._model_result
+
+    def evaluate(self, x, y, threshold, min_distance, *args, **kwargs):
+        spec_mod = Spectral1D(continuum=self._continuum, output=self._output)
+
+        # Generate the subset of the table for the ions chosen by the user
+        sub_registry = line_registry
+
+        if len(self._ions) > 0:
+            # In this case, the user has provided a list of ions for their
+            # spectrum. Create a subset of the line registry so that only
+            # these ions will be searched when attempting to identify.
+            sub_registry = line_registry.subset(self._ions)
 
         # Convert the min_distance from dispersion units to data elements.
         # Assumes uniform spacing.
-        min_ind = (np.abs(x.value - (x[0].value + min_distance))).argmin()
+        # min_ind = (np.abs(x.value - (x[0].value + min_distance))).argmin()
 
         # Find peaks
-        regions = region_bounds(x, self._y)
-
+        regions = region_bounds(x, y, threshold=threshold,
+                                min_distance=min_distance)
         lines = []
 
-        for (mn_bnd, mx_bnd), (centroid, buried) in [x for x in regions.items()]:
-            line_kwargs = self._defaults.copy()
+        for (mn_bnd, mx_bnd, buried), (centroid, is_absorption) in regions.items():
             mn_bnd, mx_bnd = mn_bnd * x.unit, mx_bnd * x.unit
+            sub_x, vel_mn_bnd, vel_mx_bnd = None, None, None
 
-            # Estimate the doppler b and column densities for this line
+            line_kwargs = {}
+
+            # For the case where the user has provided a list of ions with a
+            # dispersion in wavelength or frequency, convert each ion to
+            # velocity space individually to avoid making assumptions of their
+            # kinematics.
+            if x.unit.physical_type in ('length', 'frequency'):
+                line = sub_registry.with_lambda(centroid)
+
+                disp_equiv = u.spectral() + DOPPLER_CONVERT[
+                    self._velocity_convention](line['wave'])
+
+                with u.set_enabled_equivalencies(disp_equiv):
+                    sub_x = u.Quantity(x, 'km/s')
+                    vel_mn_bnd, vel_mx_bnd, vel_centroid = mn_bnd.to('km/s'), \
+                                                           mx_bnd.to('km/s'), \
+                                                           centroid.to('km/s')
+            else:
+                line = sub_registry.with_name(self._ions[0])
+
+            line_kwargs.update({
+                'name': line['name'],
+                'lambda_0': line['wave'],
+                'gamma': line['gamma'],
+                'f_value': line['osc_str']})
+
+            # Estimate the doppler b and column densities for this line.
+            # For the parameter estimator to be accurate, the spectrum must be
+            # continuum subtracted.
             v_dop, col_dens, nmn_bnd, nmx_bnd = parameter_estimator(
                 centroid=centroid,
-                bounds=(mn_bnd, mx_bnd),
-                x=x,
-                y=self._y,
-                ion_name=line_kwargs.get('name'),
+                bounds=(vel_mn_bnd or mn_bnd, vel_mx_bnd or mx_bnd),
+                x=sub_x or x,
+                y=spec_mod.continuum(sub_x or x) - y if is_absorption else y,
+                ion_info=line_kwargs,
                 buried=buried)
 
+            if np.isinf(col_dens):
+                continue
+
             estimate_kwargs = {
-                'delta_v': centroid,
                 'v_doppler': v_dop,
                 'column_density': col_dens,
-                'bounds': {
-                    'delta_v': (mn_bnd.value, mx_bnd.value)
-                               if not buried else (x.value[0], x.value[-1]),
-                },
+                'fixed': {},
+                'bounds': {},
             }
+
+            # Depending on the dispersion unit information, decide whether
+            # the fitter should consider delta values in velocity or
+            # wavelength/frequency space.
+            if x.unit.physical_type in ('length', 'frequency'):
+                estimate_kwargs['fixed'].update({'delta_v': True})
+                estimate_kwargs['bounds'].update({
+                    'delta_lambda': (mn_bnd.value - centroid.value,
+                                     mx_bnd.value - centroid.value)})
+            else:
+                # In velocity space, the centroid *should* be zero for any
+                # line given that the rest wavelength is taken as its lamba_0
+                # in conversions. Thus, the given centroid is akin to the
+                # velocity offset.
+                estimate_kwargs['delta_v'] = centroid
+                estimate_kwargs['fixed'].update({'delta_lambda': True})
+                estimate_kwargs['bounds'].update({
+                    'delta_v': (mn_bnd.value, mx_bnd.value)})
+
             line_kwargs.update(estimate_kwargs)
+            line_kwargs.update(self._defaults.copy())
 
             line = OpticalDepth1D(**line_kwargs)
-
-            print(np.trapz(line(x), x))
             lines.append(line)
 
         logging.debug("Found %s possible lines (theshold=%s, min_distance=%s).",
@@ -96,11 +161,13 @@ class LineFinder1D(Fittable1DModel):
         if len(lines) == 0:
             return np.zeros(x.shape)
 
-        spec_mod = Spectral1D(lines, continuum=self._continuum, output='optical_depth')
+        spec_mod = Spectral1D(lines, continuum=self._continuum, output=self._output)
 
-        # fitter = LevMarLSQFitter()
         if self._auto_fit:
-            fit_spec_mod = spec_mod.fit_to(x, self._y, kwargs={'maxiter': 2000})
+            if isinstance(self._fitter, LevMarLSQFitter):
+                fit_spec_mod = self._fitter(spec_mod, x, y, maxiter=2000)
+            else:
+                fit_spec_mod = self._fitter(spec_mod, x, y)
         else:
             fit_spec_mod = spec_mod
 
@@ -111,14 +178,11 @@ class LineFinder1D(Fittable1DModel):
         return fit_spec_mod(x)
 
 
-def parameter_estimator(centroid, bounds, x, y, ion_name, buried):
+def parameter_estimator(centroid, bounds, x, y, ion_info, buried=False):
     bound_low, bound_up = bounds
     mid_diff = (bound_up - bound_low)
 
-    if buried:
-        mid_diff *= 2
-
-    new_bound_low, new_bound_up =(bound_low - mid_diff), (bound_up + mid_diff)
+    new_bound_low, new_bound_up = (bound_low - mid_diff), (bound_up + mid_diff)
     mask = ((x >= new_bound_low) & (x <= new_bound_up))
     mx, my = x[mask], y[mask]
 
@@ -135,17 +199,20 @@ def parameter_estimator(centroid, bounds, x, y, ion_name, buried):
     # Estimate the doppler b parameter
     v_dop = (np.sqrt(2) * np.sqrt(np.pi) * sigma).to('km/s')
 
-    # Get information about the ion
-    ion = line_registry.with_name(ion_name)
-
     # Estimate the column density
     # col_dens = (v_dop / TAU_FACTOR * c.cgs ** 2).to('1/cm2')
-    col_dens = (sum_y / (TAU_FACTOR * ion['wave'] * ion['osc_str'])).to('1/cm2')
-    col_dens = np.log10(col_dens.value)
+    col_dens = (sum_y / (TAU_FACTOR * ion_info['lambda_0'] * ion_info['f_value'])).to('1/cm2')
+    ln_col_dens = np.log10(col_dens.value)
+
+    if buried:
+        ln_col_dens -= 0.1
 
     logging.info("""Estimated initial values:
-    Centroid: {:g}
-    Column density: {:g}
-    Doppler width: {:g}""".format(centroid, col_dens, v_dop))
+    Ion: {}
+    Centroid: {:g} ({:g})
+    Column density: {:g}, ({:g})
+    Doppler width: {:g}""".format(ion_info['name'], centroid,
+                                  ion_info['lambda_0'], ln_col_dens,
+                                  col_dens, v_dop))
 
-    return v_dop, col_dens, new_bound_low, new_bound_up
+    return v_dop, ln_col_dens, new_bound_low, new_bound_up
