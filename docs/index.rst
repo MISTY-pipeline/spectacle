@@ -2,6 +2,7 @@
     :align: center
 
 |
+
 Spectacle is an automated model generator for producing models that represent
 spectral data. It features the ability to reduce spectral data to its absorption
 or emission components, fit features and continua, as well as allow for
