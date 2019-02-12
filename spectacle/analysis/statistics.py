@@ -2,7 +2,7 @@ import astropy.units as u
 import numpy as np
 import logging
 from ..utils.misc import find_nearest
-from specutils.analysis.width import _compute_single_fwhm
+# from specutils.analysis.width import _compute_single_fwhm
 from scipy.interpolate import UnivariateSpline
 
 __all__ = ['delta_v_90', 'full_width_half_max', 'equivalent_width']
@@ -73,8 +73,8 @@ def full_width_half_max(x, y):
     spline = UnivariateSpline(x, y - (np.max(y) + np.min(y)) / 2, s=0)
     r1, r2 = spline.roots()
 
-    # return (r2 - r1) * x.unit
-    return _compute_single_fwhm(y, x)
+    return (r2 - r1) * x.unit
+    # return _compute_single_fwhm(y, x)
 
 
 @u.quantity_input(x=['length', 'speed'])
