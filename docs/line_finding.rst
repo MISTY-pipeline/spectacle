@@ -177,11 +177,14 @@ selecting the nearest match. The user can provide a subset of ions that will
 help to narrow the possible options available to the line finder by passing in
 a list of ion names or :math:`\lambda_0` values.
 
+Subsets behave by limiting the entire table of ions in the registry to some
+specified list:
+
 .. code-block:: python
     :linenos:
 
     >>> from spectacle.registries.lines import line_registry
-    >>> print(line_registry)
+    >>> print(line_registry)  # doctest: +IGNORE_OUTPUT
 
     <LineRegistry length=329>
       name      wave    osc_str     gamma
@@ -205,7 +208,7 @@ a list of ion names or :math:`\lambda_0` values.
     GaII1414  1414.402       1.8 1970000000.0
 
     >>> subset = line_registry.subset(["HI1216", "NiII1468", "ZnII2026", "CoII1425"])
-    >>> print(subset)
+    >>> print(subset)  # doctest: +IGNORE_OUTPUT
 
     <LineRegistry length=4>
       name      wave   osc_str    gamma
@@ -216,3 +219,16 @@ a list of ion names or :math:`\lambda_0` values.
       HI1216 1215.6701  0.4164 626500000.0
     NiII1468  1467.756  0.0099  23000000.0
     ZnII2026  2026.136   0.489 407000000.0
+
+Passing in a list to the :class:`spectacle.fitting.line_finder.LineFinder1D`
+will internally do this for the user
+
+.. code-block:: python
+
+    line_finder = LineFinder1D(ions=["HI1216", "NiII1468", "ZnII2026", "CoII1425"], continuum=0, output='optical_depth')
+
+.. warning::
+
+    Only a single ion can be defined for the line finder if the user provides
+    the dispersion in velocity space. This is because the line finder cannot
+    disambiguate ions base don their kinematics.
