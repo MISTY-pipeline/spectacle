@@ -53,6 +53,7 @@ Quick example
     >>> ax.step(x, y)  # doctest: +IGNORE_OUTPUT
 
 
+
 Using Spectacle
 ---------------
 

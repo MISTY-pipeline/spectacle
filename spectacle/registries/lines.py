@@ -29,7 +29,11 @@ class LineRegistry(QTable):
                 logging.error("No ion could be found for {}.".format(ion))
                 continue
 
-            inds.append(np.where(self['name'] == name)[0])
+            # TODO: use intersect1d when we update requirements to numpy 1.15
+            index = np.where(self['name'] == name)[0]
+
+            if len(index) > 0:
+                inds.append(index[0])
 
         return self[np.array(inds)]
 
