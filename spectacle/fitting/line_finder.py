@@ -29,7 +29,7 @@ class LineFinder1D(Fittable2DModel):
 
     def __init__(self, ions=None, continuum=None, defaults=None,
                  auto_fit=True, velocity_convention='relativistic',
-                 output='flux', *args, **kwargs):
+                 output='flux', fitter=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self._ions = ions or []
@@ -39,6 +39,7 @@ class LineFinder1D(Fittable2DModel):
         self._auto_fit = auto_fit
         self._output = output
         self._velocity_convention = velocity_convention
+        self._fitter = fitter or LevMarLSQFitter()
 
     @property
     def model_result(self):
@@ -163,7 +164,10 @@ class LineFinder1D(Fittable2DModel):
         spec_mod = Spectral1D(lines, continuum=self._continuum, output=self._output)
 
         if self._auto_fit:
-            fit_spec_mod = LevMarLSQFitter()(spec_mod, x, y, maxiter=2000)
+            if isinstance(self._fitter, LevMarLSQFitter):
+                fit_spec_mod = self._fitter(spec_mod, x, y, maxiter=2000)
+            else:
+                fit_spec_mod = self._fitter(spec_mod, x, y)
         else:
             fit_spec_mod = spec_mod
 

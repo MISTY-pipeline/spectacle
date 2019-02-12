@@ -8,6 +8,8 @@ from astropy.modeling.optimizers import (DEFAULT_ACC, DEFAULT_EPS,
                                          DEFAULT_MAXITER)
 from astropy.table import QTable
 
+__all__ = ['CurveFitter']
+
 
 class CurveFitter(LevMarLSQFitter):
     def __init__(self):
@@ -28,7 +30,7 @@ class CurveFitter(LevMarLSQFitter):
 
     @fitter_unit_support
     def __call__(self, *args, **kwargs):
-        method = kwargs.get('method', 'curve')
+        method = kwargs.pop('method', 'curve')
 
         if method == 'curve':
             return self._curve_fit(*args, **kwargs)
