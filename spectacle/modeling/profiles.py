@@ -86,7 +86,7 @@ class OpticalDepth1D(Fittable1DModel):
                                    "table.".format(name))
         else:
             ind = find_nearest(line_table['wave'].value, self.lambda_0.value)
-            line = line_table[ind][0]
+            line = line_table[ind]
 
         self.lambda_0 = line['wave']
         self.name = str(line['name'])
@@ -97,6 +97,7 @@ class OpticalDepth1D(Fittable1DModel):
                  delta_v, delta_lambda):
         with u.set_enabled_equivalencies(u.spectral() + u.doppler_relativistic(lambda_0)):
             x = u.Quantity(x, 'Angstrom')
+            vel = u.Quantity(x, 'km/s')
 
         # Convert the log column density value back to unit-ful value
         column_density = u.Quantity(10 ** column_density, '1/cm2')
@@ -128,32 +129,3 @@ class OpticalDepth1D(Fittable1DModel):
     @staticmethod
     def fit_deriv(x, x_0, b, gamma, f):
         return [0, 0, 0, 0]
-
-    def fwhm(self, x):
-        """
-        It's unclear how to get the fwhm given the parameters of this Voigt
-        model, so instead, fit a Gaussian to this model and calculate the fwhm
-        from that.
-        """
-        y = self(x)  # Generate optical depth values from this model
-
-        dx = x - np.mean(x)
-        fwhm = 2 * np.sqrt(np.sum((dx * dx) * y) / np.sum(y))
-        center = np.sum(x * y) / np.sum(y)
-        sigma = fwhm / 2.355
-
-        # Amplitude is derived from area
-        delta_x = x[1:] - x[:-1]
-        sum_y = np.sum(y[1:] * delta_x)
-
-        height = sum_y / (sigma * np.sqrt(2 * np.pi))
-
-        g = Gaussian1D(amplitude=height,
-                       mean=center,
-                       stddev=sigma,
-                       bounds={'mean': (x[0].value, x[-1].value),
-                               'stddev': (None, 4 * sigma.value)})
-
-        g_fit = LevMarLSQFitter()(g, x, y)
-
-        return g_fit.fwhm

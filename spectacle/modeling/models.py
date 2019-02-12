@@ -6,11 +6,13 @@ import numpy as np
 from astropy.convolution import Kernel1D
 from astropy.modeling import Fittable1DModel, FittableModel, Parameter
 from astropy.modeling.models import Const1D, RedshiftScaleFactor
+from astropy.table import QTable
 
 from .converters import FluxConvert, FluxDecrementConvert
 from .lsfs import COSLSFModel, GaussianLSFModel, LSFModel
 from .profiles import OpticalDepth1D
 from ..utils.misc import DOPPLER_CONVERT
+from ..analysis import delta_v_90, equivalent_width, full_width_half_max
 
 __all__ = ['Spectral1D']
 
@@ -351,6 +353,46 @@ class Spectral1D(Fittable1DModel):
             raise ValueError("All lines must be `OpticalDepth1D` objects.")
 
         return self._copy(lines=self.lines + lines)
+
+    @u.quantity_input(x=['length', 'speed', 'frequency'])
+    def stats(self, x):
+        tab = QTable(names=['name', 'wave', 'col_dens', 'v_dop',
+                            'delta_v', 'delta_lambda', 'ew', 'dv90', 'fwhm'],
+                     dtype=('S10', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8',
+                            'f8', 'f8'))
+
+        tab['wave'].unit = u.AA
+        tab['v_dop'].unit = u.km / u.s
+        tab['ew'].unit = u.AA
+        tab['dv90'].unit = u.km / u.s
+        tab['fwhm'].unit = u.AA
+        tab['delta_v'].unit = u.km / u.s
+        tab['delta_lambda'].unit = u.AA
+
+        for line in self.lines:
+            disp_equiv = u.spectral() + DOPPLER_CONVERT[
+                self._velocity_convention](line.lambda_0.quantity)
+
+            with u.set_enabled_equivalencies(disp_equiv):
+                vel = x.to('km/s')
+                wav = x.to('Angstrom')
+
+            # Generate the spectrum1d object for this line profile
+            ew = equivalent_width(wav, line(wav))
+            dv90 = delta_v_90(vel, line(vel))
+            fwhm = full_width_half_max(wav, line(wav))
+
+            tab.add_row([line.name,
+                         line.lambda_0,
+                         line.column_density,
+                         line.v_doppler,
+                         line.delta_v,
+                         line.delta_lambda,
+                         ew,
+                         dv90,
+                         fwhm])
+
+        return tab
 
 
 def _wrap_unitless_model(model):
