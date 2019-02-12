@@ -106,8 +106,8 @@ def region_bounds(x, y, threshold=0.001, min_distance=1):
                         mask=~ddS_mask | (x.value < x.value[pind + 2])),
             x.value[pind])
 
-        lower_x_ddS, upper_x_ddS = x.value[lower_ind][0], \
-                                   x.value[upper_ind][0]
+        lower_x_ddS, upper_x_ddS = x.value[lower_ind], \
+                                   x.value[upper_ind]
         x_dS = x[pind]
 
         if is_absorption:

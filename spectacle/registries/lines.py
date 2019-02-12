@@ -24,7 +24,7 @@ class LineRegistry(QTable):
             elif isinstance(ion, u.Quantity) or isinstance(ion, float):
                 lambda_0 = u.Quantity(lambda_0, u.Unit('Angstrom'))
                 ind = find_nearest(self['wave'], lambda_0)
-                name = self[ind][0]['name']
+                name = self[ind]['name']
             else:
                 logging.error("No ion could be found for {}.".format(ion))
                 continue
@@ -50,7 +50,7 @@ class LineRegistry(QTable):
         lambda_0 = u.Quantity(lambda_0, u.Unit('Angstrom'))
         ind = find_nearest(self['wave'], lambda_0)
 
-        return self[ind][0]
+        return self[ind]
 
     def correct(self, name):
         _corrector = SpellingCorrector(list(self['name']))

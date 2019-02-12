@@ -1,1 +1,1 @@
-from .lines import line_registry
+from .lines import line_registry, LineRegistry

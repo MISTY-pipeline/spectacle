@@ -22,6 +22,9 @@ def find_nearest(array, value, side="left", count=1):
     else:
         indexes = np.abs(array - value)
 
+    if count == 1:
+        return np.argsort(indexes)[0]
+
     return np.argsort(indexes)[:count]
 
 
