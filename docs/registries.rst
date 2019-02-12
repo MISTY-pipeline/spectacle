@@ -36,7 +36,7 @@ auto-correct:
 .. code-block:: python
 
     >>> from spectacle.registries import line_registry
-    >>> line_registry.with_name("HI1215")
+    >>> line_registry.with_name("HI1215")  # doctest: +SKIP
     spectacle [INFO    ]: Found line with name 'HI1216' from given name 'HI1215'.
     <Row index=0>
      name     wave   osc_str    gamma
@@ -62,4 +62,4 @@ and declaring the `line_registry` variable
 .. code-block:: python
 
     >>> from spectacle.registries import LineRegistry
-    >>> line_registry = LineRegistry.read("/path/to/ion_file.ecsv")  # doctest: +IGNORE_OUTPUT
+    >>> line_registry = LineRegistry.read("/path/to/ion_file.ecsv")  # doctest: +SKIP
