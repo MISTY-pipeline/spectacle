@@ -209,9 +209,9 @@ def parameter_estimator(centroid, bounds, x, y, ion_info, buried=False):
 
     logging.info("""Estimated initial values:
     Ion: {}
-    Centroid: {:g} ({:g})
-    Column density: {:g}, ({:g})
-    Doppler width: {:g}""".format(ion_info['name'], centroid,
+    Centroid: {} ({})
+    Column density: {}, ({})
+    Doppler width: {}""".format(ion_info['name'], centroid,
                                   ion_info['lambda_0'], ln_col_dens,
                                   col_dens, v_dop))
 
