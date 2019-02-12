@@ -9,6 +9,6 @@ dependencies:
     - Cython
     - matplotlib
     - numpy
-    - sphinx-astropy
     - pip:
+        - sphinx-astropy
         - sphinx-rtd-theme
