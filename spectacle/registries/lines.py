@@ -16,7 +16,7 @@ class LineRegistry(QTable):
         super(LineRegistry, self).__init__(*args, **kwargs)
 
     def subset(self, ions):
-        names = []
+        inds = []
 
         for ion in ions:
             if isinstance(ion, str):
@@ -29,10 +29,12 @@ class LineRegistry(QTable):
                 logging.error("No ion could be found for {}.".format(ion))
                 continue
 
-            names.append(name)
+            inds.append(np.where(self['name'] == name)[0])
 
-        return line_registry[np.intersect1d(
-            line_registry['name'], names, return_indices=True)[1]]
+        return self[np.array(inds)]
+
+        # return line_registry[np.intersect1d(
+        #     line_registry['name'], names, return_indices=True)[1]]
 
     def with_name(self, name):
         ion = next((row for row in self if row['name'] == name), None)

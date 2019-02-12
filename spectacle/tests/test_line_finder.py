@@ -69,7 +69,6 @@ def test_single_line_wavelength():
                                threshold=0.05)
 
     fit_spec_mod = line_finder(x, y)
-    fit_spec_mod = line_finder.model_result
 
     assert np.allclose(y, fit_spec_mod(x))
 
@@ -94,6 +93,5 @@ def test_buried_line_wavelength():
                                threshold=0.05)
 
     fit_spec_mod = line_finder(x, y)
-    fit_spec_mod = line_finder.model_result
 
     assert np.allclose(y, fit_spec_mod(x))

@@ -106,9 +106,9 @@ class LineFinder1D(Fittable2DModel):
 
             line_kwargs.update({
                 'name': line['name'],
-                'lambda_0': line['wave'],
-                'gamma': line['gamma'],
-                'f_value': line['osc_str']})
+                'lambda_0': line['wave'][0],
+                'gamma': line['gamma'][0],
+                'f_value': line['osc_str'][0]})
 
             # Estimate the doppler b and column densities for this line.
             # For the parameter estimator to be accurate, the spectrum must be
