@@ -7,6 +7,7 @@ from astropy.convolution import Kernel1D
 from astropy.modeling import Fittable1DModel, FittableModel, Parameter
 from astropy.modeling.models import Const1D, RedshiftScaleFactor
 from astropy.table import QTable
+from collections import OrderedDict
 
 from .converters import FluxConvert, FluxDecrementConvert
 from .lsfs import COSLSFModel, GaussianLSFModel, LSFModel
@@ -166,7 +167,7 @@ class Spectral1D(Fittable1DModel):
 
         # Create a dictionary to pass as the parameter unit definitions to the
         # new class. This ensures fitters know this model supports units.
-        data_units = {}
+        data_units = OrderedDict()
 
         # Attach all of the compound model parameters to this model
         for param_name in compound_model.param_names:
