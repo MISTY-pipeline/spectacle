@@ -14,6 +14,7 @@ from .lsfs import COSLSFModel, GaussianLSFModel, LSFModel
 from .profiles import OpticalDepth1D
 from ..utils.misc import DOPPLER_CONVERT
 from ..analysis import delta_v_90, equivalent_width, full_width_half_max
+from ..analysis.region_finder import find_regions
 
 __all__ = ['Spectral1D']
 
@@ -356,7 +357,21 @@ class Spectral1D(Fittable1DModel):
         return self._copy(lines=self.lines + lines)
 
     @u.quantity_input(x=['length', 'speed', 'frequency'])
-    def stats(self, x):
+    def line_stats(self, x):
+        """
+        Calculate statistics over individual line profiles.
+
+        Parameters
+        ----------
+        x : :class:`~u.Quantity`
+            The input dispersion in either wavelength/frequency or velocity
+            space.
+
+        Returns
+        -------
+        tab : :class:`~astropy.table.QTable`
+            A table detailing the calculated statistics.
+        """
         tab = QTable(names=['name', 'wave', 'col_dens', 'v_dop',
                             'delta_v', 'delta_lambda', 'ew', 'dv90', 'fwhm'],
                      dtype=('S10', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8',
@@ -372,7 +387,7 @@ class Spectral1D(Fittable1DModel):
 
         for line in self.lines:
             disp_equiv = u.spectral() + DOPPLER_CONVERT[
-                self._velocity_convention](line.lambda_0.quantity)
+                self.velocity_convention](line.lambda_0.quantity)
 
             with u.set_enabled_equivalencies(disp_equiv):
                 vel = x.to('km/s')
@@ -389,6 +404,78 @@ class Spectral1D(Fittable1DModel):
                          line.v_doppler,
                          line.delta_v,
                          line.delta_lambda,
+                         ew,
+                         dv90,
+                         fwhm])
+
+        return tab
+
+    @u.quantity_input(x=['length', 'speed', 'frequency'], rest_wavelength='length')
+    def region_stats(self, x, rest_wavelength, rel_tol=1e-2, abs_tol=1e-5):
+        """
+        Calculate statistics over arbitrary line regions given some tolerance
+        from the continuum.
+
+        Parameters
+        ----------
+        x : :class:`~u.Quantity`
+            The input dispersion in either wavelength/frequency or velocity
+            space.
+        rest_wavelength : :class:`~u.Quantity`
+            The rest frame wavelength used in conversions between wavelength/
+            frequency and velocity space.
+        rel_tol : float
+            The relative tolerance parameter.
+        abs_tol : float
+            The absolute tolerance parameter.
+
+        Returns
+        -------
+        tab : :class:`~astropy.table.QTable`
+            A table detailing the calculated statistics.
+        """
+        y = self(x)
+
+        if self.output_type == 'flux':
+            y = self.continuum(x) - y
+        else:
+            y -= self.continuum(x)
+
+        # Calculate the regions in the raw data
+        # absolute(a - b) <= (atol + rtol * absolute(b))
+        regions = {(reg[0], reg[1]): []
+                   for reg in find_regions(y, rel_tol=rel_tol, abs_tol=abs_tol)}
+        tab = QTable(names=['region_start', 'region_end', 'rest_wavelength',
+                            'ew', 'dv90', 'fwhm'],
+                     dtype=('f8', 'f8', 'f8', 'f8', 'f8', 'f8'))
+
+        tab['region_start'].unit = x.unit
+        tab['region_end'].unit = x.unit
+        tab['rest_wavelength'].unit = u.AA
+        tab['ew'].unit = u.AA
+        tab['dv90'].unit = u.km / u.s
+        tab['fwhm'].unit = u.AA
+
+        for mn_bnd, mx_bnd in regions:
+            mask = (x > x[mn_bnd]) & (x < x[mx_bnd])
+            x_reg = x[mask]
+            y_reg = y[mask]
+
+            disp_equiv = u.spectral() + DOPPLER_CONVERT[
+                self.velocity_convention](rest_wavelength)
+
+            with u.set_enabled_equivalencies(disp_equiv):
+                vel = x_reg.to('km/s')
+                wav = x_reg.to('Angstrom')
+
+            # Generate the spectrum1d object for this line profile
+            ew = equivalent_width(wav, y_reg)
+            dv90 = delta_v_90(vel, y_reg)
+            fwhm = full_width_half_max(wav, y_reg)
+
+            tab.add_row([x[mn_bnd],
+                         x[mx_bnd],
+                         rest_wavelength,
                          ew,
                          dv90,
                          fwhm])
