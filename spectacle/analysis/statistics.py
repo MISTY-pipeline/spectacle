@@ -9,7 +9,7 @@ __all__ = ['delta_v_90', 'full_width_half_max', 'equivalent_width']
 
 
 @u.quantity_input(x=['length', 'speed'])
-def delta_v_90(x, y, continuum=None):
+def delta_v_90(x, y):
     """
     Calculate the dispersion that encompasses the central 90 percent of the
     apparant optical depth. Follows the formulation defined in Prochaska &
@@ -23,30 +23,24 @@ def delta_v_90(x, y, continuum=None):
         Flux or optical depth array. Note that the calculation assumes that the
         data is optical depth. If providing flux, it will be converted to
         apparant optical depth.
-    center : :class:`~astropy.units.Quantity`
-        The centroid of the ion.
     """
-    if continuum is not None:
-        y = continuum - y
+    tot_tau = np.sum(y)#, x)
 
-    mask = (y > 0.001)
-    y = y[mask]
-    x = x[mask]
-    y_max = np.argmax(y)
+    lower_ind = 0
+    less_five = np.sum(y[lower_ind:])
 
-    if y.size > 0:
-        y95 = np.percentile(y, 95)
-        y5 = np.percentile(y, 5)
+    while (less_five/tot_tau) > 0.95:
+        less_five = np.sum(y[lower_ind:])#, x[lower_ind:])
+        lower_ind += 1
 
-        v95 = x[find_nearest(y[y_max:], y95) + y_max]
-        v5 = x[find_nearest(y[:y_max], y5)]
-    else:
-        logging.warning("No reasonable amount of optical depth found in "
-                        "feature, aborting dv90 calculation.")
+    upper_ind = -1
+    less_five = np.sum(y[:upper_ind])
 
-        return u.Quantity(0, 'km/s')
+    while (less_five/tot_tau) > 0.95:
+        less_five = np.sum(y[:upper_ind])#, x[:upper_ind])
+        upper_ind -= 1
 
-    return np.abs((v95 - v5).to('km/s'))
+    return np.abs((x[upper_ind] - x[lower_ind]).to('km/s'))
 
 
 @u.quantity_input(x=['length', 'speed'])
