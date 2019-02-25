@@ -1,22 +1,23 @@
 Registries
 ==========
 
-Spectacle uses an internal database of ions in order to look up information
-like the oscillator strength, gamma values, and centroid on lines. The default
-ion registry is extensive and loaded by default. However, it is possible for
-users to provide their own registries.
+Spectacle uses an internal database of ions in order to look up relevant
+atomic line information (specifically, oscillator strength, gamma values,
+and restframe wavelength). Spectacle provides an extensive default ion registry
+taken from Morton 2003. However, it is possible for users to provide their own
+registries.
 
-Registries are searched for the closest centroid information when used in
-line fitting, or are directly queried for named ions in the case where users
-provide line name information.
+Spectacle searches the line registry for an atomic transition with the closest
+restframe wavelength to the line in question. Alternatively, users can provide
+a specific set of lines with associated atomic information for Spectacle to use.
 
 .. code-block:: python
 
     >>> from spectacle.registries import line_registry
     >>> import astropy.units as u
 
-Users can query the registry by passing in :math:`\lambda_0` information
-for an ion
+Users can query the registry by passing in the restframe wavelength,
+:math:`\lambda_0`, information for an ion
 
 .. code-block:: python
 
