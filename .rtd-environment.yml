@@ -10,6 +10,7 @@ dependencies:
     - matplotlib
     - numpy
     - pyyaml
+    - pathos
     - pip:
         - sphinx-astropy
         - sphinx-rtd-theme
