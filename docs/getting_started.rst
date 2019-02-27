@@ -70,10 +70,11 @@ class
 
 .. code-block:: python
 
-    >>> spec_mod = Spectral1D()
-    >>> spec_mod = spec_mod.with_line(1216 * u.Angstrom)
+    >>> from spectacle import Spectral1D
+    >>> import astropy.units as u
+    >>> spec_mod = Spectral1D([1216 * u.AA])
     >>> spec_mod = spec_mod.with_line("HI1216", v_doppler=50 * u.km/u.s, column_density=14)
-    >>> print(spec_mod)
+    >>> print(spec_mod)  # doctest: +SKIP
     Model: Spectral1D
     Inputs: ('x',)
     Outputs: ('y',)
