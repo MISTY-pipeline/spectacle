@@ -14,6 +14,16 @@ from ..utils.misc import find_nearest
 
 
 class MCMCFitter:
+    """
+    An implementation of a Markov chain Monte Carlo fitting algorithm provided
+    by the ``emcee`` package.
+    """
+    def __init__(self):
+        self._uncertainties = None
+
+    @property
+    def uncertainties(self):
+        return self._uncertainties
 
     def lnprior(self, theta, model):
         # Convert the array of parameter values back into model parameters
@@ -66,13 +76,12 @@ class EmceeFitter(MCMCFitter):
         # Retrieve the parameters that are not considered fixed or tied
         fit_params, fit_params_indices = _model_to_fit_params(model)
         fit_params = np.append(fit_params, np.log(0.1))
-        # fit_params_indices = np.array(fit_params_indices).astype(int)
 
         # Perform a quick optimization of the parameters
-        nll = lambda *args: -self.lnlike(*args)
+        # nll = lambda *args: -self.lnlike(*args)
 
-        result = op.minimize(nll, fit_params, args=(x, y, yerr, model))
-        fit_params = result["x"]
+        # result = op.minimize(nll, fit_params, args=(x, y, yerr, model))
+        # fit_params = result["x"]
         # print(fit_params)
 
         # Cache the number of dimensions of the problem, and walker count
@@ -105,15 +114,10 @@ class EmceeFitter(MCMCFitter):
                        zip(*np.percentile(samples, [16, 50, 84], axis=0))))
 
         theta = [x[0] for x in res]
+        self._uncertainties = {k[0]: (res[i][1], res[i][2])
+                               for i, k in enumerate(zip(model.param_names, res))}
 
         _fitter_to_model_params(model, theta[:-1])
-        print(theta)
-
-        # fit_params, fit_params_indices = _model_to_fit_params(model)
-        # model.parameters[fit_params_indices] = theta
-
-        # for name, value in zip(np.array(model.param_names)[fit_params_indices], fit_params):
-        #     print("{:20}: {:g}".format(name, value))
 
         return model
 
