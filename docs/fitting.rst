@@ -36,7 +36,7 @@ The most common one might use is the
     Users can see the results of the fitted spectrum by printing the returned
     model object
 
-    >>> print(fit_spec_mod)
+    >>> print(fit_spec_mod)  # doctest: +SKIP
     Model: Spectral1D
     Inputs: ('x',)
     Outputs: ('y',)
@@ -49,13 +49,14 @@ The most common one might use is the
 
     Plot the results:
 
-    >>> plt.step(x, y, label="Data")
-    >>> plt.step(x, fit_spec_mod(x), label="Fit")
-    >>> plt.legend()
+    >>> f, ax = plt.subplots()  # doctest: +SKIP
+    >>> ax.step(x, y, label="Data")  # doctest: +SKIP
+    >>> ax.step(x, fit_spec_mod(x), label="Fit")  # doctest: +SKIP
+    >>> f.legend()  # doctest: +SKIP
 
 
-Fitting with the line finder
-----------------------------
+Custom fitters with the line finder
+-----------------------------------
 
 The :class:`~spectacle.fitting.line_finder.LineFinder1D` class can also be
 passed a fitter instance if the user wishes to use a specific type as opposed to the
@@ -65,4 +66,7 @@ default Levenberg-Marquardt algorithm.
 .. code-block:: python
     :linenos:
 
-    line_finder = LineFinder1D(ions=["HI1216", "OVI1038"], continuum=0, output='optical_depth', fitter=LevMarLSQFitter())
+    line_finder = LineFinder1D(ions=["HI1216", "OVI1032"], continuum=0, output='optical_depth', fitter=LevMarLSQFitter())
+
+More information on using the line finder can be found in the
+:ref:`line finding documentation<line-finding>`.
