@@ -8,6 +8,7 @@ from astropy.modeling import Parameter
 from scipy import stats
 import scipy.optimize as op
 import emcee
+from pathos.multiprocessing import Pool
 
 from ..utils.misc import find_nearest
 
@@ -44,7 +45,6 @@ class MCMCFitter:
         return res
 
     def lnprob(self, theta, x, y, yerr, model):
-        model = model.copy()
         lp = self.lnprior(theta, model)
 
         if not np.isfinite(lp):
@@ -57,9 +57,11 @@ class MCMCFitter:
 
 class EmceeFitter(MCMCFitter):
     def __call__(self, model, x, y, yerr=None, nwalkers=500, steps=200):
+        model = model.copy()
+
         # If no errors are provided, assume all errors are normalized
         if yerr is None:
-            yerr = np.zeros(shape=x.shape)
+            yerr = np.ones(shape=x.shape)
 
         # Retrieve the parameters that are not considered fixed or tied
         fit_params, fit_params_indices = _model_to_fit_params(model)
@@ -67,21 +69,24 @@ class EmceeFitter(MCMCFitter):
         # fit_params_indices = np.array(fit_params_indices).astype(int)
 
         # Perform a quick optimization of the parameters
-        # nll = lambda *args: -self.lnlike(*args)
-        #
-        # result = op.minimize(nll, fit_params, args=(x, y, yerr, model))
-        # fit_params = result["x"]
+        nll = lambda *args: -self.lnlike(*args)
+
+        result = op.minimize(nll, fit_params, args=(x, y, yerr, model))
+        fit_params = result["x"]
         # print(fit_params)
 
         # Cache the number of dimensions of the problem, and walker count
         ndim = len(fit_params)
 
         # Initialize starting positions of walkers in a Gaussian ball
-        pos = [fit_params * (1 + 1e-1 * np.random.randn(ndim))
-               for i in range(nwalkers)]
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, self.lnprob,
-                                        args=(x, y, yerr, model), threads=8)
-        sampler.run_mcmc(pos, steps, rstate0=np.random.get_state())
+        pos = [fit_params + 1e-4 * np.random.randn(ndim)
+               for _ in range(nwalkers)]
+
+        with Pool(8) as pool:
+            sampler = emcee.EnsembleSampler(nwalkers, ndim, self.lnprob,
+                                            args=(x, y, yerr, model),
+                                            pool=pool)
+            sampler.run_mcmc(pos, steps, rstate0=np.random.get_state())
 
         # for result in sampler.sample(pos, iterations=steps, storechain=False):
         #     position = result[0]
