@@ -66,7 +66,7 @@ class MCMCFitter:
 
 
 class EmceeFitter(MCMCFitter):
-    def __call__(self, model, x, y, yerr=None, nwalkers=500, steps=200):
+    def __call__(self, model, x, y, yerr=None, nwalkers=500, steps=200, nprocs=1):
         model = model.copy()
 
         # If no errors are provided, assume all errors are normalized
@@ -91,7 +91,7 @@ class EmceeFitter(MCMCFitter):
         pos = [fit_params + 1e-4 * np.random.randn(ndim)
                for _ in range(nwalkers)]
 
-        with Pool(8) as pool:
+        with Pool(nprocs) as pool:
             sampler = emcee.EnsembleSampler(nwalkers, ndim, self.lnprob,
                                             args=(x, y, yerr, model),
                                             pool=pool)
