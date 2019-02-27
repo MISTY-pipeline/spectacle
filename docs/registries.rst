@@ -1,14 +1,16 @@
+.. _registries:
+
 Registries
 ==========
 
 Spectacle uses an internal database of ions in order to look up relevant
 atomic line information (specifically, oscillator strength, gamma values,
-and restframe wavelength). Spectacle provides an extensive default ion registry
+and rest-frame wavelength). Spectacle provides an extensive default ion registry
 taken from Morton 2003. However, it is possible for users to provide their own
 registries.
 
 Spectacle searches the line registry for an atomic transition with the closest
-restframe wavelength to the line in question. Alternatively, users can provide
+rest-frame wavelength to the line in question. Alternatively, users can provide
 a specific set of lines with associated atomic information for Spectacle to use.
 
 .. code-block:: python
