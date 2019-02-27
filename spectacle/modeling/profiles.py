@@ -78,7 +78,7 @@ class OpticalDepth1D(Fittable1DModel):
 
         line_table = line_registry[line_mask]
 
-        if name is not None:
+        if name is not None or isinstance(name, str):
             line = line_table.with_name(name)
 
             if line is None:
