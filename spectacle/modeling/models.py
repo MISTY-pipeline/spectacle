@@ -3,6 +3,7 @@ from functools import wraps
 
 import astropy.units as u
 import numpy as np
+from scipy.stats import chisquare
 from astropy.convolution import Kernel1D
 from astropy.modeling import Fittable1DModel, FittableModel, Parameter
 from astropy.modeling.models import Const1D, RedshiftScaleFactor
@@ -73,7 +74,8 @@ class Spectral1D(Fittable1DModel):
         return {'x': disp_equiv}
 
     def __new__(cls, lines=None, continuum=None, z=None, lsf=None, output=None,
-                velocity_convention=None, rest_wavelength=None, **kwargs):
+                velocity_convention=None, rest_wavelength=None, copy=False,
+                **kwargs):
         # If the cls already contains parameter attributes, assume that this is
         # being called as part of a copy operation and return the class as-is.
         if (lines is None and continuum is None and z is None and
@@ -178,8 +180,16 @@ class Spectral1D(Fittable1DModel):
 
         members['_parameter_units_for_data_units'] = lambda *pufdu: data_units
 
-        cls = type('Spectral1D', (cls, ), members)
-        instance = super().__new__(cls)
+        new_cls = type('Spectral{}'.format(compound_model.__name__),
+                       (cls, ), members)
+
+        # Ensure that the class is recorded in the global scope so that the
+        # serialization done can access the stored class definitions.
+        new_cls.__module__ = '__main__'
+        # globals()[new_cls.__name__] = new_cls
+        globals()[compound_model.__name__] = compound_model.__class__
+
+        instance = super().__new__(new_cls)
 
         # Define the instance-level parameters
         setattr(instance, '_continuum', continuum)
@@ -299,7 +309,7 @@ class Spectral1D(Fittable1DModel):
 
         new_kwargs.update(kwargs)
 
-        return Spectral1D(**new_kwargs)
+        return Spectral1D(**new_kwargs, copy=True)
 
     @property
     def as_flux(self):
@@ -329,8 +339,16 @@ class Spectral1D(Fittable1DModel):
         : :class:`~spectacle.modeling.models.Spectral1D`
             The new spectral model.
         """
+        args = list(args)
+
         if isinstance(args[0], OpticalDepth1D):
             new_line = args[0]
+        elif isinstance(args[0], str):
+            name = args.pop(0)
+            new_line = OpticalDepth1D(name=name, *args, **kwargs)
+        elif isinstance(args[0], u.Quantity):
+            lambda_0 = args.pop(0)
+            new_line = OpticalDepth1D(lambda_0=lambda_0, *args, **kwargs)
         else:
             new_line = OpticalDepth1D(*args, **kwargs)
 

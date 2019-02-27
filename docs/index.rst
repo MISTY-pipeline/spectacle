@@ -3,9 +3,12 @@
 
 |
 
+Spectacle
+=========
+
 Spectacle is an automated model generator for producing models that represent
 spectral data. It features the ability to reduce spectral data to its absorption
-or emission components, fit features and continua, as well as allow for
+components, fit features and continua, as well as allow for
 statistical analysis of spectral regions.
 
 This package can also be used to generate analytical spectra from detailed
@@ -32,7 +35,8 @@ Quick example
 
     >>> from spectacle.modeling import Spectral1D, OpticalDepth1D
 
-    Create some HI lines to add to the spectral model.
+    Create some HI lines to add to the spectral model. **Note** that all
+    column densities are given in :math:`\log 1 / \textrm{cm}^2`.
 
     >>> line = OpticalDepth1D("HI1216", v_doppler=50 * u.km/u.s, column_density=14)
     >>> line2 = OpticalDepth1D("HI1216", delta_v=100 * u.km/u.s)
@@ -45,7 +49,7 @@ Quick example
     Generate spectral data from the model.
 
     >>> x = np.linspace(-500, 500, 1000) * u.Unit('km/s')
-    >>> y = spec_mod(x) * u.Unit('erg / Angstrom / cm^2 / s')
+    >>> y = spec_mod(x)
 
     Plot the result.
 

@@ -4,6 +4,16 @@
 Installation
 ============
 
+Dependencies
+------------
+
+The packages needed to run Spectacle should be installed automatically when
+the user installs the package. These dependencies include
+
+* astropy>=3.1
+* specutils>=0.4
+* emcee > 3.0
+
 
 Stable release
 --------------

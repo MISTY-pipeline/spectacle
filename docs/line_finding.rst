@@ -1,12 +1,14 @@
+.. _line-finding:
+
 Line Finding
 ============
 
-Spectacle supports finding embeded lines in spectra in an automated fashion.
-The line finder uses a series of convolutions to indicate where the slope
-of the spectrum changes, and uses these positions to characterize the shape
-of the absorption or emission lines. Such characterization includes finding
-the centroid, the width of the line, and the whether or not lines are
-buried within the region of another.
+Spectacle has automated line-finding and characterization, including support
+for blended features. The line finder uses a series of convolutions to indicate
+where the slope of the spectrum changes, and uses these positions to
+characterize the shape of the absorption or emission lines. Such
+characterization includes finding the centroid, the width of the line, and the
+whether or not lines are buried within the region of another.
 
 .. image:: _static/line_finder_conv.png
 
@@ -27,7 +29,7 @@ below.
 
 +---------------------+------------------------------------------------------------------------------------------------------------------------------------------------+
 | Argument            | Description                                                                                                                                    |
-+---------------------+------------------------------------------------------------------------------------------------------------------------------------------------+
++=====================+================================================================================================================================================+
 | ions                | The subset of ion information to use when parsing potential profiles in the spectral data.                                                     |
 +---------------------+------------------------------------------------------------------------------------------------------------------------------------------------+
 | continuum           | A :class:`~astropy.modeling.models.FittableModel1D` or single numeric value,representing the continuum for the spectral model. *Default: 0*    |
@@ -58,8 +60,8 @@ a set of "fake" data.
 
 .. code-block:: python
 
-    line1 = OpticalDepth1D("HI1216", v_doppler=500 * u.km/u.s, column_density=14)
-    line2 = OpticalDepth1D("OVI1038", v_doppler=500 * u.km/u.s, column_density=15)
+    line1 = OpticalDepth1D("HI1216", v_doppler=20 * u.km/u.s, column_density=16)
+    line2 = OpticalDepth1D("OVI1032", v_doppler=60 * u.km/u.s, column_density=14)
 
     spec_mod = Spectral1D([line1, line2], continuum=1, output='optical_depth')
 
@@ -79,8 +81,7 @@ the line finder attempts to lookup the ion in the ion table.
 
 .. code-block:: python
 
-    line_finder = LineFinder1D(ions=["HI1216", "OVI1038"],
-                                   continuum=0, output='optical_depth')
+    line_finder = LineFinder1D(ions=["HI1216", "OVI1032"], continuum=0, output='optical_depth')
     finder_spec_mod = line_finder(x, y)
 
 
@@ -93,19 +94,29 @@ the line finder attempts to lookup the ion in the ion table.
     >>> from matplotlib import pyplot as plt
     >>> from spectacle.modeling import Spectral1D, OpticalDepth1D
     >>> from spectacle.fitting.line_finder import LineFinder1D
-    >>> line1 = OpticalDepth1D("HI1216", v_doppler=500 * u.km/u.s, column_density=14)
-    >>> line2 = OpticalDepth1D("OVI1038", v_doppler=500 * u.km/u.s, column_density=15)
+    >>> line1 = OpticalDepth1D("HI1216", v_doppler=20 * u.km/u.s, column_density=16)
+    >>> line2 = OpticalDepth1D("OVI1032", v_doppler=60 * u.km/u.s, column_density=16)
     >>> spec_mod = Spectral1D([line1, line2], continuum=0, output='optical_depth')
-    >>> x = np.linspace(1000, 1300, 1000) * u.Unit('Angstrom')
+    >>> x = np.linspace(1000, 1300, 10000) * u.Unit('Angstrom')
     >>> y = spec_mod(x)
 
-    >>> line_finder = LineFinder1D(ions=["HI1216", "OVI1038"], continuum=0, output='optical_depth')
+    >>> line_finder = LineFinder1D(ions=["HI1216", "OVI1032"], continuum=0, output='optical_depth')
     >>> finder_spec_mod = line_finder(x, y)
-    >>> f, ax = plt.subplots()  # doctest: +SKIP
-    >>> ax.step(x, y, label="Original Data") # doctest: +SKIP
-    >>> ax.step(x, finder_spec_mod(x), label="Finder Result") # doctest: +SKIP
-    >>> ax.set_xlabel("Wavelength [Angstrom]")  # doctest: +SKIP
+    >>> finder_y = finder_spec_mod(x)
+    >>> mask1 = (x.value >= line1.lambda_0.value - 2) & (x.value <= line1.lambda_0.value + 2)
+    >>> mask2 = (x.value >= line2.lambda_0.value - 2) & (x.value <= line2.lambda_0.value + 2)
+    >>> f, (ax1, ax2) = plt.subplots(1, 2, sharey=True)   # doctest: +SKIP
+    >>> ax1.step(x[mask2], y[mask2], label="Original Data")  # doctest: +SKIP
+    >>> ax1.step(x[mask2], finder_y[mask2], label="Finder Result")  # doctest: +SKIP
+    >>> ax2.step(x[mask1], y[mask1])  # doctest: +SKIP
+    >>> ax2.step(x[mask1], finder_y[mask1])  # doctest: +SKIP
+    >>> ax1.set_title("OVI1032")  # doctest: +SKIP
+    >>> ax2.set_title("HI1216")  # doctest: +SKIP
+    >>> f.add_subplot(111, frameon=False)  # doctest: +SKIP
+    >>> plt.xlabel("Wavelength [Angstrom]")  # doctest: +SKIP
+    >>> plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)  # doctest: +SKIP
     >>> f.legend()  # doctest: +SKIP
+    >>> f.subplots_adjust(wspace=0)  # doctest: +SKIP
 
 
 Dealing with buried lines
@@ -141,7 +152,7 @@ centroid, but two different sets of region bounds.
     >>> f, ax = plt.subplots()  # doctest: +SKIP
     >>> ax.step(x, y, label="Original Data") # doctest: +SKIP
     >>> ax.step(x, finder_spec_mod(x), label="Finder Result") # doctest: +SKIP
-    >>> ax.set_xlabel("Wavelength [Angstrom]")  # doctest: +SKIP
+    >>> ax.set_xlabel("Velocity [km/s]")  # doctest: +SKIP
     >>> f.legend()  # doctest: +SKIP
 
 
@@ -173,9 +184,11 @@ Searching for ion subsets
 
 As mentioned above, the line finder attempts to retrieve information about a
 potential profile by looking up the detected centroid in the ion table and
-selecting the nearest match. The user can provide a subset of ions that will
-help to narrow the possible options available to the line finder by passing in
-a list of ion names or :math:`\lambda_0` values.
+selecting the nearest match. (A more extensive overview of the line registry can be
+found in the :ref:`line registry docs <registries>`). The user
+can provide a subset of ions that will help to narrow the possible options
+available to the line finder by passing in a list of ion names or
+:math:`\lambda_0` values. The default ion list is provided by Morton (2003).
 
 Subsets behave by limiting the entire table of ions in the registry to some
 specified list:
@@ -231,4 +244,4 @@ will internally do this for the user
 
     Only a single ion can be defined for the line finder if the user provides
     the dispersion in velocity space. This is because the line finder cannot
-    disambiguate ions base don their kinematics.
+    disambiguate ions based on their kinematics.

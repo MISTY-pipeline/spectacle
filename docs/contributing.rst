@@ -64,7 +64,14 @@ Ready to contribute? Here's how to set up `spectacle` for local development.
 
     $ git clone git@github.com:your_name_here/spectacle.git
 
-3. Install your local copy into a virtualenv. Assuming you have virtualenvwrapper installed, this is how you set up your fork for local development::
+3. Install your local copy into a virtualenv. Assuming you have Anaconda installed, this is how you set up your fork for local development::
+
+    $ conda create -n spectacle_env python=3
+    $ conda activate spectacle_env
+    $ cd spectacle/
+    $ python setup.py develop
+
+    Alternatively, if you have virtualenvwrapper installed::
 
     $ mkvirtualenv spectacle
     $ cd spectacle/

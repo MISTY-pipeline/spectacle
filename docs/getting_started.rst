@@ -3,6 +3,7 @@ Getting Started
 ===============
 
 Spectacle is designed to facilitate the creation of complex spectral models.
+It is built on the `Astropy modeling <http://docs.astropy.org/en/stable/modeling/>`_ module.
 It can create representations of spectral data in wavelength, frequency, or
 velocity space, with any number of line components. These models can then be
 fit to data for use in individual ion reduction, or characterization of spectra
@@ -53,11 +54,11 @@ Using a set of :class:`~spectacle.modeling.models.OpticalDepth1D` instances::
 
 Using ion name strings::
 
-    spec_mod = Spectral1D(["HI1216", "OVI1038"])
+    spec_mod = Spectral1D(["HI1216", "OVI1032"])
 
 Using rest wavelength :class:`~astropy.units.Quantity` objects::
 
-    spec_mod = Spectral1D([1216 * u.Angstrom, 1038 * u.Angstrom])
+    spec_mod = Spectral1D([1216 * u.Angstrom, 1032 * u.Angstrom])
 
 Adding lines after model creation
 ---------------------------------
@@ -65,8 +66,23 @@ Adding lines after model creation
 Likewise, the user can add a line to an already made spectral model by using
 the :meth:`~spectacle.modeling.models.Spectral1D.with_line` method, and
 provide to it information accepted by the :class:`~spectacle.modeling.models.OpticalDepth1D`
-class::
+class
 
-    spec_mod = Spectral1D()
-    spec_mod = spec_mod.with_line(1216 * u.Angstrom)
-    spec_mod = spec_mod.with_line("HI1216", v_doppler=50 * u.km/u.s, column_density=14)
+.. code-block:: python
+
+    >>> from spectacle import Spectral1D
+    >>> import astropy.units as u
+    >>> spec_mod = Spectral1D([1216 * u.AA])
+    >>> spec_mod = spec_mod.with_line("HI1216", v_doppler=50 * u.km/u.s, column_density=14)
+    >>> print(spec_mod)  # doctest: +SKIP
+    Model: Spectral1D
+    Inputs: ('x',)
+    Outputs: ('y',)
+    Model set size: 1
+    Parameters:
+        amplitude_0 z_1 lambda_0_2 f_value_2   gamma_2   v_doppler_2 column_density_2 delta_v_2 delta_lambda_2 lambda_0_3 f_value_3   gamma_3   v_doppler_3 column_density_3 delta_v_3 delta_lambda_3 z_5
+                         Angstrom                           km / s                      km / s     Angstrom     Angstrom                           km / s                      km / s     Angstrom
+        ----------- --- ---------- --------- ----------- ----------- ---------------- --------- -------------- ---------- --------- ----------- ----------- ---------------- --------- -------------- ---
+                0.0 0.0  1215.6701    0.4164 626500000.0        10.0             13.0       0.0            0.0  1215.6701    0.4164 626500000.0        50.0             14.0       0.0            0.0 0.0
+
+
