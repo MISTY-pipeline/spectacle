@@ -203,6 +203,38 @@ class Spectral1D(Fittable1DModel):
     def __init__(self, *args, **kwargs):
         super().__init__()
 
+    def __call__(self, *args, **kwargs):
+        result = super().__call__(*args, **kwargs)
+        return result
+
+    def rejection_criteria(self, x, y):
+        """
+        Implementation of the Akaike Information Criteria with Correction
+        (AICC) (Akaike 1974; Liddle 2007; King et al. 2011). Used to determine
+        whether lines can be safely removed from the compound model without
+        loss of information.
+
+        Parameters
+        ----------
+        x : :class:`~astropy.units.Quantity`
+            The dispersion data.
+        y : array-like
+            The expected flux or tau data.
+        """
+        base_aicc = self._aicc(x, y, self)
+
+        for i in range(len(self.lines)):
+            lines = [x for x in self.lines]
+            lines.pop(i)
+            new_spec = self._copy(lines=lines)
+            aicc = self._aicc(x, y, new_spec)
+
+    def _aicc(self, x, y, model):
+        chi2, _ = chisquare(model(x), y)
+        p = len([k for x in model.lines for k, v in x.fixed.items() if not v])
+        n = x.size
+        return chi2 + (2 * p * n) / (n - p - 1)
+
     def evaluate(self, x, *args, **kwargs):
         # For the input dispersion to be unit-ful, especially when fitting
         x = u.Quantity(x, 'km/s') \

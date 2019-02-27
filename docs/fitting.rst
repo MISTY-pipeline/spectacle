@@ -69,7 +69,7 @@ number of walkers and the number of iterations.
     ...
 
     fitter = LevMarLSQFitter()
-    fit_spec_mod = fitter(spec_mod, x, y, , nwalkers=250, steps=100)
+    fit_spec_mod = fitter(spec_mod, x, y, , nwalkers=250, steps=100, nprocs=8)
 
 The fitted parameter results are given as the value at the 50th quantile of the
 distribution of walkers. The uncertainties on the values can be obtained through
