@@ -55,6 +55,33 @@ The most common one might use is the
     >>> f.legend()  # doctest: +SKIP
 
 
+Using the MCMC fitter
+---------------------
+
+Spectacle provides Bayesian fitting through the ``emcee`` package. This is
+implemented in the :class:`~spectacle.fitting.mcmc_fitter.EmceeFitter` class.
+The usage is similar above, but extra arguments can be provided to control the
+number of walkers and the number of iterations.
+
+.. code-block:: python
+
+    from spectacle.fitting import EmceeFitter
+    ...
+
+    fitter = LevMarLSQFitter()
+    fit_spec_mod = fitter(spec_mod, x, y, , nwalkers=250, steps=100)
+
+The fitted parameter results are given as the value at the 50th quantile of the
+distribution of walkers. The uncertainties on the values can be obtained through
+the ``uncertainties`` property on the ``fitter`` instance, and provide the
+16th quantile and 80th quantile for the lower and upper bounds on the value,
+respectively.
+
+.. note::
+    The MCMC fitter is a work in progress. Its results are dependent on how
+    long the fitter runs and how many walkers are provided.
+
+
 Custom fitters with the line finder
 -----------------------------------
 
