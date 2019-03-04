@@ -76,4 +76,51 @@ profile beyond some threshold.
     >>> for row in region_stats:
     ...    ax.axvline(row['region_start'].value, color='r', alpha=0.5)  # doctest: +IGNORE_OUTPUT
     ...    ax.axvline(row['region_end'].value, color='r', alpha=0.5)  # doctest: +IGNORE_OUTPUT
-    >>> ax.plot(x, y)  # doctest: +IGNORE_OUTPUT
+    >>> ax.step(x, y)  # doctest: +IGNORE_OUTPUT
+
+
+Re-sampling dispersion grids
+----------------------------
+
+Spectacle provides a means of doing flux-conversing re-sampling by generating
+a re-sampling matrix based on an input spectral dispersion grid and a desired
+output grid.
+
+.. plot::
+    :include-source:
+    :align: center
+    :context: close-figs
+
+    >>> from spectacle.modeling import Spectral1D, OpticalDepth1D
+    >>> from spectacle.analysis import Resample
+    >>> import astropy.units as u
+    >>> from matplotlib import pyplot as plt
+    >>> import numpy as np
+    >>> from astropy.visualization import quantity_support
+    >>> quantity_support()  # doctest: +IGNORE_OUTPUT
+
+    Create a basic spectral model.
+
+    >>> line1 = OpticalDepth1D("HI1216")
+    >>> spec_mod = Spectral1D(line1)
+
+    Define our original highly-sampled dispersion grid.
+
+    >>> vel = np.linspace(-50, 50, 1000) * u.km / u.s
+    >>> tau = spec_mod(vel)
+
+    Define a new, lower-sampled dispersion grid we want to re-sample to.
+
+    >>> new_vel = np.linspace(-50, 50, 100) * u.km / u.s
+
+    Generate the resampling grid and apply it to the original data.
+
+    >>> resample = Resample(new_vel)
+    >>> new_tau = resample(vel, tau)
+
+    Plot the results.
+
+    >>> f, ax = plt.subplots()  # doctest: +IGNORE_OUTPUT
+    >>> ax.step(vel, tau, label="Original")  # doctest: +IGNORE_OUTPUT
+    >>> ax.step(new_vel, new_tau, label="Re-gridded")  # doctest: +IGNORE_OUTPUT
+    >>> f.legend()  # doctest: +IGNORE_OUTPUT

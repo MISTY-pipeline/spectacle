@@ -83,7 +83,7 @@ class Spectral1D(Fittable1DModel):
                 rest_wavelength is None):
             return super().__new__(cls)
 
-        output = output or 'flux'
+        output = output or 'optical_depth'
         velocity_convention = velocity_convention or 'relativistic'
         rest_wavelength = rest_wavelength or u.Quantity(0, 'Angstrom')
 
