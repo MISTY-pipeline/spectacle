@@ -104,7 +104,7 @@ output grid.
     >>> line1 = OpticalDepth1D("HI1216")
     >>> spec_mod = Spectral1D(line1)
 
-    Define our original highly-sampled dispersion grid.
+    Define our original, highly-sampled dispersion grid.
 
     >>> vel = np.linspace(-50, 50, 1000) * u.km / u.s
     >>> tau = spec_mod(vel)
@@ -113,7 +113,7 @@ output grid.
 
     >>> new_vel = np.linspace(-50, 50, 100) * u.km / u.s
 
-    Generate the resampling grid and apply it to the original data.
+    Generate the resampling matrix and apply it to the original data.
 
     >>> resample = Resample(new_vel)
     >>> new_tau = resample(vel, tau)
