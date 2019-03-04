@@ -11,6 +11,11 @@ Fitting
 .. automodapi:: spectacle.fitting
    :no-inheritance-diagram:
 
+Analysis
+--------
+.. automodapi:: spectacle.analysis
+   :no-inheritance-diagram:
+
 Registries
 ----------
 .. automodapi:: spectacle.registries
