@@ -220,8 +220,14 @@ class Spectral1D(Fittable1DModel):
             The dispersion data.
         y : array-like
             The expected flux or tau data.
+
+        Returns
+        -------
+        final_model : :class:`~spectacle.Spectral1D`
+            The new spectral model with the least complexity.
         """
         base_aicc = self._aicc(x, y, self)
+        final_model = None
 
         for i in range(len(self.lines)):
             lines = [x for x in self.lines]
@@ -229,10 +235,17 @@ class Spectral1D(Fittable1DModel):
             new_spec = self._copy(lines=lines)
             aicc = self._aicc(x, y, new_spec)
 
+            if aicc < base_aicc:
+                final_model = new_spec
+                base_aicc = aicc
+
+        return final_model
+
     def _aicc(self, x, y, model):
-        chi2, _ = chisquare(model(x), y)
+        chi2, pval = chisquare(f_obs=model(x)**2, f_exp=y**2)
         p = len([k for x in model.lines for k, v in x.fixed.items() if not v])
         n = x.size
+
         return chi2 + (2 * p * n) / (n - p - 1)
 
     def evaluate(self, x, *args, **kwargs):
@@ -373,14 +386,15 @@ class Spectral1D(Fittable1DModel):
         """
         args = list(args)
 
-        if isinstance(args[0], OpticalDepth1D):
-            new_line = args[0]
-        elif isinstance(args[0], str):
-            name = args.pop(0)
-            new_line = OpticalDepth1D(name=name, *args, **kwargs)
-        elif isinstance(args[0], u.Quantity):
-            lambda_0 = args.pop(0)
-            new_line = OpticalDepth1D(lambda_0=lambda_0, *args, **kwargs)
+        if len(args) > 0:
+            if isinstance(args[0], OpticalDepth1D):
+                new_line = args[0]
+            elif isinstance(args[0], str):
+                name = args.pop(0)
+                new_line = OpticalDepth1D(name=name, *args, **kwargs)
+            elif isinstance(args[0], u.Quantity):
+                lambda_0 = args.pop(0)
+                new_line = OpticalDepth1D(lambda_0=lambda_0, *args, **kwargs)
         else:
             new_line = OpticalDepth1D(*args, **kwargs)
 

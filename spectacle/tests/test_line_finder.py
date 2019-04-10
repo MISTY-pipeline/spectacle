@@ -1,9 +1,31 @@
 from ..modeling.profiles import OpticalDepth1D
 from ..modeling.models import Spectral1D
 from ..fitting.line_finder import LineFinder1D
+from ..utils.detection import region_bounds
 
 import astropy.units as u
 import numpy as np
+import pytest
+
+
+@pytest.fixture
+def spectral_model():
+    spec_mod = Spectral1D([
+        OpticalDepth1D(**{'name': 'SiIV1394', 'gamma': 880000000.0, 'f_value': 0.528, 'delta_v': -166.6337 * u.Unit(
+            'km/s'), 'column_density': 12.0475, 'v_doppler': 7.3596 * u.Unit('km/s')}),
+        OpticalDepth1D(**{'name': 'SiIV1394', 'gamma': 880000000.0, 'f_value': 0.528, 'delta_v': -40.8921 * u.Unit(
+            'km/s'), 'column_density': 12.7523, 'v_doppler': 5.6053 * u.Unit('km/s')}),
+        OpticalDepth1D(**{'name': 'SiIV1394', 'gamma': 880000000.0, 'f_value': 0.528, 'delta_v': -28.2055 * u.Unit(
+            'km/s'), 'column_density': 13.3042, 'v_doppler': 9.433 * u.Unit('km/s')}),
+        OpticalDepth1D(**{'name': 'SiIV1394', 'gamma': 880000000.0, 'f_value': 0.528, 'delta_v': -2.7874 * u.Unit(
+            'km/s'), 'column_density': 13.2916, 'v_doppler': 4.2219 * u.Unit('km/s')}),
+        OpticalDepth1D(**{'name': 'SiIV1394', 'gamma': 880000000.0, 'f_value': 0.528, 'delta_v': 6.9627 * u.Unit(
+            'km/s'), 'column_density': 11.9939, 'v_doppler': 5.2558 * u.Unit('km/s')}),
+        OpticalDepth1D(**{'name': 'SiIV1394', 'gamma': 880000000.0, 'f_value': 0.528, 'delta_v': 30.309 * u.Unit(
+            'km/s'), 'column_density': 12.8783, 'v_doppler': 10.8588 * u.Unit('km/s')})
+    ], output='flux')
+
+    return spec_mod
 
 
 def test_single_line_velocity():
@@ -16,7 +38,7 @@ def test_single_line_velocity():
 
     # Test line finding in velocity space
     x = np.linspace(-200, 200, 1000) * u.km / u.s
-    y = spec_mod(x) #+ 0.001 * (np.random.sample(len(x)) - 0.5)
+    y = spec_mod(x)  # + 0.001 * (np.random.sample(len(x)) - 0.5)
 
     line_finder = LineFinder1D(ions=["HI1216"], auto_fit=True,
                                continuum=0, output='optical_depth',
@@ -40,7 +62,7 @@ def test_buried_line_velocity():
 
     # Test line finding in velocity space
     x = np.linspace(-200, 200, 1000) * u.km / u.s
-    y = spec_mod(x) #+ 0.001 * (np.random.sample(len(x)) - 0.5)
+    y = spec_mod(x)  # + 0.001 * (np.random.sample(len(x)) - 0.5)
 
     line_finder = LineFinder1D(ions=["HI1216"], auto_fit=True,
                                continuum=0, output='optical_depth',
@@ -62,7 +84,7 @@ def test_single_line_wavelength():
 
     # Test line finding in velocity space
     x = np.linspace(1200, 1250, 2000) * u.AA
-    y = spec_mod(x) #+ 0.001 * (np.random.sample(len(x)) - 0.5)
+    y = spec_mod(x)  # + 0.001 * (np.random.sample(len(x)) - 0.5)
 
     line_finder = LineFinder1D(ions=["HI1216"], auto_fit=True,
                                continuum=1, output='flux',
@@ -86,7 +108,7 @@ def test_buried_line_wavelength():
 
     # Test line finding in velocity space
     x = np.linspace(1200, 1250, 2000) * u.AA
-    y = spec_mod(x) #+ 0.001 * (np.random.sample(len(x)) - 0.5)
+    y = spec_mod(x)  # + 0.001 * (np.random.sample(len(x)) - 0.5)
 
     line_finder = LineFinder1D(ions=["HI1216"], auto_fit=True,
                                continuum=1, output='flux',
@@ -95,3 +117,15 @@ def test_buried_line_wavelength():
     fit_spec_mod = line_finder(x, y)
 
     assert np.allclose(y, fit_spec_mod(x))
+
+
+def test_detection(spectral_model):
+    vel = np.arange(-300, 100, 0.5) * u.Unit('km/s')
+    flux = spectral_model(vel)
+
+    reg_bnds = region_bounds(vel, flux, threshold=0.05)
+
+    assert len(reg_bnds) == 6
+    assert np.allclose([(-172.0, -161.5), (-46.0, -38.0), (-33.0, -17.5),
+                        (-8.5, 2.5), (8.0, 10.0), (21.0, 39.5)],
+                        list(reg_bnds.keys()))

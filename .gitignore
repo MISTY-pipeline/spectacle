@@ -55,6 +55,10 @@ distribute-*.tar.gz
 .project
 .pydevproject
 .settings
+settings.json
 
 # Mac OSX
 .DS_Store
+
+# Pytest
+.pytest_cache
