@@ -27,7 +27,7 @@ class LineFinder1D(Fittable2DModel):
     threshold = Parameter(default=0)
     min_distance = Parameter(default=10.0, min=1, max=100)
 
-    def __init__(self, ions=None, continuum=None, defaults=None,
+    def __init__(self, ions=None, continuum=None, defaults=None, z=None,
                  auto_fit=True, velocity_convention='relativistic',
                  output='flux', fitter=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -35,6 +35,7 @@ class LineFinder1D(Fittable2DModel):
         self._ions = ions or []
         self._continuum = continuum
         self._defaults = defaults or {}
+        self._z = z or 0
         self._model_result = None
         self._auto_fit = auto_fit
         self._output = output
@@ -80,7 +81,7 @@ class LineFinder1D(Fittable2DModel):
                                 min_distance=min_distance)
         lines = []
 
-        for (mn_bnd, mx_bnd, buried), (centroid, is_absorption) in regions.items():
+        for (mn_bnd, mx_bnd), (centroid, is_absorption, buried) in regions.items():
             mn_bnd, mx_bnd = mn_bnd * x.unit, mx_bnd * x.unit
             sub_x, vel_mn_bnd, vel_mx_bnd = None, None, None
 
@@ -121,7 +122,7 @@ class LineFinder1D(Fittable2DModel):
                 ion_info=line_kwargs,
                 buried=buried)
 
-            if np.isinf(col_dens):
+            if np.isinf(col_dens) or np.isnan(col_dens):
                 continue
 
             estimate_kwargs = {
@@ -135,10 +136,12 @@ class LineFinder1D(Fittable2DModel):
             # the fitter should consider delta values in velocity or
             # wavelength/frequency space.
             if x.unit.physical_type in ('length', 'frequency'):
+                estimate_kwargs['delta_lambda'] = centroid - line['wave']
                 estimate_kwargs['fixed'].update({'delta_v': True})
-                estimate_kwargs['bounds'].update({
-                    'delta_lambda': (mn_bnd.value - centroid.value,
-                                     mx_bnd.value - centroid.value)})
+                # TODO: enable bounds checking on lambda values
+                # estimate_kwargs['bounds'].update({
+                #     'delta_lambda': (mn_bnd.value - centroid.value,
+                #                      mx_bnd.value - centroid.value)})
             else:
                 # In velocity space, the centroid *should* be zero for any
                 # line given that the rest wavelength is taken as its lamba_0
@@ -161,7 +164,8 @@ class LineFinder1D(Fittable2DModel):
         if len(lines) == 0:
             return np.zeros(x.shape)
 
-        spec_mod = Spectral1D(lines, continuum=self._continuum, output=self._output)
+        spec_mod = Spectral1D(lines, continuum=self._continuum, output=self._output,
+                              z=self._z)
 
         if self._auto_fit:
             if isinstance(self._fitter, LevMarLSQFitter):
@@ -179,10 +183,11 @@ class LineFinder1D(Fittable2DModel):
 
 
 def parameter_estimator(centroid, bounds, x, y, ion_info, buried=False):
-    bound_low, bound_up = bounds
-    mid_diff = (bound_up - bound_low)
+    # bound_low, bound_up = bounds
+    # mid_diff = (bound_up - bound_low)
+    # new_bound_low, new_bound_up = (bound_low - mid_diff), (bound_up + mid_diff)
 
-    new_bound_low, new_bound_up = (bound_low - mid_diff), (bound_up + mid_diff)
+    new_bound_low, new_bound_up = bounds
     mask = ((x >= new_bound_low) & (x <= new_bound_up))
     mx, my = x[mask], y[mask]
 
