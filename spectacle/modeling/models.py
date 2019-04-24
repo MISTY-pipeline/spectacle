@@ -6,7 +6,7 @@ import numpy as np
 from scipy.stats import chisquare
 from astropy.convolution import Kernel1D
 from astropy.modeling import Fittable1DModel, FittableModel, Parameter
-from astropy.modeling.models import Const1D, RedshiftScaleFactor
+from astropy.modeling.models import Const1D, RedshiftScaleFactor, Scale
 from astropy.table import QTable
 from collections import OrderedDict
 
@@ -64,9 +64,11 @@ class Spectral1D(Fittable1DModel):
 
     @property
     def input_units_equivalencies(self):
-        rest_wavelength = self.lines[0].lambda_0.quantity \
-            if len(self.lines) > 0 and (self.is_single_ion or self.rest_wavelength.value == 0) \
-            else self.rest_wavelength
+        rest_wavelength = self.rest_wavelength
+
+        if len(self.lines) > 0 and (self.is_single_ion or
+                                    self.rest_wavelength.value == 0):
+            rest_wavelength = self.lines[0].lambda_0.quantity
 
         disp_equiv = u.spectral() + DOPPLER_CONVERT[
             self._velocity_convention](rest_wavelength)
@@ -86,6 +88,7 @@ class Spectral1D(Fittable1DModel):
         output = output or 'optical_depth'
         velocity_convention = velocity_convention or 'relativistic'
         rest_wavelength = rest_wavelength or u.Quantity(0, 'Angstrom')
+        z = z or 0
 
         # If no continuum is provided, or the continuum provided is not a
         # model, use a constant model to represent the continuum.
@@ -145,11 +148,11 @@ class Spectral1D(Fittable1DModel):
             ln = np.sum(_lines)
 
             if output == 'flux_decrement':
-                compound_model = continuum + (rs | (ln | FluxDecrementConvert()) | rs.inverse)
+                compound_model = (rs | (ln | FluxDecrementConvert())) + continuum
             elif output == 'flux':
-                compound_model = continuum + (rs | (ln | FluxConvert()) | rs.inverse)
+                compound_model = (rs | (ln | FluxConvert())) + continuum
             else:
-                compound_model = continuum + (rs | ln | rs.inverse)
+                compound_model = (rs | ln) + continuum
         else:
             compound_model = continuum + (rs | rs.inverse)
 
@@ -204,8 +207,15 @@ class Spectral1D(Fittable1DModel):
         super().__init__()
 
     def __call__(self, *args, **kwargs):
-        result = super().__call__(*args, **kwargs)
-        return result
+        return super().__call__(*args, **kwargs)
+
+    def evaluate(self, x, *args, **kwargs):
+        # For the parameters to be unit-ful especially when used in fitting.
+        # TODO: fix arguments being passed with extra dimension.
+        args = [u.Quantity(val[0], unit) if unit is not None else val[0]
+                for val, unit in zip(args, self._parameter_units_for_data_units().values())]
+
+        return self._compound_model.__class__(*args, **kwargs)(x)
 
     def rejection_criteria(self, x, y):
         """
@@ -247,19 +257,6 @@ class Spectral1D(Fittable1DModel):
         n = x.size
 
         return chi2 + (2 * p * n) / (n - p - 1)
-
-    def evaluate(self, x, *args, **kwargs):
-        # For the input dispersion to be unit-ful, especially when fitting
-        x = u.Quantity(x, 'km/s') \
-            if self.is_single_ion or len(self.lines) == 0 \
-            else u.Quantity(x, 'Angstrom')
-
-        # For the parameters to be unit-ful especially when used in fitting.
-        # TODO: fix arguments being passed with extra dimension.
-        args = [u.Quantity(val[0], unit) if unit is not None else val[0]
-                for val, unit in zip(args, self._parameter_units_for_data_units().values())]
-
-        return self._compound_model.__class__(*args, **kwargs)(x)
 
     @property
     def continuum(self):
