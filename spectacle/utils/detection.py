@@ -6,32 +6,36 @@ from astropy.convolution import convolve
 
 from spectacle.utils.misc import find_nearest
 
+__all__ = ['region_bounds']
 
-def region_bounds(x, y, threshold=0.001, min_distance=1):
-    # Slice the y axis in half -- if more data elements exist in the "top"
-    # half, assume the spectrum is absorption. Otherwise, assume emission.
-    mid_y = min(y) + (max(y) - min(y)) * 0.5
-    is_absorption = len(y[y > mid_y]) > len(y[y < mid_y])
 
-    if not isinstance(min_distance, u.Quantity):
-        min_distance *= x.unit
-
-    if is_absorption:
-        thresh_mask = np.greater(np.max(y) - y, threshold)
-    else:
-        thresh_mask = np.greater(y, threshold)
-
+def _make_data_diffs(y):
     kernel = [1, 0, -1]
 
     dY = convolve(y, kernel, 'extend', normalize_kernel=False) #np.diff(y)
     ddY = convolve(dY, kernel, 'extend', normalize_kernel=False) #np.diff(dY)
     dddY = convolve(ddY, kernel, 'extend', normalize_kernel=False) #np.diff(ddY)
 
+    return dY, ddY, dddY
+
+
+def _make_sign_diffs(dY, ddY, dddY):
+    kernel = [1, 0, -1]
+
     # Anywhere that dS >/< 0 is a line for absorption/emission.
     # Anywhere that ddS == 0
     dS = convolve(np.sign(dY), kernel, 'extend', normalize_kernel=False)
     ddS = convolve(np.sign(ddY), kernel, 'extend', normalize_kernel=False)
     dddS = convolve(np.sign(dddY), kernel, 'extend', normalize_kernel=False)
+
+    return dS, ddS, dddS
+
+
+def _generate_masks(y, threshold, dS, ddS, dddS, is_absorption):
+    if is_absorption:
+        thresh_mask = np.greater(np.max(y) - y, threshold)
+    else:
+        thresh_mask = np.greater(y, threshold)
 
     # Mask areas that don't provide line information. The secondary
     # convolution should gives us the bounds of when we enter (upward slope,
@@ -56,7 +60,10 @@ def region_bounds(x, y, threshold=0.001, min_distance=1):
         dS_mask = (dS < 0) & thresh_mask
         dddS_mask = (dddS > 0) & thresh_mask
 
-    prime_regions = {}
+    return dS_mask, ddS_mask, dddS_mask
+
+
+def _find_ternary_bounds(x, ddS_mask, dddS_mask, min_distance, is_absorption):
     ternary_regions = {}
 
     # Find "buried" lines. Do this by taking the third difference of the
@@ -98,6 +105,12 @@ def region_bounds(x, y, threshold=0.001, min_distance=1):
             ternary_regions[(lower_x_ddS, upper_x_ddS)] = (
             x_dddS, is_absorption, True)
 
+    return ternary_regions
+
+
+def _find_primary_bounds(x, dS_mask, ddS_mask, min_distance, is_absorption):
+    prime_regions = {}
+
     # Find obvious lines by peak values.
     for pind in np.where(dS_mask)[0][::2]:
         lower_ind = find_nearest(
@@ -123,6 +136,29 @@ def region_bounds(x, y, threshold=0.001, min_distance=1):
                     for x, _, _ in prime_regions.values()]):
             prime_regions[(lower_x_ddS, upper_x_ddS)] = (
             x_dS, is_absorption, False)
+
+    return prime_regions
+
+
+def region_bounds(x, y, threshold=0.001, min_distance=1):
+    # Slice the y axis in half -- if more data elements exist in the "top"
+    # half, assume the spectrum is absorption. Otherwise, assume emission.
+    mid_y = min(y) + (max(y) - min(y)) * 0.5
+    is_absorption = len(y[y > mid_y]) > len(y[y < mid_y])
+
+    if not isinstance(min_distance, u.Quantity):
+        min_distance *= x.unit
+
+    dY, ddY, dddY = _make_data_diffs(y)
+    dS, ddS, dddS = _make_sign_diffs(dY, ddY, dddY)
+
+    dS_mask, ddS_mask, dddS_mask = _generate_masks(y, threshold, dS, ddS, dddS,
+                                                   is_absorption)
+
+    ternary_regions = _find_ternary_bounds(x, ddS_mask, dddS_mask,
+                                           min_distance, is_absorption)
+    prime_regions = _find_primary_bounds(x, dS_mask, ddS_mask, min_distance,
+                                         is_absorption)
 
     ternary_regions.update(prime_regions)
 
