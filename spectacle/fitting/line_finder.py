@@ -81,7 +81,7 @@ class LineFinder1D(Fittable2DModel):
                                 min_distance=min_distance)
         lines = []
 
-        for (mn_bnd, mx_bnd), (centroid, is_absorption, buried) in regions.items():
+        for centroid, (mn_bnd, mx_bnd), is_absorption, buried in regions.values():
             mn_bnd, mx_bnd = mn_bnd * x.unit, mx_bnd * x.unit
             sub_x, vel_mn_bnd, vel_mx_bnd = None, None, None
 
