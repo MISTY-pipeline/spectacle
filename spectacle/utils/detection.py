@@ -160,6 +160,31 @@ def region_bounds(x, y, threshold=0.001, min_distance=1):
     prime_regions = _find_primary_bounds(x, dS_mask, ddS_mask, min_distance,
                                          is_absorption)
 
+    # For the ternary centroids closest to a prime centroid, use the bounds
+    # information of the primary centroid
+    for (t_low, t_up), (t_cent, is_absorb, buried) in ternary_regions.items():
+        p_cents = [x[0] for x in prime_regions.values()]
+
+        # Find closest index
+        ind = find_nearest(np.array([x.value for x in p_cents]), t_cent.value)
+        p_cent = p_cents[ind]
+        p_low, p_up = list(prime_regions.keys())[ind]
+
+        new_t_up = t_up
+        new_t_low = t_low
+
+        if p_cent - t_cent > 0:
+            # If the prime centroid is greater than the ternary centroid,
+            # update the ternary upper bound
+            new_t_up = p_low
+        else:
+            new_t_low = p_up
+
+        del ternary_regions[(t_low, t_up)]
+
+        ternary_regions[(new_t_low, new_t_up)] = (t_cent, is_absorb, buried)
+
+
     ternary_regions.update(prime_regions)
 
     return ternary_regions
