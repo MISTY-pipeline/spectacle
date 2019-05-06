@@ -77,7 +77,7 @@ class Spectral1D(Fittable1DModel):
 
     def __new__(cls, lines=None, continuum=None, z=None, lsf=None, output=None,
                 velocity_convention=None, rest_wavelength=None, copy=False,
-                **kwargs):
+                input_redshift=None, **kwargs):
         # If the cls already contains parameter attributes, assume that this is
         # being called as part of a copy operation and return the class as-is.
         if (lines is None and continuum is None and z is None and
@@ -89,6 +89,7 @@ class Spectral1D(Fittable1DModel):
         velocity_convention = velocity_convention or 'relativistic'
         rest_wavelength = rest_wavelength or u.Quantity(0, 'Angstrom')
         z = z or 0
+        input_redshift = input_redshift or 0
 
         # If no continuum is provided, or the continuum provided is not a
         # model, use a constant model to represent the continuum.
@@ -142,17 +143,19 @@ class Spectral1D(Fittable1DModel):
 
         # Compose the line-based compound model taking into consideration
         # the redshift, continuum, and dispersion conversions.
-        rs = RedshiftScaleFactor(z, fixed={'z': True}).inverse
+        rs = RedshiftScaleFactor(z, fixed={'z': True}, name="redshift").inverse
+        irs = RedshiftScaleFactor(input_redshift, fixed={'z': True},
+                                  name="input_redshift").inverse
 
         if lines is not None and len(_lines) > 0:
             ln = np.sum(_lines)
 
             if output == 'flux_decrement':
-                compound_model = (rs | (ln | FluxDecrementConvert())) + continuum
+                compound_model = (irs | rs | (ln | FluxDecrementConvert())) + continuum
             elif output == 'flux':
-                compound_model = (rs | (ln | FluxConvert())) + continuum
+                compound_model = (irs | rs | (ln | FluxConvert())) + continuum
             else:
-                compound_model = (rs | ln) + continuum
+                compound_model = (irs |rs | ln) + continuum
         else:
             compound_model = continuum + (rs | rs.inverse)
 
@@ -210,6 +213,11 @@ class Spectral1D(Fittable1DModel):
         return super().__call__(*args, **kwargs)
 
     def evaluate(self, x, *args, **kwargs):
+        # For the input dispersion to be unit-ful, especially when fitting
+        x = u.Quantity(x, 'km/s') \
+            if self.is_single_ion or len(self.lines) == 0 \
+            else u.Quantity(x, 'Angstrom')
+
         # For the parameters to be unit-ful especially when used in fitting.
         # TODO: fix arguments being passed with extra dimension.
         args = [u.Quantity(val[0], unit) if unit is not None else val[0]
@@ -281,7 +289,14 @@ class Spectral1D(Fittable1DModel):
             The redshift value.
         """
         return next((x for x in self._compound_model
-                     if isinstance(x, RedshiftScaleFactor))).inverse.z.value
+                     if isinstance(x, RedshiftScaleFactor)
+                     and x.name == 'redshift')).inverse.z.value
+
+    def _input_redshift(self):
+        """The defined redshift at which dispersion values are provided."""
+        return next((x for x in self._compound_model
+                     if isinstance(x, RedshiftScaleFactor)
+                     and x.name == 'input_redshift')).z.value
 
     @property
     def lines(self):
@@ -347,7 +362,8 @@ class Spectral1D(Fittable1DModel):
             output=self.output_type,
             lsf=self.lsf_kernel,
             velocity_convention=self.velocity_convention,
-            rest_wavelength=self.rest_wavelength)
+            rest_wavelength=self.rest_wavelength,
+            input_redshift=self._input_redshift())
 
         new_kwargs.update(kwargs)
 
@@ -367,6 +383,10 @@ class Spectral1D(Fittable1DModel):
     def as_optical_depth(self):
         """New spectral model that produces optical depth output."""
         return self._copy(output='optical_depth')
+
+    def with_continuum(self, continuum):
+        """New spectral model defined with a different continuum."""
+        return self._copy(continuum=continuum)
 
     def with_lsf(self, kernel=None, **kwargs):
         """New spectral model with a line spread function."""

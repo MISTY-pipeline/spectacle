@@ -164,7 +164,9 @@ class LineFinder1D(Fittable2DModel):
         if len(lines) == 0:
             return np.zeros(x.shape)
 
-        spec_mod = Spectral1D(lines, continuum=self._continuum, output=self._output,
+        spec_mod = Spectral1D(lines,
+                              continuum=self._continuum,
+                              output=self._output,
                               z=self._z)
 
         if self._auto_fit:
