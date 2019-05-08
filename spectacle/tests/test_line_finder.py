@@ -50,7 +50,6 @@ def test_single_line_velocity():
     assert np.allclose(y, fit_spec_mod(x))
 
 
-@pytest.mark.xfail
 def test_buried_line_velocity():
     line1 = OpticalDepth1D(lambda_0=1216 * u.AA, v_doppler=10 * u.km / u.s,
                            column_density=13, delta_v=0 * u.km / u.s)
@@ -126,6 +125,6 @@ def test_detection(spectral_model):
     reg_bnds = region_bounds(vel, flux, threshold=0.05)
 
     assert len(reg_bnds) == 6
-    assert np.allclose([(-172.0, -161.5), (-46.0, -38.0), (-33.0, -17.5),
-                        (-8.5, 2.5), (8.0, 10.0), (21.0, 39.5)],
+    assert np.allclose([(508, 565), (583, 620), (256, 277), (534, 565),
+                        (583, 605), (642, 679)],
                         list(reg_bnds.keys()))
