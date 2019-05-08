@@ -162,17 +162,20 @@ def region_bounds(x, y, threshold=0.001, min_distance=1):
 
     # Delete any information in ternary that shares the same bounds in primary
     for k in prime_regions:
-        del ternary_regions[k]
+        if k in ternary_regions:
+            del ternary_regions[k]
 
     # For the ternary centroids closest to a prime centroid, use the bounds
     # information of the primary centroid
     for (t_low_ind, t_up_ind), (t_cent, bnds, is_absorb, buried) in ternary_regions.copy().items():
         p_cents = [pr[0] for pr in prime_regions.values()]
+        p_bnds = [(lo, hi) for lo, hi in prime_regions]
 
         # Find closest index
         ind = find_nearest(np.array([c.value for c in p_cents]), t_cent.value)
         p_cent = p_cents[ind]
-        p_ind = find_nearest(x.value, p_cent.value)
+        p_bnd = p_bnds[ind]
+        # p_ind = find_nearest(x.value, p_cent.value)
 
         new_t_up_ind = t_up_ind
         new_t_low_ind = t_low_ind
@@ -180,9 +183,9 @@ def region_bounds(x, y, threshold=0.001, min_distance=1):
         # If the prime centroid is greater than the ternary centroid,
         # update the ternary upper bound.
         if p_cent > t_cent:
-            new_t_up_ind = p_ind
+            new_t_up_ind = p_bnd[1] # p_ind
         else:
-            new_t_low_ind = p_ind
+            new_t_low_ind = p_bnd[0] # p_ind
 
         del ternary_regions[(t_low_ind, t_up_ind)]
 
