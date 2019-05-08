@@ -177,6 +177,12 @@ class LineFinder1D(Fittable2DModel):
         else:
             fit_spec_mod = spec_mod
 
+        # The parameter values on the underlying compound model must also be
+        # updated given the new fitted parameters on the Spectral1D instance
+        for pn in fit_spec_mod.param_names:
+            pv = getattr(fit_spec_mod, pn)
+            setattr(fit_spec_mod._compound_model, pn, pv)
+
         fit_spec_mod.line_regions = regions
 
         self._model_result = fit_spec_mod
