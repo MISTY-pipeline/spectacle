@@ -190,7 +190,8 @@ def region_bounds(x, y, threshold=0.001, min_distance=1):
         del ternary_regions[(t_low_ind, t_up_ind)]
 
         ternary_regions[(new_t_low_ind, new_t_up_ind)] = (
-            t_cent, (x.value[new_t_low_ind], x.value[new_t_up_ind]), is_absorb, buried)
+            t_cent, (x.value[new_t_low_ind], x.value[new_t_up_ind]),
+            is_absorb, buried)
 
     ternary_regions.update(prime_regions)
 

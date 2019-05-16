@@ -1,12 +1,14 @@
 import operator
 from functools import wraps
+import logging
 
 import astropy.units as u
 import numpy as np
 from scipy.stats import chisquare
 from astropy.convolution import Kernel1D
 from astropy.modeling import Fittable1DModel, FittableModel, Parameter
-from astropy.modeling.models import Const1D, RedshiftScaleFactor, Scale
+from astropy.modeling.models import Const1D, RedshiftScaleFactor
+from astropy.modeling.fitting import LevMarLSQFitter
 from astropy.table import QTable
 from collections import OrderedDict
 
@@ -105,7 +107,7 @@ class Spectral1D(Fittable1DModel):
                 if not continuum._supports_unit_fitting:
                     continuum = _wrap_unitless_model(continuum)
         else:
-            continuum = Const1D(amplitude=0, fixed={'amplitude': True})
+            continuum = Const1D(amplitude=0)
 
         if output not in ('flux', 'flux_decrement', 'optical_depth'):
             raise ValueError("Parameter 'output' must be one of 'flux', "
@@ -145,19 +147,19 @@ class Spectral1D(Fittable1DModel):
         # the redshift, continuum, and dispersion conversions.
         rs = RedshiftScaleFactor(z, fixed={'z': True}, name="redshift").inverse
         irs = RedshiftScaleFactor(input_redshift, fixed={'z': True},
-                                  name="input_redshift").inverse
+                                  name="input_redshift")
 
         if lines is not None and len(_lines) > 0:
             ln = np.sum(_lines)
 
             if output == 'flux_decrement':
-                compound_model = (irs | rs | (ln | FluxDecrementConvert())) + continuum
+                compound_model = irs | rs | ((ln | FluxDecrementConvert()) + continuum)
             elif output == 'flux':
-                compound_model = (irs | rs | (ln | FluxConvert())) + continuum
+                compound_model = irs | rs | ((ln | FluxConvert()) + continuum)
             else:
-                compound_model = (irs |rs | ln) + continuum
+                compound_model = irs | rs | (ln + continuum)
         else:
-            compound_model = continuum + (rs | rs.inverse)
+            compound_model = (irs | rs) + continuum
 
         # Check for any lsf kernels that have been added
         if lsf is not None:
@@ -225,7 +227,7 @@ class Spectral1D(Fittable1DModel):
 
         return self._compound_model.__class__(*args, **kwargs)(x)
 
-    def rejection_criteria(self, x, y):
+    def rejection_criteria(self, x, y, auto_fit=True):
         """
         Implementation of the Akaike Information Criteria with Correction
         (AICC) (Akaike 1974; Liddle 2007; King et al. 2011). Used to determine
@@ -238,6 +240,9 @@ class Spectral1D(Fittable1DModel):
             The dispersion data.
         y : array-like
             The expected flux or tau data.
+        auto_fit : bool
+            Whether the model fit should be re-evaluated for every removed
+            line.
 
         Returns
         -------
@@ -245,17 +250,24 @@ class Spectral1D(Fittable1DModel):
             The new spectral model with the least complexity.
         """
         base_aicc = self._aicc(x, y, self)
-        final_model = None
+        final_model = self
+        finished = False
 
-        for i in range(len(self.lines)):
-            lines = [x for x in self.lines]
-            lines.pop(i)
-            new_spec = self._copy(lines=lines)
-            aicc = self._aicc(x, y, new_spec)
+        while not finished:
+            for i in range(len(final_model.lines)):
+                lines = [x for x in final_model.lines]
+                lines.pop(i)
+                new_spec = self._copy(lines=lines)
+                aicc = self._aicc(x, y, new_spec)
 
-            if aicc < base_aicc:
-                final_model = new_spec
-                base_aicc = aicc
+                # print("Testing", aicc, "<", base_aicc)
+                if aicc < base_aicc:
+                    # print("Removing line. {} remaining.".format(len(lines)))
+                    final_model = new_spec
+                    base_aicc = aicc
+                    break
+            else:
+                finished = True
 
         return final_model
 
