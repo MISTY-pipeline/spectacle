@@ -24,12 +24,13 @@ class LineFinder1D(Fittable2DModel):
     def input_units_allow_dimensionless(self):
         return {'x': False, 'y': True}
 
-    threshold = Parameter(default=0)
-    min_distance = Parameter(default=10.0, min=1, max=100)
+    threshold = Parameter(default=0, fixed=True)
+    min_distance = Parameter(default=10.0, min=1, fixed=True)
 
     def __init__(self, ions=None, continuum=None, defaults=None, z=None,
                  auto_fit=True, velocity_convention='relativistic',
-                 output='flux', fitter=None, *args, **kwargs):
+                 output='flux', fitter=None, with_rejection=False,
+                 fitter_args=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self._ions = ions or []
@@ -40,7 +41,9 @@ class LineFinder1D(Fittable2DModel):
         self._auto_fit = auto_fit
         self._output = output
         self._velocity_convention = velocity_convention
+        self._fitter_args = fitter_args or {}
         self._fitter = fitter or LevMarLSQFitter()
+        self._with_rejection = with_rejection
 
     @property
     def model_result(self):
@@ -171,14 +174,17 @@ class LineFinder1D(Fittable2DModel):
 
         if self._auto_fit:
             if isinstance(self._fitter, LevMarLSQFitter):
-                fit_spec_mod = self._fitter(spec_mod, x, y, maxiter=2000)
+                fit_spec_mod = self._fitter(spec_mod, x, y, maxiter=1000,
+                                            **self._fitter_args)
             else:
-                fit_spec_mod = self._fitter(spec_mod, x, y)
+                fit_spec_mod = self._fitter(spec_mod, x, y, **self._fitter_args)
         else:
             fit_spec_mod = spec_mod
 
         # The parameter values on the underlying compound model must also be
-        # updated given the new fitted parameters on the Spectral1D instance
+        # updated given the new fitted parameters on the Spectral1D instance.
+        # FIXME: when fitting without using line finder, these values will not
+        # be updated in the compound model.
         for pn in fit_spec_mod.param_names:
             pv = getattr(fit_spec_mod, pn)
             setattr(fit_spec_mod._compound_model, pn, pv)
