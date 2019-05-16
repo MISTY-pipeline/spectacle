@@ -9,64 +9,73 @@ from scipy import stats
 import scipy.optimize as op
 import emcee
 from pathos.multiprocessing import Pool
+from astropy.table import QTable
 
 from ..utils.misc import find_nearest
 
 
-class MCMCFitter:
-    """
-    An implementation of a Markov chain Monte Carlo fitting algorithm provided
-    by the ``emcee`` package.
-    """
+def lnprior(theta, model):
+    # Convert the array of parameter values back into model parameters
+    _, fit_params_indices = _model_to_fit_params(model)
+    bounds = np.array(list(model.bounds.values()))[fit_params_indices]
+    bounds = list(bounds)
+    bounds.append((-10.0, 1.0))
+
+    # Compose a list of all the `Parameter` objects, so we can still
+    # reference their bounds information
+    # params = [getattr(model, x)
+    #           for x in np.array(model.param_names)[fit_params_indices]]
+
+    if all([(bounds[i][0] or -np.inf)
+                    <= theta[i] <= (bounds[i][1] or np.inf)
+            for i in range(len(theta))]):
+        return 0.0
+
+    return -np.inf
+
+
+def lnlike(theta, x, y, yerr, model):
+    # Convert the array of parameter values back into model parameters
+    _fitter_to_model_params(model, theta[:-1])
+    lnf = theta[-1]
+
+    mod_y = model(x)
+    inv_sigma2 = 1.0 / (yerr ** 2 + mod_y ** 2 * np.exp(2 * lnf))
+    res = -0.5 * (np.nansum((y - mod_y) ** 2 * inv_sigma2 - np.log(inv_sigma2)))
+    return res
+
+
+def lnprob(theta, x, y, yerr, model):
+    lp = lnprior(theta, model)
+
+    if not np.isfinite(lp):
+        return -np.inf
+
+    ll = lnlike(theta, x, y, yerr, model)
+
+    return lp + ll
+
+
+class EmceeFitter:
     def __init__(self):
-        self._uncertainties = None
+        self._uncertainties = {}
 
     @property
     def uncertainties(self):
         return self._uncertainties
 
-    def lnprior(self, theta, model):
-        # Convert the array of parameter values back into model parameters
-        _, fit_params_indices = _model_to_fit_params(model)
-        bounds = np.array(list(model.bounds.values()))[fit_params_indices]
-        bounds = list(bounds)
-        bounds.append((-10.0, 1.0))
+    @property
+    def errors(self):
+        tab = QTable([self._uncertainties['param_names'],
+                      self._uncertainties['param_fit'],
+                      self._uncertainties['param_err'][:, 0],
+                      self._uncertainties['param_err'][:, 1]],
+                     names=('Names', 'Value', 'Min Uncertainty', 'Max Uncertainty'))
 
-        # Compose a list of all the `Parameter` objects, so we can still
-        # reference their bounds information
-        # params = [getattr(model, x)
-        #           for x in np.array(model.param_names)[fit_params_indices]]
+        return tab
 
-        if all([(bounds[i][0] or -np.inf)
-                        <= theta[i] <= (bounds[i][1] or np.inf)
-                for i in range(len(theta))]):
-            return 0.0
-
-        return -np.inf
-
-    def lnlike(self, theta, x, y, yerr, model):
-        # Convert the array of parameter values back into model parameters
-        _fitter_to_model_params(model, theta[:-1])
-        lnf = theta[-1]
-
-        mod_y = model(x)
-        inv_sigma2 = 1.0 / (yerr ** 2 + mod_y ** 2 * np.exp(2 * lnf))
-        res = -0.5 * (np.nansum((y - mod_y) ** 2 * inv_sigma2 - np.log(inv_sigma2)))
-        return res
-
-    def lnprob(self, theta, x, y, yerr, model):
-        lp = self.lnprior(theta, model)
-
-        if not np.isfinite(lp):
-            return -np.inf
-
-        ll = self.lnlike(theta, x, y, yerr, model)
-
-        return lp + ll
-
-
-class EmceeFitter(MCMCFitter):
-    def __call__(self, model, x, y, yerr=None, nwalkers=500, steps=200, nprocs=1):
+    def __call__(self, model, x, y, yerr=None, nwalkers=500, steps=200,
+                 nprocs=1):
         model = model.copy()
 
         # If no errors are provided, assume all errors are normalized
@@ -78,11 +87,10 @@ class EmceeFitter(MCMCFitter):
         fit_params = np.append(fit_params, np.log(0.1))
 
         # Perform a quick optimization of the parameters
-        # nll = lambda *args: -self.lnlike(*args)
+        nll = lambda *args: -lnlike(*args)
 
-        # result = op.minimize(nll, fit_params, args=(x, y, yerr, model))
-        # fit_params = result["x"]
-        # print(fit_params)
+        result = op.minimize(nll, fit_params, args=(x, y, yerr, model))
+        fit_params = result["x"]
 
         # Cache the number of dimensions of the problem, and walker count
         ndim = len(fit_params)
@@ -92,7 +100,7 @@ class EmceeFitter(MCMCFitter):
                for _ in range(nwalkers)]
 
         with Pool(nprocs) as pool:
-            sampler = emcee.EnsembleSampler(nwalkers, ndim, self.lnprob,
+            sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob,
                                             args=(x, y, yerr, model),
                                             pool=pool)
             sampler.run_mcmc(pos, steps, rstate0=np.random.get_state())
@@ -114,10 +122,17 @@ class EmceeFitter(MCMCFitter):
                        zip(*np.percentile(samples, [16, 50, 84], axis=0))))
 
         theta = [x[0] for x in res]
-        self._uncertainties = {k[0]: (res[i][1], res[i][2])
-                               for i, k in enumerate(zip(model.param_names, res))}
 
         _fitter_to_model_params(model, theta[:-1])
+
+        self._uncertainties['param_names'] = model.param_names
+        self._uncertainties['param_fit'] = model.parameters
+
+        errs = np.array([(0.0, 0.0) for _ in range(len(model.parameters))])
+        errs[fit_params_indices] = np.array([(res[i][1], res[i][2])
+                                    for i in range(len(res) - 1)])
+
+        self._uncertainties['param_err'] =  errs
 
         return model
 
