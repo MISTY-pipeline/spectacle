@@ -153,13 +153,13 @@ class Spectral1D(Fittable1DModel):
             ln = np.sum(_lines)
 
             if output == 'flux_decrement':
-                compound_model = irs | rs | ((ln | FluxDecrementConvert()) + continuum)
+                compound_model = rs | ((ln | FluxDecrementConvert()) + continuum)
             elif output == 'flux':
-                compound_model = irs | rs | ((ln | FluxConvert()) + continuum)
+                compound_model = rs | ((ln | FluxConvert()) + continuum)
             else:
-                compound_model = irs | rs | (ln + continuum)
+                compound_model = rs | (ln + continuum)
         else:
-            compound_model = (irs | rs) + continuum
+            compound_model = rs | continuum
 
         # Check for any lsf kernels that have been added
         if lsf is not None:
@@ -375,7 +375,8 @@ class Spectral1D(Fittable1DModel):
             lsf=self.lsf_kernel,
             velocity_convention=self.velocity_convention,
             rest_wavelength=self.rest_wavelength,
-            input_redshift=self._input_redshift())
+            # input_redshift=self._input_redshift()
+        )
 
         new_kwargs.update(kwargs)
 

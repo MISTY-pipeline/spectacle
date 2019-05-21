@@ -174,10 +174,10 @@ class LineFinder1D(Fittable2DModel):
 
         if self._auto_fit:
             if isinstance(self._fitter, LevMarLSQFitter):
-                fit_spec_mod = self._fitter(spec_mod, x, y, maxiter=1000,
-                                            **self._fitter_args)
-            else:
-                fit_spec_mod = self._fitter(spec_mod, x, y, **self._fitter_args)
+                if 'maxiter' not in self._fitter_args:
+                    self._fitter_args['maxiter'] = 1000
+
+            fit_spec_mod = self._fitter(spec_mod, x, y, **self._fitter_args)
         else:
             fit_spec_mod = spec_mod
 

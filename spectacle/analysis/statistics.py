@@ -62,11 +62,11 @@ def full_width_half_max(x, y):
         The full width at half maximum.
     """
     # Width can be estimated by the weighted 2nd moment of the x coordinate
-    # spline = UnivariateSpline(x, y - (np.max(y) + np.min(y)) / 2, s=0)
-    # r1, r2 = spline.roots()
-    #
-    # return (r2 - r1) * x.unit
-    return _compute_single_fwhm(y, x)
+    spline = UnivariateSpline(x, y - (np.max(y) + np.min(y)) / 2, s=0)
+    r = spline.roots()
+
+    return (r[-1] - r[0]) * x.unit
+    # return _compute_single_fwhm(y, x)
 
 
 @u.quantity_input(x=['length', 'speed'])

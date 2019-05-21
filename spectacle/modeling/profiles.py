@@ -65,7 +65,7 @@ class OpticalDepth1D(Fittable1DModel):
     gamma = Parameter(fixed=True, min=0, default=0)
     v_doppler = Parameter(default=10, min=.1, max=1e5, unit=u.Unit('km/s'))
     column_density = Parameter(default=13, min=8, max=25)
-    delta_v = Parameter(default=0, min=0, fixed=False, unit=u.Unit('km/s'))
+    delta_v = Parameter(default=0, min=-500, max=500, fixed=False, unit=u.Unit('km/s'))
     delta_lambda = Parameter(default=0, min=-100, max=100, fixed=False, unit=u.Unit('Angstrom'))
 
     def __init__(self, name=None, line_list=None, *args, **kwargs):
