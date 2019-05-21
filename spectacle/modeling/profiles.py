@@ -2,8 +2,6 @@ import astropy.units as u
 import numpy as np
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable1DModel, Parameter
-from astropy.modeling.fitting import LevMarLSQFitter
-from astropy.modeling.models import Gaussian1D
 from scipy import special
 
 from ..registries.lines import line_registry

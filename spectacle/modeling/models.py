@@ -290,6 +290,10 @@ class Spectral1D(Fittable1DModel):
     def rest_wavelength(self):
         return self._rest_wavelength
 
+    @rest_wavelength.setter
+    def rest_wavelength(self, value):
+        self._rest_wavelength = value
+
     @property
     def redshift(self):
         """
@@ -303,6 +307,10 @@ class Spectral1D(Fittable1DModel):
         return next((x for x in self._compound_model
                      if isinstance(x, RedshiftScaleFactor)
                      and x.name == 'redshift')).inverse.z.value
+
+    def with_redshift(self, value):
+        """Generate a new spectral model with the given redshift."""
+        return self._copy(z=value)
 
     def _input_redshift(self):
         """The defined redshift at which dispersion values are provided."""
@@ -405,7 +413,7 @@ class Spectral1D(Fittable1DModel):
         """New spectral model with a line spread function."""
         return self._copy(lsf=kernel, **kwargs)
 
-    def with_line(self, *args, **kwargs):
+    def with_line(self, *args, reset=False, **kwargs):
         """
         Add a new line to the spectral model.
 
@@ -428,9 +436,10 @@ class Spectral1D(Fittable1DModel):
         else:
             new_line = OpticalDepth1D(*args, **kwargs)
 
-        return self._copy(lines=self.lines + [new_line])
+        return self._copy(
+            lines=self.lines + [new_line] if not reset else [new_line])
 
-    def with_lines(self, lines):
+    def with_lines(self, lines, reset=False):
         """
         Create a new spectral model with the added lines.
 
@@ -448,7 +457,7 @@ class Spectral1D(Fittable1DModel):
         if not all([isinstance(x, OpticalDepth1D) for x in lines]):
             raise ValueError("All lines must be `OpticalDepth1D` objects.")
 
-        return self._copy(lines=self.lines + lines)
+        return self._copy(lines=self.lines + lines if not reset else lines)
 
     @u.quantity_input(x=['length', 'speed', 'frequency'])
     def line_stats(self, x):
