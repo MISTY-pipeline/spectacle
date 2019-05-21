@@ -16,6 +16,9 @@ Spectacle
     :target: http://www.astropy.org
     :alt: Powered by Astropy Badge
 
+.. image:: https://mybinder.org/badge_logo.svg
+ :target: https://hub.mybinder.org/user/misty-pipeline-spectacle-p49gkoam/notebooks/notebooks/Introducing%20Spectacle.ipynb
+
 Modeling and analysis package for spectroscopic data.
 
 Features
