@@ -17,14 +17,16 @@ class CurveFitter(LevMarLSQFitter):
 
         self.fit_info.update({'param_err': None,
                               'param_fit': None,
-                              'param_names': None})
+                              'param_names': None,
+                              'param_units': None})
 
     @property
     def errors(self):
         tab = QTable([self.fit_info['param_names'],
                       self.fit_info['param_fit'],
-                      self.fit_info['param_err']],
-                     names=('Names', 'Value', 'Error'))
+                      self.fit_info['param_err'],
+                      self.fit_info['param_units']],
+                     names=('name', 'value', 'uncert', 'unit'))
 
         return tab
 
@@ -102,7 +104,7 @@ class CurveFitter(LevMarLSQFitter):
                                          sigma=yerr, epsfcn=epsilon, jac=dfunc,
                                          col_deriv=model_copy.col_fit_deriv,
                                          maxfev=maxiter, xtol=acc,
-                                         absolute_sigma=False)
+                                         absolute_sigma=True)
 
         error = []
 
@@ -129,6 +131,9 @@ class CurveFitter(LevMarLSQFitter):
         else:
             self.fit_info['param_cov'] = None
 
+        self.fit_info['param_units'] = [getattr(model_copy, p).unit
+                                        for p in model_copy.param_names]
+
         return model_copy
 
     def _leastsq(self, model, x, y, *args, **kwargs):
@@ -151,6 +156,8 @@ class CurveFitter(LevMarLSQFitter):
         self.fit_info['param_names'] = model_copy.param_names
         self.fit_info['param_err'] = _output_errors
         self.fit_info['param_fit'] = model_copy.parameters
+        self.fit_info['param_units'] = [getattr(model_copy, p).unit
+                                        for p in model_copy.param_names]
 
         return model_copy
 
@@ -202,5 +209,7 @@ class CurveFitter(LevMarLSQFitter):
         self.fit_info['param_names'] = model_copy.param_names
         self.fit_info['param_err'] = self._output_errors
         self.fit_info['param_fit'] = model_copy.parameters
+        self.fit_info['param_units'] = [getattr(model_copy, p).unit
+                                        for p in model_copy.param_names]
 
         return model_copy
