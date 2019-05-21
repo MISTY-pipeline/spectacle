@@ -1,5 +1,6 @@
 import operator
 from functools import wraps
+import logging
 
 import astropy.units as u
 import numpy as np
@@ -7,6 +8,7 @@ from scipy.stats import chisquare
 from astropy.convolution import Kernel1D
 from astropy.modeling import Fittable1DModel, FittableModel, Parameter
 from astropy.modeling.models import Const1D, RedshiftScaleFactor
+from astropy.modeling.fitting import LevMarLSQFitter
 from astropy.table import QTable
 from collections import OrderedDict
 
@@ -64,9 +66,11 @@ class Spectral1D(Fittable1DModel):
 
     @property
     def input_units_equivalencies(self):
-        rest_wavelength = self.lines[0].lambda_0.quantity \
-            if len(self.lines) > 0 and (self.is_single_ion or self.rest_wavelength.value == 0) \
-            else self.rest_wavelength
+        rest_wavelength = self.rest_wavelength
+
+        if len(self.lines) > 0 and (self.is_single_ion or
+                                    self.rest_wavelength.value == 0):
+            rest_wavelength = self.lines[0].lambda_0.quantity
 
         disp_equiv = u.spectral() + DOPPLER_CONVERT[
             self._velocity_convention](rest_wavelength)
@@ -75,7 +79,7 @@ class Spectral1D(Fittable1DModel):
 
     def __new__(cls, lines=None, continuum=None, z=None, lsf=None, output=None,
                 velocity_convention=None, rest_wavelength=None, copy=False,
-                **kwargs):
+                input_redshift=None, **kwargs):
         # If the cls already contains parameter attributes, assume that this is
         # being called as part of a copy operation and return the class as-is.
         if (lines is None and continuum is None and z is None and
@@ -86,6 +90,8 @@ class Spectral1D(Fittable1DModel):
         output = output or 'optical_depth'
         velocity_convention = velocity_convention or 'relativistic'
         rest_wavelength = rest_wavelength or u.Quantity(0, 'Angstrom')
+        z = z or 0
+        input_redshift = input_redshift or 0
 
         # If no continuum is provided, or the continuum provided is not a
         # model, use a constant model to represent the continuum.
@@ -101,7 +107,7 @@ class Spectral1D(Fittable1DModel):
                 if not continuum._supports_unit_fitting:
                     continuum = _wrap_unitless_model(continuum)
         else:
-            continuum = Const1D(amplitude=0, fixed={'amplitude': True})
+            continuum = Const1D(amplitude=0)
 
         if output not in ('flux', 'flux_decrement', 'optical_depth'):
             raise ValueError("Parameter 'output' must be one of 'flux', "
@@ -139,19 +145,21 @@ class Spectral1D(Fittable1DModel):
 
         # Compose the line-based compound model taking into consideration
         # the redshift, continuum, and dispersion conversions.
-        rs = RedshiftScaleFactor(z, fixed={'z': True}).inverse
+        rs = RedshiftScaleFactor(z, fixed={'z': True}, name="redshift").inverse
+        irs = RedshiftScaleFactor(input_redshift, fixed={'z': True},
+                                  name="input_redshift")
 
         if lines is not None and len(_lines) > 0:
             ln = np.sum(_lines)
 
             if output == 'flux_decrement':
-                compound_model = continuum + (rs | (ln | FluxDecrementConvert()) | rs.inverse)
+                compound_model = rs | ((ln | FluxDecrementConvert()) + continuum)
             elif output == 'flux':
-                compound_model = continuum + (rs | (ln | FluxConvert()) | rs.inverse)
+                compound_model = rs | ((ln | FluxConvert()) + continuum)
             else:
-                compound_model = continuum + (rs | ln | rs.inverse)
+                compound_model = rs | (ln + continuum)
         else:
-            compound_model = continuum + (rs | rs.inverse)
+            compound_model = rs | continuum
 
         # Check for any lsf kernels that have been added
         if lsf is not None:
@@ -204,49 +212,7 @@ class Spectral1D(Fittable1DModel):
         super().__init__()
 
     def __call__(self, *args, **kwargs):
-        result = super().__call__(*args, **kwargs)
-        return result
-
-    def rejection_criteria(self, x, y):
-        """
-        Implementation of the Akaike Information Criteria with Correction
-        (AICC) (Akaike 1974; Liddle 2007; King et al. 2011). Used to determine
-        whether lines can be safely removed from the compound model without
-        loss of information.
-
-        Parameters
-        ----------
-        x : :class:`~astropy.units.Quantity`
-            The dispersion data.
-        y : array-like
-            The expected flux or tau data.
-
-        Returns
-        -------
-        final_model : :class:`~spectacle.Spectral1D`
-            The new spectral model with the least complexity.
-        """
-        base_aicc = self._aicc(x, y, self)
-        final_model = None
-
-        for i in range(len(self.lines)):
-            lines = [x for x in self.lines]
-            lines.pop(i)
-            new_spec = self._copy(lines=lines)
-            aicc = self._aicc(x, y, new_spec)
-
-            if aicc < base_aicc:
-                final_model = new_spec
-                base_aicc = aicc
-
-        return final_model
-
-    def _aicc(self, x, y, model):
-        chi2, pval = chisquare(f_obs=model(x)**2, f_exp=y**2)
-        p = len([k for x in model.lines for k, v in x.fixed.items() if not v])
-        n = x.size
-
-        return chi2 + (2 * p * n) / (n - p - 1)
+        return super().__call__(*args, **kwargs)
 
     def evaluate(self, x, *args, **kwargs):
         # For the input dispersion to be unit-ful, especially when fitting
@@ -261,6 +227,57 @@ class Spectral1D(Fittable1DModel):
 
         return self._compound_model.__class__(*args, **kwargs)(x)
 
+    def rejection_criteria(self, x, y, auto_fit=True):
+        """
+        Implementation of the Akaike Information Criteria with Correction
+        (AICC) (Akaike 1974; Liddle 2007; King et al. 2011). Used to determine
+        whether lines can be safely removed from the compound model without
+        loss of information.
+
+        Parameters
+        ----------
+        x : :class:`~astropy.units.Quantity`
+            The dispersion data.
+        y : array-like
+            The expected flux or tau data.
+        auto_fit : bool
+            Whether the model fit should be re-evaluated for every removed
+            line.
+
+        Returns
+        -------
+        final_model : :class:`~spectacle.Spectral1D`
+            The new spectral model with the least complexity.
+        """
+        base_aicc = self._aicc(x, y, self)
+        final_model = self
+        finished = False
+
+        while not finished:
+            for i in range(len(final_model.lines)):
+                lines = [x for x in final_model.lines]
+                lines.pop(i)
+                new_spec = self._copy(lines=lines)
+                aicc = self._aicc(x, y, new_spec)
+
+                # print("Testing", aicc, "<", base_aicc)
+                if aicc < base_aicc:
+                    # print("Removing line. {} remaining.".format(len(lines)))
+                    final_model = new_spec
+                    base_aicc = aicc
+                    break
+            else:
+                finished = True
+
+        return final_model
+
+    def _aicc(self, x, y, model):
+        chi2, pval = chisquare(f_obs=model(x)**2, f_exp=y**2)
+        p = len([k for x in model.lines for k, v in x.fixed.items() if not v])
+        n = x.size
+
+        return chi2 + (2 * p * n) / (n - p - 1)
+
     @property
     def continuum(self):
         return self._continuum
@@ -273,6 +290,10 @@ class Spectral1D(Fittable1DModel):
     def rest_wavelength(self):
         return self._rest_wavelength
 
+    @rest_wavelength.setter
+    def rest_wavelength(self, value):
+        self._rest_wavelength = value
+
     @property
     def redshift(self):
         """
@@ -284,7 +305,18 @@ class Spectral1D(Fittable1DModel):
             The redshift value.
         """
         return next((x for x in self._compound_model
-                     if isinstance(x, RedshiftScaleFactor))).inverse.z.value
+                     if isinstance(x, RedshiftScaleFactor)
+                     and x.name == 'redshift')).inverse.z.value
+
+    def with_redshift(self, value):
+        """Generate a new spectral model with the given redshift."""
+        return self._copy(z=value)
+
+    def _input_redshift(self):
+        """The defined redshift at which dispersion values are provided."""
+        return next((x for x in self._compound_model
+                     if isinstance(x, RedshiftScaleFactor)
+                     and x.name == 'input_redshift')).z.value
 
     @property
     def lines(self):
@@ -350,7 +382,9 @@ class Spectral1D(Fittable1DModel):
             output=self.output_type,
             lsf=self.lsf_kernel,
             velocity_convention=self.velocity_convention,
-            rest_wavelength=self.rest_wavelength)
+            rest_wavelength=self.rest_wavelength,
+            # input_redshift=self._input_redshift()
+        )
 
         new_kwargs.update(kwargs)
 
@@ -371,11 +405,15 @@ class Spectral1D(Fittable1DModel):
         """New spectral model that produces optical depth output."""
         return self._copy(output='optical_depth')
 
+    def with_continuum(self, continuum):
+        """New spectral model defined with a different continuum."""
+        return self._copy(continuum=continuum)
+
     def with_lsf(self, kernel=None, **kwargs):
         """New spectral model with a line spread function."""
         return self._copy(lsf=kernel, **kwargs)
 
-    def with_line(self, *args, **kwargs):
+    def with_line(self, *args, reset=False, **kwargs):
         """
         Add a new line to the spectral model.
 
@@ -398,9 +436,10 @@ class Spectral1D(Fittable1DModel):
         else:
             new_line = OpticalDepth1D(*args, **kwargs)
 
-        return self._copy(lines=self.lines + [new_line])
+        return self._copy(
+            lines=self.lines + [new_line] if not reset else [new_line])
 
-    def with_lines(self, lines):
+    def with_lines(self, lines, reset=False):
         """
         Create a new spectral model with the added lines.
 
@@ -418,7 +457,7 @@ class Spectral1D(Fittable1DModel):
         if not all([isinstance(x, OpticalDepth1D) for x in lines]):
             raise ValueError("All lines must be `OpticalDepth1D` objects.")
 
-        return self._copy(lines=self.lines + lines)
+        return self._copy(lines=self.lines + lines if not reset else lines)
 
     @u.quantity_input(x=['length', 'speed', 'frequency'])
     def line_stats(self, x):

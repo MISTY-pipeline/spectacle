@@ -17,20 +17,21 @@ class CurveFitter(LevMarLSQFitter):
 
         self.fit_info.update({'param_err': None,
                               'param_fit': None,
-                              'param_names': None})
+                              'param_names': None,
+                              'param_units': None})
 
     @property
     def errors(self):
         tab = QTable([self.fit_info['param_names'],
                       self.fit_info['param_fit'],
-                      self.fit_info['param_err']],
-                     names=('Names', 'Value', 'Error'))
+                      self.fit_info['param_err'],
+                      self.fit_info['param_units']],
+                     names=('name', 'value', 'uncert', 'unit'))
 
         return tab
 
     @fitter_unit_support
-    def __call__(self, *args, **kwargs):
-        method = kwargs.pop('method', 'curve')
+    def __call__(self, *args, method='curve', **kwargs):
 
         if method == 'curve':
             return self._curve_fit(*args, **kwargs)
@@ -44,7 +45,7 @@ class CurveFitter(LevMarLSQFitter):
 
     def _curve_fit(self, model, x, y, z=None, weights=None, yerr=None,
                    maxiter=DEFAULT_MAXITER, acc=DEFAULT_ACC,
-                   epsilon=DEFAULT_EPS, estimate_jacobian=False):
+                   epsilon=DEFAULT_EPS, estimate_jacobian=True):
         """
         Fit data to this model.
 
@@ -130,13 +131,16 @@ class CurveFitter(LevMarLSQFitter):
         else:
             self.fit_info['param_cov'] = None
 
+        self.fit_info['param_units'] = [getattr(model_copy, p).unit
+                                        for p in model_copy.param_names]
+
         return model_copy
 
     def _leastsq(self, model, x, y, *args, **kwargs):
         model_copy = super().__call__(model, x, y, *args, **kwargs)
         init_values, _ = _model_to_fit_params(model)
         pfit, finds = _model_to_fit_params(model_copy)
-        self._output_errors = np.zeros(model.parameters.shape)
+        _output_errors = np.zeros(model.parameters.shape)
         pcov = self.fit_info['param_cov']
 
         error = []
@@ -147,12 +151,18 @@ class CurveFitter(LevMarLSQFitter):
             except:
                 error.append(0.00)
 
-        self._output_errors[finds] = np.array(error)
+        _output_errors[finds] = np.array(error)
+
+        self.fit_info['param_names'] = model_copy.param_names
+        self.fit_info['param_err'] = _output_errors
+        self.fit_info['param_fit'] = model_copy.parameters
+        self.fit_info['param_units'] = [getattr(model_copy, p).unit
+                                        for p in model_copy.param_names]
 
         return model_copy
 
     def _bootstrap(self, model, x, y, z=None, yerr=0.0, weights=None, **kwargs):
-        model_copy = super().__call__(model, x, y, z, weights, **kwargs)
+        model_copy = super().__call__(model, x, y, **kwargs)
 
         init_values, _ = _model_to_fit_params(model)
         pfit, finds = _model_to_fit_params(model_copy)
@@ -161,7 +171,7 @@ class CurveFitter(LevMarLSQFitter):
         self._output_errors = np.zeros(model.parameters.shape)
 
         # Get the stdev of the residuals
-        residuals = self.objective_function(*farg)
+        residuals = self.objective_function(pfit, *farg)
         sigma_res = np.std(residuals)
 
         sigma_err_total = np.sqrt(sigma_res ** 2 + yerr ** 2)
@@ -169,7 +179,7 @@ class CurveFitter(LevMarLSQFitter):
         # 100 random data sets are generated and fitted
         ps = []
 
-        for i in range(100):
+        for i in range(10):
             rand_delta = np.random.normal(0., sigma_err_total, len(y))
             rand_y = y + rand_delta
 
@@ -195,5 +205,11 @@ class CurveFitter(LevMarLSQFitter):
 
         _fitter_to_model_params(model_copy, mean_pfit)
         self._output_errors[finds] = np.array(err_pfit)
+
+        self.fit_info['param_names'] = model_copy.param_names
+        self.fit_info['param_err'] = self._output_errors
+        self.fit_info['param_fit'] = model_copy.parameters
+        self.fit_info['param_units'] = [getattr(model_copy, p).unit
+                                        for p in model_copy.param_names]
 
         return model_copy
