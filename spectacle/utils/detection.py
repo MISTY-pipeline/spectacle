@@ -5,6 +5,7 @@ import numpy as np
 from astropy.convolution import convolve
 
 from spectacle.utils.misc import find_nearest
+from collections import OrderedDict
 
 __all__ = ['region_bounds']
 
@@ -64,7 +65,7 @@ def _generate_masks(y, threshold, dS, ddS, dddS, is_absorption):
 
 
 def _find_ternary_bounds(x, ddS_mask, dddS_mask, min_distance, is_absorption):
-    ternary_regions = {}
+    ternary_regions = OrderedDict()
 
     # Find "buried" lines. Do this by taking the third difference of the
     # spectrum. Find the indices where the dddS_mask is true, retrieve only a
@@ -109,7 +110,7 @@ def _find_ternary_bounds(x, ddS_mask, dddS_mask, min_distance, is_absorption):
 
 
 def _find_primary_bounds(x, dS_mask, ddS_mask, min_distance, is_absorption):
-    prime_regions = {}
+    prime_regions = OrderedDict()
 
     # Find obvious lines by peak values.
     for pind in np.where(dS_mask)[0][::2]:
