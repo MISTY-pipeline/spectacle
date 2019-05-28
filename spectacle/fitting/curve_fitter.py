@@ -21,7 +21,7 @@ class CurveFitter(LevMarLSQFitter):
                               'param_units': None})
 
     @property
-    def errors(self):
+    def uncertainties(self):
         tab = QTable([self.fit_info['param_names'],
                       self.fit_info['param_fit'],
                       self.fit_info['param_err'],
@@ -30,22 +30,28 @@ class CurveFitter(LevMarLSQFitter):
 
         return tab
 
-    @fitter_unit_support
     def __call__(self, *args, method='curve', **kwargs):
 
         if method == 'curve':
-            return self._curve_fit(*args, **kwargs)
+            fit_model = self._curve_fit(*args, **kwargs)
         elif method == 'leastsq':
-            return self._leastsq(*args, **kwargs)
+            fit_model = self._leastsq(*args, **kwargs)
         elif method == 'bootstrap':
-            return self._bootstrap(*args, **kwargs)
+            fit_model = self._bootstrap(*args, **kwargs)
         else:
             raise ValueError("No method named '{}'. Must be one of 'curve', "
                              "'leastsq', or 'bootstrap'.".format(method))
 
+
+        self.fit_info['param_units'] = [getattr(fit_model, p).unit
+                                        for p in fit_model.param_names]
+
+        return fit_model
+
+    @fitter_unit_support
     def _curve_fit(self, model, x, y, z=None, weights=None, yerr=None,
                    maxiter=DEFAULT_MAXITER, acc=DEFAULT_ACC,
-                   epsilon=DEFAULT_EPS, estimate_jacobian=True):
+                   epsilon=DEFAULT_EPS, estimate_jacobian=False):
         """
         Fit data to this model.
 
@@ -104,7 +110,7 @@ class CurveFitter(LevMarLSQFitter):
                                          sigma=yerr, epsfcn=epsilon, jac=dfunc,
                                          col_deriv=model_copy.col_fit_deriv,
                                          maxfev=maxiter, xtol=acc,
-                                         absolute_sigma=True)
+                                         absolute_sigma=False)
 
         error = []
 
@@ -136,6 +142,7 @@ class CurveFitter(LevMarLSQFitter):
 
         return model_copy
 
+    @fitter_unit_support
     def _leastsq(self, model, x, y, *args, **kwargs):
         model_copy = super().__call__(model, x, y, *args, **kwargs)
         init_values, _ = _model_to_fit_params(model)
@@ -156,11 +163,10 @@ class CurveFitter(LevMarLSQFitter):
         self.fit_info['param_names'] = model_copy.param_names
         self.fit_info['param_err'] = _output_errors
         self.fit_info['param_fit'] = model_copy.parameters
-        self.fit_info['param_units'] = [getattr(model_copy, p).unit
-                                        for p in model_copy.param_names]
 
         return model_copy
 
+    @fitter_unit_support
     def _bootstrap(self, model, x, y, z=None, yerr=0.0, weights=None, **kwargs):
         model_copy = super().__call__(model, x, y, **kwargs)
 
