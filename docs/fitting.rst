@@ -62,19 +62,19 @@ instantiated fitter after the fitting routine has run.
 .. code-block:: python
 
     >>> fitter.uncertainties
-    <QTable length=9>
-      name               value                  uncert          unit
-     str16              float64                float64         object
----------------- ---------------------- --------------------- --------
-             z_0                    0.0                   0.0     None
-      lambda_0_1              1215.6701                   0.0 Angstrom
-       f_value_1                 0.4164                   0.0     None
-         gamma_1            626500000.0                   0.0     None
-     v_doppler_1     10.000013757295898  0.000957197044912263   km / s
-column_density_1     14.000043173540684 3.589807779429899e-05     None
-       delta_v_1 0.00011598087488537782 0.0006777042342563724   km / s
-  delta_lambda_1                    0.0                   0.0 Angstrom
-     amplitude_2                    1.0                   0.0     None
+        <QTable length=9>
+          name               value                  uncert          unit
+         str16              float64                float64         object
+    ---------------- ---------------------- --------------------- --------
+                 z_0                    0.0                   0.0     None
+          lambda_0_1              1215.6701                   0.0 Angstrom
+           f_value_1                 0.4164                   0.0     None
+             gamma_1            626500000.0                   0.0     None
+         v_doppler_1     10.000013757295898  0.000957197044912263   km / s
+    column_density_1     14.000043173540684 3.589807779429899e-05     None
+           delta_v_1 0.00011598087488537782 0.0006777042342563724   km / s
+      delta_lambda_1                    0.0                   0.0 Angstrom
+         amplitude_2                    1.0                   0.0     None
 
 
 Using the MCMC fitter
