@@ -211,8 +211,22 @@ class Spectral1D(Fittable1DModel):
     def __init__(self, *args, **kwargs):
         super().__init__()
 
-    def __call__(self, *args, **kwargs):
-        return super().__call__(*args, **kwargs)
+    def __call__(self, x, *args, **kwargs):
+        if isinstance(x, u.Quantity):
+            if x.unit.physical_type in ('length', 'frequency'):
+                for k in self.fixed:
+                    if 'delta_v' in k:
+                        getattr(self, k).fixed = True
+                    elif 'delta_lambda' in k:
+                        getattr(self, k).fixed = False
+            elif x.unit.physical_type == 'speed':
+                for k in self.fixed:
+                    if 'delta_v' in k:
+                        getattr(self, k).fixed = False
+                    elif 'delta_lambda' in k:
+                        getattr(self, k).fixed = True
+
+        return super().__call__(x, *args, **kwargs)
 
     def evaluate(self, x, *args, **kwargs):
         # For the input dispersion to be unit-ful, especially when fitting
