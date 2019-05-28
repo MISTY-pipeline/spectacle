@@ -61,7 +61,7 @@ instantiated fitter after the fitting routine has run.
 
 .. code-block:: python
 
-    >>> fitter.uncertainties
+    >>> fitter.uncertainties  # doctest: +IGNORE_OUTPUT
         <QTable length=9>
           name               value                  uncert          unit
          str16              float64                float64         object
