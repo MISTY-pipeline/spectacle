@@ -6,6 +6,7 @@ from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel, Parameter
 from astropy.modeling.fitting import LevMarLSQFitter
 
+from .curve_fitter import CurveFitter
 from ..modeling import OpticalDepth1D, Spectral1D
 from ..utils.detection import region_bounds
 from ..utils.misc import DOPPLER_CONVERT
@@ -42,12 +43,16 @@ class LineFinder1D(Fittable2DModel):
         self._output = output
         self._velocity_convention = velocity_convention
         self._fitter_args = fitter_args or {}
-        self._fitter = fitter or LevMarLSQFitter()
+        self._fitter = fitter or CurveFitter()
         self._with_rejection = with_rejection
 
     @property
     def model_result(self):
         return self._model_result
+
+    @property
+    def fitter(self):
+        return self._fitter
 
     def __call__(self, x, *args, auto_fit=None, **kwargs):
         if auto_fit is not None:
@@ -173,7 +178,7 @@ class LineFinder1D(Fittable2DModel):
                               z=self._z)
 
         if self._auto_fit:
-            if isinstance(self._fitter, LevMarLSQFitter):
+            if issubclass(self._fitter.__class__, LevMarLSQFitter):
                 if 'maxiter' not in self._fitter_args:
                     self._fitter_args['maxiter'] = 1000
 
