@@ -11,6 +11,10 @@ import numpy as np
 __all__ = ['LineRegistry']
 
 
+DB_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "data", "atoms.ecsv"))
+
+
 class LineRegistry(QTable):
     def __init__(self, *args, **kwargs):
         super(LineRegistry, self).__init__(*args, **kwargs)
@@ -48,7 +52,8 @@ class LineRegistry(QTable):
             ion = next((row for row in self if row['name'] == name), None)
 
             if ion is None:
-                raise LookupError("No such line with name '{}' in ion database.".format(name))
+                raise LookupError("No such line with name '{}' in ion "
+                                  "database.".format(name))
 
         return ion
 
@@ -69,12 +74,16 @@ class LineRegistry(QTable):
 
         return correct_name
 
+    def load(self, path):
+        self.remove_rows(slice(0, len(self)))
 
-# Import any available line information databases
-cur_path = os.path.realpath(__file__).split(os.sep)
-cur_path = os.sep.join(cur_path[:-1])
+        new_table = LineRegistry.read(path, format='ascii.ecsv')
 
-line_registry = LineRegistry.read(
-    os.path.abspath(
-        os.path.join(cur_path, "..", "data", "atoms.ecsv")),
-    format="ascii.ecsv")
+        for row in new_table:
+            self.add_row(row)
+
+    def load_default(self):
+        self.load(DB_PATH)
+
+
+line_registry = LineRegistry.read(DB_PATH, format='ascii.ecsv')
