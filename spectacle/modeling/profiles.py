@@ -66,6 +66,10 @@ class OpticalDepth1D(Fittable1DModel):
     delta_v = Parameter(default=0, min=-500, max=500, fixed=False, unit=u.Unit('km/s'))
     delta_lambda = Parameter(default=0, min=-100, max=100, fixed=False, unit=u.Unit('Angstrom'))
 
+    @property
+    def input_units(self):
+        return {'x': u.AA}
+
     def __init__(self, name=None, line_list=None, *args, **kwargs):
         super(OpticalDepth1D, self).__init__(*args, **kwargs)
 
@@ -95,7 +99,7 @@ class OpticalDepth1D(Fittable1DModel):
                  delta_v, delta_lambda):
         with u.set_enabled_equivalencies(u.spectral() + u.doppler_relativistic(lambda_0)):
             x = u.Quantity(x, 'Angstrom')
-            vel = u.Quantity(x, 'km/s')
+            # vel = u.Quantity(x, 'km/s')
 
         # Convert the log column density value back to unit-ful value
         column_density = u.Quantity(10 ** column_density, '1/cm2')
@@ -127,3 +131,6 @@ class OpticalDepth1D(Fittable1DModel):
     @staticmethod
     def fit_deriv(x, x_0, b, gamma, f):
         return [0, 0, 0, 0]
+
+    def full_width_half_max(self, x):
+        y = self(x)
