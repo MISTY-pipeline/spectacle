@@ -141,7 +141,7 @@ centroid, but two different sets of region bounds.
     >>> from matplotlib import pyplot as plt
     >>> from spectacle.modeling import Spectral1D, OpticalDepth1D
     >>> from spectacle.fitting.line_finder import LineFinder1D
-    >>> line1 = OpticalDepth1D("HI1216", v_doppler=10 * u.km/u.s, column_density=14)
+    >>> line1 = OpticalDepth1D("HI1216", v_doppler=10 * u.km/u.s, column_density=14, delta_v=15 * u.km/u.s)
     >>> line2 = OpticalDepth1D("HI1216", v_doppler=70 * u.km/u.s, column_density=15)
     >>> spec_mod = Spectral1D([line1, line2], continuum=0, output='optical_depth')
     >>> x = np.linspace(-200, 200, 1000) * u.Unit('km/s')
