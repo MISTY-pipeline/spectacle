@@ -54,13 +54,11 @@ class Spectral1D(Fittable1DModel):
 
     @property
     def input_units(self):
-        if any([x.unit is not None for x in [getattr(self, y) for y in self.param_names]]):
-            if self.is_single_ion:
-                return {'x': u.Unit('km/s')}
-            else:
-                return {'x': u.Unit('Angstrom')}
-        elif len(self.lines) == 0:
-            return {'x': u.Unit('km/s')}
+        # Apply input unit restriction only when the model is not being fitted,
+        #  otherwise, allow the fitter's parameter-less usage of the model.
+        if any([x.unit is not None for x in [getattr(self, y)
+                                             for y in self.param_names]]):
+            return {'x': u.Unit('Angstrom')}
         else:
             return {'x': None}
 
@@ -146,6 +144,7 @@ class Spectral1D(Fittable1DModel):
         # Compose the line-based compound model taking into consideration
         # the redshift, continuum, and dispersion conversions.
         rs = RedshiftScaleFactor(z, fixed={'z': True}, name="redshift").inverse
+
         irs = RedshiftScaleFactor(input_redshift, fixed={'z': True},
                                   name="input_redshift")
 
@@ -212,34 +211,47 @@ class Spectral1D(Fittable1DModel):
         super().__init__()
 
     def __call__(self, x, *args, **kwargs):
+        """
+        Override the default call function to handle fixed parameters based on
+        the unit of the provided dispersion.
+
+        Notes
+        -----
+        The initial call to this method from fitter will provide unit
+        information on the dispersion. Subsequent calls do not. It is assumed
+        that subsequent calls provide dispersion as km/s.
+        """
+        def _fix_deltas(model, fix_delta_v, fix_delta_lambda):
+            for k in model.fixed:
+                if 'delta_v' in k:
+                    getattr(model, k).fixed = fix_delta_v
+                elif 'delta_lambda' in k:
+                    getattr(model, k).fixed = fix_delta_lambda
+
         if isinstance(x, u.Quantity):
             if x.unit.physical_type in ('length', 'frequency'):
-                for k in self.fixed:
-                    if 'delta_v' in k:
-                        getattr(self, k).fixed = True
-                    elif 'delta_lambda' in k:
-                        getattr(self, k).fixed = False
+                _fix_deltas(self, True, False)
+                _fix_deltas(self._compound_model, True, False)
             elif x.unit.physical_type == 'speed':
-                for k in self.fixed:
-                    if 'delta_v' in k:
-                        getattr(self, k).fixed = False
-                    elif 'delta_lambda' in k:
-                        getattr(self, k).fixed = True
+                _fix_deltas(self, False, True)
+                _fix_deltas(self._compound_model, False, True)
 
         return super().__call__(x, *args, **kwargs)
 
     def evaluate(self, x, *args, **kwargs):
         # For the input dispersion to be unit-ful, especially when fitting
-        x = u.Quantity(x, 'km/s') \
-            if self.is_single_ion or len(self.lines) == 0 \
-            else u.Quantity(x, 'Angstrom')
+        x = u.Quantity(x, 'Angstrom')
 
         # For the parameters to be unit-ful especially when used in fitting.
         # TODO: fix arguments being passed with extra dimension.
         args = [u.Quantity(val[0], unit) if unit is not None else val[0]
                 for val, unit in zip(args, self._parameter_units_for_data_units().values())]
 
-        return self._compound_model.__class__(*args, **kwargs)(x)
+        # Create a new compound class given the potentially different parameter
+        #  units so as to preserve unit-ful behavior
+        self._compound_model = self._compound_model.__class__(*args, **kwargs)
+
+        return self._compound_model(x)
 
     def rejection_criteria(self, x, y, auto_fit=True):
         """
@@ -263,34 +275,44 @@ class Spectral1D(Fittable1DModel):
         final_model : :class:`~spectacle.Spectral1D`
             The new spectral model with the least complexity.
         """
-        base_aicc = self._aicc(x, y, self)
+        base_aicc, chi2, cmplx = self._aicc(x, y, self)
         final_model = self
         finished = False
 
         while not finished:
             for i in range(len(final_model.lines)):
                 lines = [x for x in final_model.lines]
-                lines.pop(i)
-                new_spec = self._copy(lines=lines)
-                aicc = self._aicc(x, y, new_spec)
+                removed_line = lines.pop(i)
 
-                # print("Testing", aicc, "<", base_aicc)
+                if len(lines) == 0:
+                    finished = True
+                    break
+
+                new_spec = self._copy(lines=lines)
+
+                if auto_fit:
+                    fitter = LevMarLSQFitter()
+                    new_spec = fitter(new_spec, x, y)
+
+                aicc, chi2, cmplx = self._aicc(x, y, new_spec)
+
                 if aicc < base_aicc:
-                    # print("Removing line. {} remaining.".format(len(lines)))
                     final_model = new_spec
                     base_aicc = aicc
                     break
             else:
                 finished = True
 
-        return final_model
+        return final_model, base_aicc, chi2, cmplx
 
     def _aicc(self, x, y, model):
         chi2, pval = chisquare(f_obs=model(x)**2, f_exp=y**2)
         p = len([k for x in model.lines for k, v in x.fixed.items() if not v])
         n = x.size
+        cmplx = (2 * p * n) / (n - p - 1)
+        tot = chi2 + cmplx
 
-        return chi2 + (2 * p * n) / (n - p - 1)
+        return tot, chi2, cmplx
 
     @property
     def continuum(self):
@@ -390,7 +412,7 @@ class Spectral1D(Fittable1DModel):
             The new spectral model.
         """
         new_kwargs = dict(
-            lines=self.lines,
+            lines=[line.copy() for line in self.lines],
             continuum=self.continuum,
             z=self.redshift,
             output=self.output_type,
