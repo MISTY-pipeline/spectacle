@@ -534,7 +534,7 @@ class Spectral1D(Fittable1DModel):
 
             # Generate the spectrum1d object for this line profile
             ew = equivalent_width(wav, line(wav))
-            dv90 = delta_v_90(vel, line(vel))
+            dv90 = delta_v_90(vel, line(wav))
             fwhm = full_width_half_max(wav, line(wav))
 
             tab.add_row([line.name,

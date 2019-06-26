@@ -22,7 +22,7 @@ def test_create_model():
 
 def test_custom_continuum():
     line1 = OpticalDepth1D(lambda_0=1216 * u.AA)
-    continuum = Linear1D(slope=1 * u.s/u.km, intercept=0 * u.Unit(''))
+    continuum = Linear1D(slope=1 / u.AA, intercept=0 * u.Unit(''))
 
     # Create model from lambda
     spec_mod = Spectral1D(line1, continuum=continuum)

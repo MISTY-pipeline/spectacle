@@ -42,7 +42,6 @@ class CurveFitter(LevMarLSQFitter):
             raise ValueError("No method named '{}'. Must be one of 'curve', "
                              "'leastsq', or 'bootstrap'.".format(method))
 
-
         self.fit_info['param_units'] = [getattr(fit_model, p).unit
                                         for p in fit_model.param_names]
 
