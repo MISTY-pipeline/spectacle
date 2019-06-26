@@ -42,7 +42,6 @@ class CurveFitter(LevMarLSQFitter):
             raise ValueError("No method named '{}'. Must be one of 'curve', "
                              "'leastsq', or 'bootstrap'.".format(method))
 
-
         self.fit_info['param_units'] = [getattr(fit_model, p).unit
                                         for p in fit_model.param_names]
 
@@ -51,7 +50,7 @@ class CurveFitter(LevMarLSQFitter):
     @fitter_unit_support
     def _curve_fit(self, model, x, y, z=None, weights=None, yerr=None,
                    maxiter=DEFAULT_MAXITER, acc=DEFAULT_ACC,
-                   epsilon=DEFAULT_EPS, estimate_jacobian=False):
+                   epsilon=DEFAULT_EPS, estimate_jacobian=False, **kwargs):
         """
         Fit data to this model.
 
@@ -110,7 +109,7 @@ class CurveFitter(LevMarLSQFitter):
                                          sigma=yerr, epsfcn=epsilon, jac=dfunc,
                                          col_deriv=model_copy.col_fit_deriv,
                                          maxfev=maxiter, xtol=acc,
-                                         absolute_sigma=False)
+                                         absolute_sigma=False, **kwargs)
 
         error = []
 

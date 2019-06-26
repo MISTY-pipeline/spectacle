@@ -56,7 +56,7 @@ Spectacle provides a default Levenberg–Marquardt fitter in the
 
 On both the :class:`~spectacle.fitting.CurveFitter` class and the
 :class:`~spectacle.fitting.EmceeFitter` class described below, parameter
-uncertainties can be accessed through the ``uncertianties`` property of the
+uncertainties can be accessed through the ``uncertainties`` property of the
 instantiated fitter after the fitting routine has run.
 
 .. code-block:: python

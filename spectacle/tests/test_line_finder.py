@@ -1,11 +1,13 @@
 from ..modeling.profiles import OpticalDepth1D
 from ..modeling.models import Spectral1D
 from ..fitting.line_finder import LineFinder1D
+from ..fitting import CurveFitter
 from ..utils.detection import region_bounds
 
 import astropy.units as u
 import numpy as np
 import pytest
+from astropy.modeling.fitting import LevMarLSQFitter
 
 
 @pytest.fixture
@@ -66,7 +68,8 @@ def test_buried_line_velocity():
 
     line_finder = LineFinder1D(ions=["HI1216"], auto_fit=True,
                                continuum=0, output='optical_depth',
-                               threshold=0.05)
+                               threshold=0.05,
+                               fitter=LevMarLSQFitter())
 
     fit_spec_mod = line_finder(x, y)
 
@@ -111,7 +114,9 @@ def test_buried_line_wavelength():
 
     line_finder = LineFinder1D(ions=["HI1216"], auto_fit=True,
                                continuum=1, output='flux',
-                               threshold=0.05)
+                               threshold=0.05,
+                               fitter=CurveFitter(),
+                               fitter_args={'acc': 1e-5})
 
     fit_spec_mod = line_finder(x, y)
 

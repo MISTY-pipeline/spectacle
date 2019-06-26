@@ -4,6 +4,7 @@ import logging
 from ..utils.misc import find_nearest
 from specutils.analysis.width import _compute_single_fwhm
 from scipy.interpolate import UnivariateSpline
+from astropy.modeling import FittableModel
 
 __all__ = ['delta_v_90', 'full_width_half_max', 'equivalent_width']
 
@@ -70,14 +71,15 @@ def full_width_half_max(x, y):
 
 
 @u.quantity_input(x=['length', 'speed'])
-def equivalent_width(x, y):
-    fwhm = full_width_half_max(x, y)
-    sigma = fwhm / 2.355
+def equivalent_width(x, y, continuum=None):
+    norm_y = y.copy()
 
-    # Amplitude is derived from area
-    delta_x = x[1:] - x[:-1]
-    sum_y = np.sum(y[1:] * delta_x)
-    height = sum_y / (sigma * np.sqrt(2 * np.pi))
+    if continuum is not None:
+        if issubclass(type(continuum), FittableModel):
+            continuum = continuum(x)
 
-    # Calculate equivalent width
-    return sum_y / np.max(y)
+        ew = np.trapz((continuum - norm_y)/continuum, x=x)
+    else:
+        ew = np.trapz(norm_y, x=x)
+
+    return np.abs(ew)
