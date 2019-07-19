@@ -5,6 +5,7 @@ import numpy as np
 from astropy.constants import c, m_e
 from astropy.modeling import Fittable2DModel, Parameter
 from astropy.modeling.fitting import LevMarLSQFitter
+from astropy.modeling.models import RedshiftScaleFactor
 
 from .curve_fitter import CurveFitter
 from ..modeling import OpticalDepth1D, Spectral1D
@@ -37,7 +38,7 @@ class LineFinder1D(Fittable2DModel):
         self._ions = ions or []
         self._continuum = continuum
         self._defaults = defaults or {}
-        self._z = z or 0
+        self._redshift_model = RedshiftScaleFactor(z=z or 0)
         self._model_result = None
         self._auto_fit = auto_fit
         self._output = output
@@ -70,6 +71,9 @@ class LineFinder1D(Fittable2DModel):
 
     def evaluate(self, x, y, threshold, min_distance, *args, **kwargs):
         spec_mod = Spectral1D(continuum=self._continuum, output=self._output)
+
+        if x.unit.physical_type in ('length', 'frequency'):
+            x = self._redshift_model.inverse(x)
 
         # Generate the subset of the table for the ions chosen by the user
         sub_registry = line_registry
@@ -146,10 +150,9 @@ class LineFinder1D(Fittable2DModel):
             if x.unit.physical_type in ('length', 'frequency'):
                 estimate_kwargs['delta_lambda'] = centroid - line['wave']
                 estimate_kwargs['fixed'].update({'delta_v': True})
-                # TODO: enable bounds checking on lambda values
-                # estimate_kwargs['bounds'].update({
-                #     'delta_lambda': (mn_bnd.value - centroid.value,
-                #                      mx_bnd.value - centroid.value)})
+                estimate_kwargs['bounds'].update({
+                    'delta_lambda': (mn_bnd.value - line['wave'].value,
+                                     mx_bnd.value - line['wave'].value)})
             else:
                 # In velocity space, the centroid *should* be zero for any
                 # line given that the rest wavelength is taken as its lamba_0
@@ -175,14 +178,15 @@ class LineFinder1D(Fittable2DModel):
         spec_mod = Spectral1D(lines,
                               continuum=self._continuum,
                               output=self._output,
-                              z=self._z)
+                              z=self._redshift_model.z.value)
 
         if self._auto_fit:
             if issubclass(self._fitter.__class__, LevMarLSQFitter):
                 if 'maxiter' not in self._fitter_args:
                     self._fitter_args['maxiter'] = 1000
 
-            fit_spec_mod = self._fitter(spec_mod, x, y, **self._fitter_args)
+            fit_spec_mod = self._fitter(spec_mod, self._redshift_model(x),
+                                        y, **self._fitter_args)
         else:
             fit_spec_mod = spec_mod
 
