@@ -34,9 +34,10 @@ def _make_sign_diffs(dY, ddY, dddY):
 
 def _generate_masks(y, threshold, dS, ddS, dddS, is_absorption):
     if is_absorption:
-        thresh_mask = np.greater(np.max(y) - y, threshold)
+        new_y = np.max(y) - y
+        thresh_mask = np.greater(new_y/np.max(new_y), threshold)
     else:
-        thresh_mask = np.greater(y, threshold)
+        thresh_mask = np.greater(y/np.max(y), threshold)
 
     # Mask areas that don't provide line information. The secondary
     # convolution should gives us the bounds of when we enter (upward slope,
