@@ -2,7 +2,7 @@ import logging
 
 import astropy.units as u
 import numpy as np
-from astropy.constants import c, m_e
+from astropy.constants import c, m_e, e
 from astropy.modeling import Fittable2DModel, Parameter
 from astropy.modeling.fitting import LevMarLSQFitter
 from astropy.modeling.models import RedshiftScaleFactor
@@ -13,9 +13,8 @@ from ..utils.detection import region_bounds
 from ..utils.misc import DOPPLER_CONVERT
 from ..registries import line_registry
 
-PROTON_CHARGE = u.Quantity(4.8032056e-10, 'esu')
-TAU_FACTOR = (np.pi * PROTON_CHARGE ** 2 /
-               (m_e.cgs * c.cgs)).cgs
+TAU_FACTOR = (np.sqrt(np.pi) * e.esu ** 2 /
+              (m_e.cgs * c.cgs)).cgs
 
 
 class LineFinder1D(Fittable2DModel):
@@ -220,20 +219,19 @@ def parameter_estimator(centroid, bounds, x, y, ion_info, buried=False):
     sigma = fwhm / 2.355
 
     # Amplitude is derived from area
-    delta_x = mx[1:] - mx[:-1]
-    sum_y = np.sum(my[1:] * delta_x)
+    sum_y = np.trapz(my, x=mx)
     height = sum_y / (sigma * np.sqrt(2 * np.pi))
 
     # Estimate the doppler b parameter
-    v_dop = (np.sqrt(2) * np.sqrt(np.pi) * sigma).to('km/s')
+    v_dop = (np.sqrt(2) * sigma).to('km/s')
 
     # Estimate the column density
-    # col_dens = (v_dop / TAU_FACTOR * c.cgs ** 2).to('1/cm2')
-    col_dens = (sum_y / (TAU_FACTOR * ion_info['lambda_0'] * ion_info['f_value'])).to('1/cm2')
+    col_dens = (height * v_dop / (TAU_FACTOR * ion_info['lambda_0'] * ion_info['f_value'])).to('1/cm2')
+    # col_dens = (sum_y / (TAU_FACTOR * ion_info['lambda_0'] * ion_info['f_value'])).to('1/cm2')
     ln_col_dens = np.log10(col_dens.value)
 
-    if buried:
-        ln_col_dens -= 0.1
+    # if buried:
+    #     ln_col_dens -= 0.1
 
     logging.info("""Estimated initial values:
     Ion: {}
