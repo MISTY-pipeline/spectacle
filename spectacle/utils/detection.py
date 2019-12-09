@@ -14,6 +14,8 @@ def _make_data_diffs(y):
     kernel = [1, 0, -1]
 
     dY = convolve(y, kernel, 'extend', normalize_kernel=False) #np.diff(y)
+    # dY_mask = np.greater(np.abs(dY), np.max(dY) * 0.1)
+    # dY[~dY_mask] = 0
     ddY = convolve(dY, kernel, 'extend', normalize_kernel=False) #np.diff(dY)
     dddY = convolve(ddY, kernel, 'extend', normalize_kernel=False) #np.diff(ddY)
 
