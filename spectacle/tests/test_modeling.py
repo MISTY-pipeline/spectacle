@@ -19,7 +19,7 @@ def test_cos_lsf():
 
     spec_mod = Spectral1D([line1, line2], continuum=1, output='flux')
     spec_mod_with_lsf = spec_mod.with_lsf('cos')
-
+    print(spec_mod_with_lsf_in_init(x))
     assert len(x) == len(spec_mod_with_lsf_in_init(x))
     assert isinstance(spec_mod_with_lsf_in_init.lsf_kernel, COSLSFModel)
     assert len(x) == len(spec_mod_with_lsf(x))

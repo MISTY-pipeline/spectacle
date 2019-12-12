@@ -19,7 +19,7 @@ class COSKernel1D(Kernel1D):
             os.path.join(__file__, '..', '..', 'data', 'cos_lsf.ecsv'))
         table = Table.read(path, format='ascii.ecsv')
 
-        super(COSKernel1D, self).__init__(array=table['value'])
+        super(COSKernel1D, self).__init__(array=table['value'].data)
 
 
 class LSFModel(Fittable1DModel):
