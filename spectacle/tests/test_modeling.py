@@ -74,4 +74,3 @@ def test_dispersion_convert():
                            column_density=14)
     line2 = OpticalDepth1D("OVI1038", v_doppler=500 * u.km / u.s,
                            column_density=15)
-
