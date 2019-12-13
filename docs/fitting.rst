@@ -24,7 +24,7 @@ Spectacle provides a default Levenberg–Marquardt fitter in the
     Generate some fake data to fit to:
 
     >>> line1 = OpticalDepth1D("HI1216", v_doppler=10 * u.km/u.s, column_density=14)
-    >>> spec_mod = Spectral1D(line1, continuum=1)
+    >>> spec_mod = Spectral1D(line1, continuum=1, output='flux')
     >>> x = np.linspace(-200, 200, 1000) * u.Unit('km/s')
     >>> y = spec_mod(x) + (np.random.sample(1000) - 0.5) * 0.01
 

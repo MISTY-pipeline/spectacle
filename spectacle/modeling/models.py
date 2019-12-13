@@ -296,7 +296,7 @@ class Spectral1D(Fittable1DModel):
 
                 aicc, chi2, cmplx = self._aicc(x, y, new_spec)
 
-                if aicc < base_aicc:
+                if base_aicc - aicc > 5:
                     final_model = new_spec
                     base_aicc = aicc
                     break

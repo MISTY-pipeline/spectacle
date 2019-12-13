@@ -226,7 +226,8 @@ def parameter_estimator(centroid, bounds, x, y, ion_info, buried=False):
     v_dop = (np.sqrt(2) * sigma).to('km/s')
 
     # Estimate the column density
-    col_dens = (height * v_dop / (TAU_FACTOR * ion_info['lambda_0'] * ion_info['f_value'])).to('1/cm2')
+    col_dens = (height * v_dop / (TAU_FACTOR * ion_info['lambda_0'] *
+                                  ion_info['f_value'])).to('1/cm2')
     # col_dens = (sum_y / (TAU_FACTOR * ion_info['lambda_0'] * ion_info['f_value'])).to('1/cm2')
     ln_col_dens = np.log10(col_dens.value)
 
